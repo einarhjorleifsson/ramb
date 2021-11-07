@@ -21,7 +21,7 @@ devtools::install_github("einarhjorleifsson/ferill")
 
 ## Example
 
-This is a basic example which shows you how to solve a common problem:
+Basic example of workflow:
 
 ``` r
 library(tidyverse)

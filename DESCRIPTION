@@ -17,3 +17,5 @@ Imports:
     tibble,
     dplyr,
     tidyr
+Suggests: 
+    rmarkdown

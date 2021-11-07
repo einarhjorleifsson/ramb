@@ -3,3 +3,6 @@
 .RData
 .Ruserdata
 ferill.Rproj
+docs
+Basic functionality
+vignettes/articles/*.txt

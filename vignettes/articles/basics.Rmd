@@ -1,41 +1,15 @@
 ---
-output: github_document
+title: "Basics"
 ---
-
-<!-- README.md is generated from README.Rmd. Please edit that file -->
 
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
-  message = FALSE,
-  warning = FALSE,
-  comment = "#>",
-  fig.path = "man/figures/README-",
-  out.width = "100%"
+  comment = "#>"
 )
 ```
 
-# ferill
-
-<!-- badges: start -->
-<!-- badges: end -->
-
-The goal of {ferill} is to return various "move"-objects to tibbles for further downstream processing using the tidyverse lingo.
-
-## Installation
-
-You can install the development version of {ferill} from [GitHub](https://github.com/einarhjorleifsson/ferill) with:
-
-``` r
-# install.packages("devtools")
-devtools::install_github("einarhjorleifsson/ferill")
-```
-
-## Example
-
-Basic example of workflow:
-
-```{r example}
+```{r setup}
 library(tidyverse)
 library(ferill)
 d <- 
@@ -81,4 +55,3 @@ o %>%
   tidy_bin_clst_path() %>% 
   glimpse()
 ```
-
