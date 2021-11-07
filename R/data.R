@@ -1,6 +1,6 @@
 #' Vessel tracks and behaviour of creel fisheries
 #'
-#' A dataset of movement data collected every 60sec from 5 trips by 5 different
+#' A dataset of movement data collected every 60 sec from 5 trips by 5 different
 #' small scale fishing vessels using creels.
 #'
 #' Mendo, Tania; Smout, Sophie; Photopoulou, Theoni; James, Mark (2019), Data
@@ -9,11 +9,11 @@
 #'
 #' @format A data frame with 2226 rows and 5 variables:
 #' \describe{
-#'   \item{ID}{vessel identification}
-#'   \item{date}{Datetime in the format YYYY-MM-DD hh:mm::ss}
-#'   \item{x}{Longitude in meters, ...}
-#'   \item{y}{Latitude in meters, ....}
-#'   \item{behaviour}{Fishing activity, 'steamin', 'shootin' and 'hauling'}
+#'   \item{ID}{vessel identification <chr>}
+#'   \item{date}{Datetime in the format YYYY-MM-DD hh:mm::ss <chr>}
+#'   \item{x}{Longitude in meters, crs = 32630 <dbl>}
+#'   \item{y}{Latitude in meters, crs = 32630 <dbl>}
+#'   \item{behaviour}{Fishing activity, 'steaming', 'shooting' and 'hauling' <chr>}
 #' }
 #' @source \url{https://doi.org/10.5061/dryad.k80bp46}
 "creel"
