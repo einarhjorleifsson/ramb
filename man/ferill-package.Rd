@@ -4,7 +4,7 @@
 \name{ferill-package}
 \alias{ferill}
 \alias{ferill-package}
-\title{ferill: Convert "move"-object into tibbles.}
+\title{ferill: Convert "move"-object into tibbles}
 \description{
 The goal of {ferill} is to return various "move"-objects to tibbles for further downstream processing using the tidyverse lingo. And then some.
 }

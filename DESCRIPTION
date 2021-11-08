@@ -1,6 +1,6 @@
 Package: ferill
 Type: Package
-Title: Convert "move"-object into tibbles.
+Title: Convert "move"-object into tibbles
 Version: 0.1.0
 Authors@R: c(
   person("Einar", "Hjörleifsson", role = c("aut", "cre"), email = "einar.hjorleifsson@gmail.com")

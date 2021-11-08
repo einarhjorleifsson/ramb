@@ -4,54 +4,102 @@ title: "Basics"
 
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
+  message = FALSE, 
+  warning = FALSE,
   collapse = TRUE,
   comment = "#>"
 )
 ```
 
-```{r setup}
-library(tidyverse)
+## Preamble
+
+This document is mostly a note to one self, a step-wise approach of me learing a little about how to process movement or track data. The data examples used af of fishing vessel activities. The structure of the text is largely borrowed from the XXX ...
+
+The following packages we load:
+
+```{r}
 library(ferill)
+library(traipse)
+library(tidyverse)
+```
+
+## The main track metric
+
+The {traipse} is a really nice no-fuzz package that provides functions foor all the main track metrics. It aligns perfectly with the tidyverse flow, including grouping. Here is a case in point:
+
+```{r}
+creel %>% 
+  mutate(distance = track_distance(lon, lat), 
+         angle = track_angle(lon, lat),
+         turn = track_turn(lon, lat), 
+         bearing = track_bearing(lon, lat), 
+         duration = track_time(time),
+         speed = track_speed(lon, lat, time), 
+         # here just distance and bearing to the start/first point
+         distance_to = track_distance_to(lon, lat, lon[1], lat[1]), 
+         bearing_to = track_bearing_to(lon, lat, lon[1], lat[1])) %>% 
+  glimpse()
+```
+
+## Some nuances among packages
+
+The function `moveHMM::prepData` calculates distance (called step, units in km!) and turn (called angle, units in radians) of consequitive points.
+
+```{r}
+creel01 <-
+  creel %>% 
+  filter(id == 1) %>% 
+  select(id, rowid, lon, lat) %>% 
+  as.data.frame() %>% 
+  moveHMM::prepData(type = "LL", coordNames = c("lon", "lat"), LLangle = TRUE) %>% 
+  as_tibble()
 d <- 
   creel %>% 
-  moveHMM::prepData(type = "UTM", coordNames = c("x", "y")) %>% 
-  filter(ID == "AR001") %>%
-  filter(!is.na(step)) %>%
-  # convert step length from meters to knots (nautical miles per hour)
-  mutate(speed = step/ 60 * 1.9438)
-mixtools::normalmixEM(d$speed, mu = c(1,4,8), sigma = c(1,1,1)) %>%
+  select(id, rowid, time, lon, lat) %>% 
+  filter(id == 1) %>% 
+  left_join(creel01) %>% 
+  group_by(id) %>% 
+  mutate(distance = track_distance(lon, lat),
+         angle2 = track_angle(lon, lat),
+         turn = track_turn(lon, lat))
+# NOTE: here we drop 2 rows
+d %>% 
+  ggplot(aes(distance, step * 100)) +
+  geom_point()
+d %>% 
+  ggplot(aes(distance, lag(step) * 100)) +
+  geom_point()
+# NOTE: here we drop 2 rows
+d %>% 
+  ggplot(aes(pracma::deg2rad(turn), angle)) +
+  geom_point()
+```
+
+## XXX
+
+```{r, eval = FALSE}
+mixtools::normalmixEM(creel01$speed, mu = c(1, 4, 8), sigma = c(1, 1, 1)) %>% 
+  # this function returns 3 times the number of original rows
   tidy_normalmixEM() %>% 
   glimpse()
 ```
 
-```{r}
-d <-
-  creel %>% 
-  mutate(time = lubridate::ymd_hms(date)) %>%
-  # use the prepData function to create step lengths
-  moveHMM::prepData(type = "UTM", coordNames = c("x", "y")) %>%
-  # check if there are any missing step lengths
-  # there will be at least five (=the number of unique IDs) because the first step
-  # length of each trip will be NA
-  # remove missing step lengths
-  filter(!is.na(step)) %>%
-  # convert step length from meters to knots (nautical miles per hour)
-  mutate(speed = step / 60 * 1.9438) %>%
-  as_tibble() %>%
-  sf::st_as_sf(coords = c("x", "y"),
-               crs = '+proj=utm +zone=30 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0',
-               remove = FALSE) %>%
-  sf::st_transform(crs = 4326) %>%
-  mutate(lon = sf::st_coordinates(geometry)[,1],
-         lat = sf::st_coordinates(geometry)[,2]) %>%
-  sf::st_drop_geometry()
+```{r, eval = FALSE}
 o <-
-  d %>%
-  filter(ID == "AR001") %>%
-  select(time, lon, lat) %>%
-  as.data.frame() %>%
+  creel01 %>%
+  select(time, lon, lat) %>% 
+  as.data.frame() %>% 
   EMbC::stbc(., info = -1)
-o %>% 
-  tidy_bin_clst_path() %>% 
-  glimpse()
+r <- 
+  o %>% 
+  tidy_bin_clst_path() 
+r %>% glimpse()
+
 ```
+
+## xxx
+
+```{r, eval = FALSE}
+
+```
+
