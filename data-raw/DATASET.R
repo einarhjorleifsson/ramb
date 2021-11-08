@@ -15,5 +15,8 @@ creel <-
   mutate(lon = sf::st_coordinates(geometry)[, 1],
          lat = sf::st_coordinates(geometry)[, 2]) %>%
   sf::st_drop_geometry() %>%
-  select(id, time, x, y, lon, lat, behaviour)
+  group_by(id) %>%
+  mutate(rowid = 1:n()) %>%
+  ungroup() %>%
+  select(id, rowid, time, x, y, lon, lat, behaviour)
 usethis::use_data(creel, overwrite = TRUE)
