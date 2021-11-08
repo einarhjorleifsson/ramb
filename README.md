@@ -1,22 +1,22 @@
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-# ferill
+# ramb
 
 <!-- badges: start -->
 <!-- badges: end -->
 
-The goal of {ferill} is to return various “move”-objects to tibbles for
+The goal of {ramb} is to return various “move”-objects to tibbles for
 further downstream processing using the tidyverse lingo.
 
 ## Installation
 
-You can install the development version of {ferill} from
-[GitHub](https://github.com/einarhjorleifsson/ferill) with:
+You can install the development version of {ramb} from
+[GitHub](https://github.com/einarhjorleifsson/ramb) with:
 
 ``` r
 # install.packages("devtools")
-devtools::install_github("einarhjorleifsson/ferill")
+devtools::install_github("einarhjorleifsson/ramb")
 ```
 
 ## Example
@@ -25,11 +25,13 @@ Basic example of workflow:
 
 ``` r
 library(tidyverse)
-library(ferill)
+library(ramb)
 d <- 
   creel %>% 
+  rename(ID = id) %>% 
+  as.data.frame() %>% 
   moveHMM::prepData(type = "UTM", coordNames = c("x", "y")) %>% 
-  filter(ID == "AR001") %>%
+  filter(ID == 1) %>%
   filter(!is.na(step)) %>%
   # convert step length from meters to knots (nautical miles per hour)
   mutate(speed = step/ 60 * 1.9438)
@@ -48,38 +50,18 @@ mixtools::normalmixEM(d$speed, mu = c(1,4,8), sigma = c(1,1,1)) %>%
 ```
 
 ``` r
-d <-
-  creel %>% 
-  mutate(time = lubridate::ymd_hms(date)) %>%
-  # use the prepData function to create step lengths
-  moveHMM::prepData(type = "UTM", coordNames = c("x", "y")) %>%
-  # check if there are any missing step lengths
-  # there will be at least five (=the number of unique IDs) because the first step
-  # length of each trip will be NA
-  # remove missing step lengths
-  filter(!is.na(step)) %>%
-  # convert step length from meters to knots (nautical miles per hour)
-  mutate(speed = step / 60 * 1.9438) %>%
-  as_tibble() %>%
-  sf::st_as_sf(coords = c("x", "y"),
-               crs = '+proj=utm +zone=30 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0',
-               remove = FALSE) %>%
-  sf::st_transform(crs = 4326) %>%
-  mutate(lon = sf::st_coordinates(geometry)[,1],
-         lat = sf::st_coordinates(geometry)[,2]) %>%
-  sf::st_drop_geometry()
 o <-
-  d %>%
-  filter(ID == "AR001") %>%
+  creel %>%
+  filter(id == 1) %>%
   select(time, lon, lat) %>%
   as.data.frame() %>%
   EMbC::stbc(., info = -1)
-#> [1]   0  -0.0000e+00       4       582
+#> [1]   0  -0.0000e+00       4       583
 #> [1] ... Stable clustering
 o %>% 
   tidy_bin_clst_path() %>% 
   glimpse()
-#> Rows: 582
+#> Rows: 583
 #> Columns: 10
 #> $ dTm   <dttm> 2017-05-19 06:50:28, 2017-05-19 06:51:28, 2017-05-19 06:52:28, …
 #> $ lon   <dbl> -4.113320, -4.116755, -4.120097, -4.123131, -4.125934, -4.128799…

@@ -5,14 +5,7 @@
 \alias{creel}
 \title{Vessel tracks and behaviour of creel fisheries}
 \format{
-A data frame with 2226 rows and 5 variables:
-\describe{
-  \item{ID}{vessel identification <chr>}
-  \item{date}{Datetime in the format YYYY-MM-DD hh:mm::ss <chr>}
-  \item{x}{Longitude in meters, crs = 32630 <dbl>}
-  \item{y}{Latitude in meters, crs = 32630 <dbl>}
-  \item{behaviour}{Fishing activity, 'steaming', 'shooting' and 'hauling' <chr>}
-}
+
 }
 \source{
 \url{https://doi.org/10.5061/dryad.k80bp46}

@@ -25,15 +25,15 @@ We provide a sample dataset of movement data collected every 60sec from 5 trips 
 We use the moveHMM package to compute the distances and turning angles between consecutive location records. Remove records with missing step length (we assume they are missing at random), and convert the step length values from meters to knots (nautical miles per hour).
 
 ```{r}
-library(ferill)
+library(ramb)
 library(moveHMM)
 library(tidyverse)
 library(lubridate)
 
 sdata <- 
   creel %>% 
-  # just for now
-  mutate(id = ID)
+  rename(ID = id) %>% 
+  as.data.frame()
 
 # use the prepData function to create step lengths
 prepdat <- moveHMM::prepData(sdata, type = "UTM", coordNames = c("x", "y"))
@@ -135,20 +135,21 @@ The third approach we use is also a Gaussian mixture model but
 ```{r}
 # load EMbC package
 library(EMbC)
-prepdat$date <- as.POSIXct((prepdat$date), format = "%Y-%m-%d %H:%M:%S")
+#prepdat$date <- as.POSIXct((prepdat$date), format = "%Y-%m-%d %H:%M:%S")
 # transform UTM coordinates to WGS84 (lon, lat)
-xy <- data.frame(X = prepdat$x, Y = prepdat$y)
-library(sp)
-coordinates(xy) <- c("X", "Y")
-proj4string(xy) <- CRS('+proj=utm +zone=30 +datum=WGS84 +units=m
-+no_defs +ellps=WGS84 +towgs84=0,0,0') # for example
-coor <- as.data.frame(spTransform(xy, CRS("+proj=longlat +datum=WGS84")))
-prepdat$lon <- coor$X
-prepdat$lat <- coor$Y
+#xy <- data.frame(X = prepdat$x, Y = prepdat$y)
+#library(sp)
+#coordinates(xy) <- c("X", "Y")
+#proj4string(xy) <- CRS('+proj=utm +zone=30 +datum=WGS84 +units=m
+#+no_defs +ellps=WGS84 +towgs84=0,0,0') # for example
+#coor <- as.data.frame(spTransform(xy, CRS("+proj=longlat +datum=WGS84")))
+#prepdat$lon <- coor$X
+#prepdat$lat <- coor$Y
 # choose relevant columns for analysis: time stamp, x and y
 names(prepdat)
-prepdat3 <- prepdat %>%
-  select("ID","date","lon","lat")
+prepdat3 <- 
+  prepdat %>%
+  select(ID, time, lon, lat)
 EMbc_value <- data.frame()
 out.list3 <- split(prepdat3, prepdat3$ID)
 
@@ -219,7 +220,7 @@ trip_EM_par_step$ID <- unique(prepdat$ID)
 library(purrr)
 # I have to create a moveData object again - but duplicate remove step and angle
 in.list4hmm <- split(prepdat, prepdat$ID)
-out.list4hmm <- map(in.list4hmm, function(x) select(x, -c(step, angle, id))) %>%
+out.list4hmm <- map(in.list4hmm, function(x) select(x, -c(step, angle, ID))) %>%
   map(., function(x) prepData(x, type = "UTM", coordNames = c("x", "y")))
 head(out.list4hmm[[1]])
 N <- length(out.list4hmm)
@@ -274,7 +275,7 @@ In the second HMM approach we fit a model to speed and turning angle. We use par
 library(moveHMM)
 # split the data into trip (total 5 trips)
 in.list5hmm <- split(prepdat, prepdat$ID)
-out.list5hmm <- map(in.list5hmm, function(x) select(x, -c(step, angle, id))) %>%
+out.list5hmm <- map(in.list5hmm, function(x) select(x, -c(step, angle, ID))) %>%
   map(., function(x) prepData(x, type = "UTM", coordNames = c("x", "y")))
 N <- length(in.list5hmm)
 for (i in 1:N){

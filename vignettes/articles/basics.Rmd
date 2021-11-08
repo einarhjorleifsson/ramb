@@ -18,7 +18,7 @@ This document is mostly a note to one self, a step-wise approach of me learing a
 The following packages we load:
 
 ```{r}
-library(ferill)
+library(ramb)
 library(traipse)
 library(tidyverse)
 ```
@@ -31,12 +31,12 @@ The {traipse} is a really nice no-fuzz package that provides functions foor all 
 creel %>% 
   mutate(distance = track_distance(lon, lat), 
          angle = track_angle(lon, lat),
-         turn = track_turn(lon, lat), 
-         bearing = track_bearing(lon, lat), 
+         turn = track_turn(lon, lat),
+         bearing = track_bearing(lon, lat),
          duration = track_time(time),
-         speed = track_speed(lon, lat, time), 
+         speed = track_speed(lon, lat, time),
          # here just distance and bearing to the start/first point
-         distance_to = track_distance_to(lon, lat, lon[1], lat[1]), 
+         distance_to = track_distance_to(lon, lat, lon[1], lat[1]),
          bearing_to = track_bearing_to(lon, lat, lon[1], lat[1])) %>% 
   glimpse()
 ```
@@ -73,15 +73,29 @@ d %>%
 d %>% 
   ggplot(aes(pracma::deg2rad(turn), angle)) +
   geom_point()
+d %>% 
+  ggplot(aes(pracma::deg2rad(-turn), angle)) +
+  geom_point()
 ```
 
 ## XXX
 
-```{r, eval = FALSE}
-mixtools::normalmixEM(creel01$speed, mu = c(1, 4, 8), sigma = c(1, 1, 1)) %>% 
+```{r}
+d <- 
+  creel %>% 
+  group_by(id) %>% 
+  mutate(speed = track_speed(lon, lat, time) * 1.9438)
+
+d.use <- 
+  d %>% 
+  filter(!is.na(speed))
+
+mixtools::normalmixEM(d.use$speed, mu = c(1, 4, 8), sigma = c(1, 1, 1)) %>% 
   # this function returns 3 times the number of original rows
   tidy_normalmixEM() %>% 
   glimpse()
+
+
 ```
 
 ```{r, eval = FALSE}
