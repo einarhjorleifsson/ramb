@@ -1,4 +1,4 @@
-Package: ferill
+Package: ramb
 Type: Package
 Title: Convert "move"-object into tibbles
 Version: 0.1.0
@@ -6,7 +6,7 @@ Authors@R: c(
   person("Einar", "Hjörleifsson", role = c("aut", "cre"), email = "einar.hjorleifsson@gmail.com")
   )
 Maintainer: Einar Hjörleifsson <einar.hjorleifsson@gmail.com>
-Description: The goal of {ferill} is to return various "move"-objects to tibbles for further downstream processing using the tidyverse lingo. And then some.
+Description: The goal of {ramb} is to return various "move"-objects to tibbles for further downstream processing using the tidyverse lingo. And then some.
 License: GPL (>= 3)
 Encoding: UTF-8
 LazyData: true
