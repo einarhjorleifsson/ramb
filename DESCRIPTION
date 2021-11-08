@@ -17,7 +17,6 @@ Imports:
     tibble,
     dplyr,
     tidyr,
-    magrittr,
-    geosphere
+    magrittr
 Suggests: 
     rmarkdown
