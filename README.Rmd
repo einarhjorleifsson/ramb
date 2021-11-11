@@ -56,11 +56,69 @@ mixtools::normalmixEM(d$speed, mu = c(1,4,8), sigma = c(1,1,1)) %>%
 o <-
   creel %>%
   filter(id == 1) %>%
-  select(time, lon, lat) %>%
+  select(time, lon, lat, everything()) %>%
   as.data.frame() %>%
   EMbC::stbc(., info = -1)
 o %>% 
   tidy_bin_clst_path() %>% 
-  glimpse()
+  group_by(behaviour, A) %>% 
+  summarise(p = n(),
+            .groups = "drop") %>% 
+  spread(A, p)
+  ggplot(aes(speed, turn, colour = factor(A))) +
+  geom_point()
+library(ggnewscale)
+o %>% 
+  tidy_bin_clst_path() %>% 
+  ggplot(aes(dTm)) +
+  theme_bw() +
+  geom_segment(aes(y = 0, xend = dTm, yend = max(speed), colour = behaviour),
+               alpha = 0.5) +
+  scale_colour_manual(values = c("hauling" = "#A6CEE3", 
+                                 "shooting" = "#1F78B4",
+                                 "steaming" = "grey")) +
+  ggnewscale::new_scale_colour() +
+  geom_point(aes(y = speed, colour = factor(A)),
+             size = 0.5) +
+  scale_colour_manual(values = c("1" = "#E31A1C",
+                                 "2" = "blue",
+                                 "3" = "blue",
+                                 "4" = "blue"))
+
+
+
+
+
+p2 <- 
+  o %>% 
+  tidy_bin_clst_path() %>% 
+  ggplot(aes(dTm, max(turn), fill = behaviour)) +
+  geom_col() +
+  geom_point(aes(y = turn)) +
+  scale_fill_brewer(palette = "Set1")
+p3 <- 
+  o %>% 
+  tidy_bin_clst_path() %>% 
+  ggplot(aes(dTm, max(speed), fill = factor(A))) +
+  geom_col() +
+  geom_point(aes(y = speed)) +
+  scale_fill_brewer(palette = "Set1")
+p4 <- 
+  o %>% 
+  tidy_bin_clst_path() %>% 
+  ggplot(aes(dTm, max(turn), fill = factor(A))) +
+  geom_col() +
+  geom_point(aes(y = turn)) +
+  scale_fill_brewer(palette = "Set1")
+
+
+library(patchwork)
+p1 + p3 + p2 + p4 + plot_layout(ncol = 1)
+
+o %>% 
+  tidy_bin_clst_path() %>% 
+  ggplot(aes(dTm, max(turn), fill = factor(A))) +
+  geom_col() +
+  geom_point(aes(y = turn, colour = ))
 ```
 

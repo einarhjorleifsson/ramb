@@ -13,23 +13,238 @@ knitr::opts_chunk$set(
 )
 ```
 
+## Premble
 
-The code presented here is a supplement to “Identifying fishing grounds from vessel tracks: model-based inference for small scale fisheries” by Tania Mendo, Sophie Smout, Theoni Photopoulou and Mark James (2019) Royal Society Open Science.
+The code presented here is inspired by the supplement to [“Identifying fishing grounds from vessel tracks: model-based inference for small scale fisheries” by Tania Mendo, Sophie Smout, Theoni Photopoulou and Mark James (2019) Royal Society Open Science](https://doi.org/10.1098/rsos.191161). The supplementary document provides a code for "five different methods for identifying hauling versus non-hauling activities in small scale fishing vessels from their movement trajectories."
 
-In this document we compare five different methods for identifying hauling versus non-hauling activities in small scale fishing vessels from their movement trajectories. These are described in detail in the main text of the paper.
+A [sample dataset](https://doi.org/10.5061/dryad.k80bp46) of movement data collected every 60sec from 5 trips by 5 different small scale fishing vessels using creels is provided and used here (has been included in the {ramb}-package).
 
-We provide a sample dataset of movement data collected every 60sec from 5 trips by 5 different small scale fishing vessels using creels. The data can be found: DOI: https://doi.org/10.5061/dryad.k80bp46
+The objective here is to provide a more structured code than provided in the supplement, relying fully on tidyverse lingo, including usage of the map-function where possible rather than loops.
+
+The packages needed are all supplied upfront:
+
+```{r}
+library(ramb)
+library(moveHMM)
+library(mixtools)
+library(EMbC)
+library(tidyverse)
+library(lubridate)
+```
+
+## A restructured code
+
+### Model 1: Gaussian mixture model
+
+... not shown.
+
+### Model 2: Trip-based Gaussian mixture model
+
+```{r}
+# Model 2 ----------------------------------------------------------------------
+data(creel)
+m2 <-
+  creel %>%
+  group_by(id) %>%
+  nest(data = c(x, y, rowid, time, lon, lat, behaviour)) %>%
+  mutate(data = map(data, as.data.frame)) %>%
+  mutate(prepdat = map(data, function(x) moveHMM::prepData(x, type = "UTM", coordNames = c("x", "y")))) %>%
+  mutate(prepdat = map(prepdat, filter, !is.na(step))) %>%
+  mutate(prepdat = map(prepdat, mutate, speed = step/60 * 1.9438)) %>%
+  mutate(m2 = map(prepdat, function(x) mixtools::normalmixEM(x$speed, mu = c(1,4,8), sigma = c(1,1,1)))) %>%
+  mutate(threshold = map_dbl(m2, function(x) x$mu[1] + 1.96 * x$sigma[1]))
+d <-
+  m2 %>%
+  unnest(prepdat) %>%
+  ungroup() %>%
+  mutate(Fishing = ifelse(speed <= threshold, TRUE, FALSE))
+
+d %>%
+  count(behaviour, Fishing) %>%
+  spread(Fishing, n) %>%
+  knitr::kable()
+d %>%
+  ggplot(aes(speed, fill = Fishing)) +
+  geom_histogram(binwidth = 0.1) +
+  facet_wrap(~ id, scales = "free_y") +
+  theme(legend.position = c(0.8, 0.2)) +
+  scale_fill_brewer(palette = "Set1") +
+  labs(x = "Speed [kt]", y = "Pings")
+d %>%
+  ggplot(aes(time, speed)) +
+  theme_bw() +
+  geom_point(aes(colour = Fishing),
+             size = 1) +
+  facet_wrap(~ id, scales = "free") +
+  theme(legend.position = c(0.8, 0.2)) +
+  scale_colour_brewer(palette = "Set1") +
+  labs(x = "Time", y = "Speed [kt]")
+```
+
+### Model 3: Trip-based Binary Clustering using Gaussian mixture models on a trip-by-trip basis
+
+```{r}
+m3 <-
+  creel %>%
+  select(id:time, lon:behaviour) %>%
+  nest(data = c(time, lon, lat, behaviour, rowid)) %>%
+  # function EMbC expects a data.frame, a tibble is a no, no
+  mutate(data = map(data, as.data.frame)) %>%
+  mutate(m3 = map(data, EMbC::stbc, info = -1)) %>%
+  mutate(m3.tbl = map(m3, ramb::tidy_bin_clst_path))
+d <-
+  m3 %>%
+  unnest(m3.tbl) %>%
+  mutate(speed = speed * 1.9438,
+         # hauling events are associated with low speeds, low turning angles
+         # EINAR: Note that 2 has high turning angle
+         fishing = ifelse(A %in% 1:2, TRUE, FALSE))
+
+d %>%
+  count(behaviour, A) %>%
+  spread(A, n) %>%
+  knitr::kable()
+
+d %>%
+  ggplot(aes(speed, turn, colour = factor(A))) +
+  theme_bw() +
+  geom_point(size = 1) +
+  facet_wrap(~ id) +
+  scale_colour_brewer(palette = "Set1") +
+  labs(x = "Speed [nm]", y = "Turn", colour = "clusters") +
+  theme(legend.position = c(0.8, 0.25))
+d %>%
+  ggplot(aes(dTm, speed)) +
+  theme_bw() +
+  geom_point(aes(colour = factor(A)),
+             size = 1) +
+  facet_wrap(~ id, scales = "free") +
+  theme(legend.position = c(0.8, 0.2)) +
+  scale_colour_brewer(palette = "Set1") +
+  labs(x = "Time", y = "Speed [kt]")
+d %>%
+  ggplot(aes(dTm, turn)) +
+  theme_bw() +
+  geom_point(aes(colour = factor(A)),
+             size = 1) +
+  facet_wrap(~ id, scales = "free") +
+  theme(legend.position = c(0.8, 0.2)) +
+  scale_colour_brewer(palette = "Set1") +
+  labs(x = "Time", y = "Turn")
+d %>%
+  arrange(desc(A)) %>%
+  ggplot(aes(lon, lat, colour = factor(A))) +
+  theme_bw() +
+  geom_point(size = 1) +
+  facet_wrap(~ id, scales = "free") +
+  coord_quickmap() +
+  labs(x = NULL, y = NULL, colour = "clusters") +
+  scale_colour_brewer(palette = "Set1") +
+  theme(legend.position = c(0.8, 0.25))
+d %>%
+  arrange(desc(A)) %>%
+  ggplot(aes(lon, lat, colour = fishing)) +
+  theme_bw() +
+  geom_point(size = 1) +
+  facet_wrap(~ id, scales = "free") +
+  coord_quickmap() +
+  labs(colour = "Fishing") +
+  scale_colour_brewer(palette = "Set1") +
+  theme(legend.position = c(0.8, 0.25)) +
+  scale_x_continuous(NULL, NULL) +
+  scale_y_continuous(NULL, NULL)
+```
+
+### Model 4: Hidden Markov model with speed only
+
+where is the speed here?
+
+
+```{r}
+par_mixEM <- function(o) {
+  sigma <- c(o$sigma[1], o$sigma[2] * (1 - 1/4), o$sigma[3] + 2)
+  c(o$mu, sigma)
+}
+ls_fitHMM <- function(d, par0) {
+  moveHMM::fitHMM(data = d,  nbStates = 3, stepPar0 = par0,
+                  verbose = 0, stepDist = "gamma", angleDist = "none")
+}
+lh_fitHMM <- function(d, par0) {
+  moveHMM::fitHMM(data = d,  nbStates = 3, stepPar0 = par0,
+         verbose = 0, stepDist = "gamma", angleDist = "none")
+}
+
+m4 <-
+  creel %>%
+  select(id, time, x, y, lon, lat, behaviour) %>%
+  nest(data = c(time, x, y, lon, lat, behaviour)) %>%
+  # function prepData expects a data.frame, a tibble is a no, no
+  mutate(data = map(data, as.data.frame)) %>%
+  mutate(data2 = map(data, moveHMM::prepData, type = "UTM", coordNames = c("x", "y"))) %>%
+  # get rid of NA's
+  mutate(data2 = map(data2, filter, !is.na(step))) %>%
+  # get starting values for the parameters
+  mutate(mixEM = map(data2, function(x) mixtools::normalmixEM(x$step, mu = c(20,150,300), sigma =c(20,20,20)))) %>%
+  # extract the parameters - note, should possibly be just one step, all in a single function
+  mutate(par0 = map(mixEM, par_mixEM)) %>%
+  mutate(m4 = map2(data2, par0, lh_fitHMM)) %>%
+  mutate(ks4 = map(m4, tidy_movehmm)) %>%
+  mutate(vit4 = map(m4, moveHMM::viterbi))
+m4 %>%
+  select(id, data2, vit4) %>%
+  unnest(c(data2, vit4)) %>%
+  mutate(id = paste(id, behaviour)) %>%
+  ggplot(aes(time, step, colour = factor(vit4))) +
+  geom_point() +
+  facet_wrap(~id, scales = "free", ncol = 3) +
+  scale_colour_brewer(palette = "Set1")
+# why not on speed??
+```
+
+### Model 5: Hidden Markov Model with speed and turning angle
+
+```{r}
+lh_fitHMM_model5 <- function(d, par0) {
+
+  angleMean0 <- c(pi, pi/2, 0) # angle mean
+  kappa0 <-     c(0.1, 0.2, 0.8)   # angle concentration
+  anglePar0 <- c(angleMean0, kappa0)
+
+  moveHMM::fitHMM(data = d,  nbStates = 3, stepPar0 = par0,
+         verbose = 0, stepDist = "gamma", angleDist = "wrpcauchy",
+         anglePar0 = anglePar0)
+}
+
+
+m5 <-
+  creel %>%
+  select(id, time, x, y, lon, lat, behaviour) %>%
+  nest(data = c(time, x, y, lon, lat, behaviour)) %>%
+  # function prepData expects a data.frame, a tibble is a no, no
+  mutate(data = map(data, as.data.frame)) %>%
+  mutate(data2 = map(data, moveHMM::prepData, type = "UTM", coordNames = c("x", "y"))) %>%
+  # get rid of NA's
+  mutate(data2 = map(data2, filter, !is.na(step))) %>%
+  # get starting values for the parameters
+  mutate(mixEM = map(data2, function(x) mixtools::normalmixEM(x$step, mu = c(20,150,300), sigma =c(20,20,20)))) %>%
+  # extract the parameters - note, should possibly be just one step, all in a single function
+  mutate(par0 = map(mixEM, par_mixEM)) %>%
+  mutate(m5 = map2(data2, par0, lh_fitHMM_model5)) %>%
+  mutate(ks5 = map(m5, tidy_movehmm)) %>%
+  mutate(vit5 = map(m5, moveHMM::viterbi))
+```
+
+
+
+## The supplement, including the output
+
+Only minor changes have been made to the original document. Here output of the data is also provided.
 
 #### First, read in and process the data for analysis
 
 We use the moveHMM package to compute the distances and turning angles between consecutive location records. Remove records with missing step length (we assume they are missing at random), and convert the step length values from meters to knots (nautical miles per hour).
 
 ```{r}
-library(ramb)
-library(moveHMM)
-library(tidyverse)
-library(lubridate)
-
 sdata <- 
   creel %>% 
   rename(ID = id) %>% 
@@ -63,7 +278,7 @@ This method uses a Gaussian mixture model to group the speed of all fishing vess
 
 ```{r}
 # load mixtools package
-library(mixtools)
+
 # use the histogram of speeds from all trips (generated above in the data preparation
 # chunk) to get estimates of starting values.
 # we chose speeds of 1, 4 and 8 nautical miles for hauling gear, deploying gear and
@@ -91,7 +306,6 @@ Here we use a method similar to 1. above, but instead of fitting a single model 
 
 ```{r}
 # load dplyr package
-library(dplyr)
 # split the data into trips (total 5 trips)
 in.list2 <- split(prepdat, prepdat$ID)
 out.list2 <- list()
@@ -134,7 +348,7 @@ The third approach we use is also a Gaussian mixture model but
 
 ```{r}
 # load EMbC package
-library(EMbC)
+
 #prepdat$date <- as.POSIXct((prepdat$date), format = "%Y-%m-%d %H:%M:%S")
 # transform UTM coordinates to WGS84 (lon, lat)
 #xy <- data.frame(X = prepdat$x, Y = prepdat$y)
@@ -187,8 +401,7 @@ The next two approaches employ hidden Markov models implemented in the R package
 
 ```{r}
 # load the moveHMM and dplyr package
-library(moveHMM)
-library(dplyr)
+
 # split the data into trip (total 5 trips)
 in.list4 <- split(prepdat, prepdat$ID)
 out.list4 <- list()
@@ -217,7 +430,7 @@ colnames(trip_EM_par_step) <- c("lambda1", "lambda2", "lambda3",
 # add trip ID to trip_EM_par_step dataframe
 trip_EM_par_step$ID <- unique(prepdat$ID)
 # now fit HMM using the trip-specific GMM estimates for speed as starting values
-library(purrr)
+
 # I have to create a moveData object again - but duplicate remove step and angle
 in.list4hmm <- split(prepdat, prepdat$ID)
 out.list4hmm <- map(in.list4hmm, function(x) select(x, -c(step, angle, ID))) %>%
@@ -272,7 +485,7 @@ In the second HMM approach we fit a model to speed and turning angle. We use par
 
 ```{r}
 # load the moveHMM package
-library(moveHMM)
+
 # split the data into trip (total 5 trips)
 in.list5hmm <- split(prepdat, prepdat$ID)
 out.list5hmm <- map(in.list5hmm, function(x) select(x, -c(step, angle, ID))) %>%

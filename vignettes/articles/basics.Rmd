@@ -25,7 +25,7 @@ library(tidyverse)
 
 ## The main track metric
 
-The {traipse} is a really nice no-fuzz package that provides functions foor all the main track metrics. It aligns perfectly with the tidyverse flow, including grouping. Here is a case in point:
+Initially started to seed various dplyrized funcions to calculate basic track metrics (distance, angle, turn, bearing, ...) into {ramb}. Halfway through I did however stumble across the {traipse} packages, that is a nice no-fuzz package that provides these types of functions. They align perfectly with the tidyverse flow, including grouping. There was thus no need to reinvent the wheel, but are included in the documentation in case somebody else is unaware of the {traipse}-package:
 
 ```{r}
 creel %>% 
@@ -42,6 +42,8 @@ creel %>%
 ```
 
 ## Some nuances among packages
+
+The above discovery almost defeated the purpose of this package, but there may though still be justification of its existence. Case in points we have below.
 
 The function `moveHMM::prepData` calculates distance (called step, units in km!) and turn (called angle, units in radians) of consequitive points.
 

@@ -8,16 +8,17 @@
 #' for small scale fisheries, Dryad, Dataset, https://doi.org/10.5061/dryad.k80bp46
 #'
 #' @format A data frame with 2226 rows and 5 variables:
+#'
 #' \describe{
 #'   \item{id}{vessel identification <int>}
 #'   \item{rowid}{record number for each vesssel <int>}
 #'   \item{time}{time <dttm>}
 #'   \item{x}{Longitude in meters, crs = 32630 <dbl>}
 #'   \item{y}{Latitude in meters, crs = 32630 <dbl>}
-#'   \item(lon}(Longitude <dbl>}
+#'   \item{lon}{Longitude <dbl>}
 #'   \item{lat}{Latittude <dbl>}
-#'   \item{behaviour}{Fishing activity, 'steaming', 'shooting' and 'hauling' <chr>}
-#' }
+#'   \item{behaviour}{Fishing activity, steaming, shooting and hauling <chr>}
+#'   }
 #' @source \url{https://doi.org/10.5061/dryad.k80bp46}
 "creel"
 
