@@ -32,6 +32,40 @@ library(tidyverse)
 library(lubridate)
 ```
 
+```{r}
+lh_change <- function(x) {
+  x <- ifelse(x != lag(x), 1, 0)
+  x <- replace_na(x, 1)
+  x <- cumsum(x)
+  return(x)
+}
+data(creel)
+creel.change <- 
+  creel %>% 
+  group_by(id) %>% 
+  mutate(change = lh_change(behaviour)) %>% 
+  group_by(id, change, behaviour) %>% 
+  summarise(t1 = min(time),
+            t2 = max(time),
+            .groups = "drop") %>% 
+  # make a continuum, not loose the last point
+  group_by(id) %>% 
+  mutate(t2 = lead(t1)) %>% 
+  ungroup()
+p.base <- 
+  creel.change %>% 
+  ggplot() +
+  theme_bw() +
+  geom_rect(aes(xmin = t1, xmax = t2, ymin = -Inf, ymax = Inf,
+                fill = behaviour),
+            show.legend = FALSE) +
+  facet_wrap(~ id, scales = "free") +
+  scale_fill_manual(values = c("steaming" = "grey",
+                               "hauling" = "pink",
+                               "shooting" = "green")) +
+  ggnewscale::new_scale_fill()
+```
+
 ## A restructured code
 
 ### Model 1: Gaussian mixture model
@@ -42,7 +76,6 @@ library(lubridate)
 
 ```{r}
 # Model 2 ----------------------------------------------------------------------
-data(creel)
 m2 <-
   creel %>%
   group_by(id) %>%
@@ -70,15 +103,13 @@ d %>%
   theme(legend.position = c(0.8, 0.2)) +
   scale_fill_brewer(palette = "Set1") +
   labs(x = "Speed [kt]", y = "Pings")
-d %>%
-  ggplot(aes(time, speed)) +
-  theme_bw() +
-  geom_point(aes(colour = Fishing),
-             size = 1) +
-  facet_wrap(~ id, scales = "free") +
-  theme(legend.position = c(0.8, 0.2)) +
+p.base +
+  geom_point(data = d,
+             aes(time, speed, colour = Fishing),
+             size = 0.5) +
   scale_colour_brewer(palette = "Set1") +
-  labs(x = "Time", y = "Speed [kt]")
+  labs(x = "Time", y = "Speed [kt]") +
+  theme(legend.position = c(0.8, 0.2))
 ```
 
 ### Model 3: Trip-based Binary Clustering using Gaussian mixture models on a trip-by-trip basis
@@ -98,13 +129,15 @@ d <-
   mutate(speed = speed * 1.9438,
          # hauling events are associated with low speeds, low turning angles
          # EINAR: Note that 2 has high turning angle
-         fishing = ifelse(A %in% 1:2, TRUE, FALSE))
-
+         Fishing = ifelse(A %in% 1:2, TRUE, FALSE))
 d %>%
   count(behaviour, A) %>%
   spread(A, n) %>%
   knitr::kable()
-
+d %>%
+  count(behaviour, Fishing) %>%
+  spread(Fishing, n) %>%
+  knitr::kable()
 d %>%
   ggplot(aes(speed, turn, colour = factor(A))) +
   theme_bw() +
@@ -122,6 +155,13 @@ d %>%
   theme(legend.position = c(0.8, 0.2)) +
   scale_colour_brewer(palette = "Set1") +
   labs(x = "Time", y = "Speed [kt]")
+p.base +
+  geom_point(data = d,
+             aes(dTm, speed, colour = Fishing),
+             size = 0.5) +
+  scale_colour_brewer(palette = "Set1") +
+  labs(x = "Time", y = "Speed [kt]") +
+  theme(legend.position = c(0.8, 0.2))
 d %>%
   ggplot(aes(dTm, turn)) +
   theme_bw() +
@@ -131,6 +171,13 @@ d %>%
   theme(legend.position = c(0.8, 0.2)) +
   scale_colour_brewer(palette = "Set1") +
   labs(x = "Time", y = "Turn")
+p.base +
+  geom_point(data = d,
+             aes(dTm, turn, colour = Fishing),
+             size = 0.5) +
+  scale_colour_brewer(palette = "Set1") +
+  labs(x = "Time", y = "Turn") +
+  theme(legend.position = c(0.8, 0.2))
 d %>%
   arrange(desc(A)) %>%
   ggplot(aes(lon, lat, colour = factor(A))) +
@@ -143,7 +190,7 @@ d %>%
   theme(legend.position = c(0.8, 0.25))
 d %>%
   arrange(desc(A)) %>%
-  ggplot(aes(lon, lat, colour = fishing)) +
+  ggplot(aes(lon, lat, colour = Fishing)) +
   theme_bw() +
   geom_point(size = 1) +
   facet_wrap(~ id, scales = "free") +
@@ -190,9 +237,22 @@ m4 <-
   mutate(m4 = map2(data2, par0, lh_fitHMM)) %>%
   mutate(ks4 = map(m4, tidy_movehmm)) %>%
   mutate(vit4 = map(m4, moveHMM::viterbi))
-m4 %>%
+d <- 
+  m4 %>%
   select(id, data2, vit4) %>%
-  unnest(c(data2, vit4)) %>%
+  unnest(c(data2, vit4))
+d %>%
+  count(behaviour, vit4) %>%
+  spread(vit4, n) %>%
+  knitr::kable()
+p.base +
+  geom_point(data = d,
+             aes(time, step, colour = factor(vit4)),
+             size = 0.5) +
+  scale_colour_brewer(palette = "Set1") +
+  labs(x = "Time", y = "Step [m]") +
+  theme(legend.position = c(0.8, 0.2))
+d %>%
   mutate(id = paste(id, behaviour)) %>%
   ggplot(aes(time, step, colour = factor(vit4))) +
   geom_point() +
@@ -232,6 +292,27 @@ m5 <-
   mutate(m5 = map2(data2, par0, lh_fitHMM_model5)) %>%
   mutate(ks5 = map(m5, tidy_movehmm)) %>%
   mutate(vit5 = map(m5, moveHMM::viterbi))
+d <- 
+  m5 %>%
+  select(id, data2, vit5) %>%
+  unnest(c(data2, vit5))
+d %>%
+  count(behaviour, vit5) %>%
+  spread(vit5, n) %>%
+  knitr::kable()
+p.base +
+  geom_point(data = d,
+             aes(time, step, colour = factor(vit5)),
+             size = 0.5) +
+  scale_colour_brewer(palette = "Set1") +
+  labs(x = "Time", y = "Step [m]") +
+  theme(legend.position = c(0.8, 0.2))
+d %>% 
+  mutate(id = paste(id, behaviour)) %>%
+  ggplot(aes(time, step, colour = factor(vit5))) +
+  geom_point() +
+  facet_wrap(~id, scales = "free", ncol = 3) +
+  scale_colour_brewer(palette = "Set1")
 ```
 
 
