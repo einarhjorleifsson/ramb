@@ -4,12 +4,14 @@
 \alias{rb_gaussian}
 \title{Fit Gaussian mixture model on vessel speed}
 \usage{
-rb_gaussian(d, cs = 1.96)
+rb_gaussian(d, cs = 1.96, minimal = TRUE)
 }
 \arguments{
 \item{d}{A data frame with xx}
 
 \item{cs}{The multiplier on the sigma value of the first Gussian mode}
+
+\item{minimal}{A boolean (default TRUE) determining detail of what is returned}
 }
 \value{
 A tibble containing lower and upper speed threshold of the first Gaussian mode

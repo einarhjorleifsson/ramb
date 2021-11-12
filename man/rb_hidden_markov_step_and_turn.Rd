@@ -4,10 +4,12 @@
 \alias{rb_hidden_markov_step_and_turn}
 \title{Hidden Markov model with step and turn}
 \usage{
-rb_hidden_markov_step_and_turn(d)
+rb_hidden_markov_step_and_turn(d, minimal = TRUE)
 }
 \arguments{
 \item{d}{A data frame with xx}
+
+\item{minimal}{A boolean (default TRUE) determining detail of what is returned}
 }
 \value{
 A tibble
