@@ -2,6 +2,9 @@
 
 export(rb_event)
 export(rb_gaussian)
+export(rb_gaussian_binary_clustering)
+export(rb_hidden_markov_step)
+export(rb_hidden_markov_step_and_turn)
 export(tidy_bin_clst_path)
 export(tidy_movehmm)
 export(tidy_normalmixEM)

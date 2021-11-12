@@ -56,7 +56,7 @@ tidy_bin_clst_path <- function(o) {
     dplyr::mutate(spn = o@spn,
                   dst = o@dst,
                   hdg = o@hdg,
-                  W = o@W,
+                  #W = o@W,
                   A = o@A,
                   turn = EMbC:::getTurns(o),
                   speed = EMbC:::getSpeed(o)) %>%

@@ -14,8 +14,8 @@
 #'   \item{y}{Northing}
 #'   \item{lon}{Longitude}
 #'   \item{lat}{Latitude}
-#'   \item{behaviour}{Vessel activity}
-#' }
+#'   \item{behaviour}{Vessel activity}}
+#'
 #' @source Mendo, Tania; Smout, Sophie; Photopoulou, Theoni; James, Mark (2019), Data
 #' from: Identifying fishing grounds from vessel tracks: model-based inference
 #' for small scale fisheries (\url{https://doi.org/10.5061/dryad.k80bp46})

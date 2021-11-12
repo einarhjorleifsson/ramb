@@ -20,7 +20,7 @@ knitr::opts_chunk$set(
 <!-- badges: start -->
 <!-- badges: end -->
 
-The goal of {ramb} is to return various "move"-objects to tibbles for further downstream processing using the tidyverse lingo.
+The goal of {ramb} is to return various "move"-objects to tibbles for further downstream processing using the tidyverse lingo. The focus has been on AIS vessel data and has only been tested on limited dataset.
 
 ## Installation
 
@@ -33,12 +33,33 @@ devtools::install_github("einarhjorleifsson/ramb")
 
 ## Example
 
+```{r}
+library(tidyverse)
+```
+
 Basic example of workflow:
 
-```{r example}
-library(tidyverse)
+```{r}
 ramb::creel %>% 
   ramb::rb_gaussian() %>% 
+  dplyr::glimpse()
+```
+
+```{r}
+ramb::creel %>% 
+  ramb::rb_gaussian_binary_clustering() %>% 
+  dplyr::glimpse()
+```
+
+```{r}
+ramb::creel %>% 
+  ramb::rb_hidden_markov_step() %>% 
+  dplyr::glimpse()
+```
+
+```{r}
+ramb::creel %>% 
+  ramb::rb_hidden_markov_step_and_turn() %>% 
   dplyr::glimpse()
 ```
 

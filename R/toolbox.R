@@ -6,7 +6,7 @@
 #' @export
 #'
 rb_event <- function(x) {
-  x <- dplyr::if_else(x != lag(x), 1L, 0L, 1L)
+  x <- dplyr::if_else(x != dplyr::lag(x), 1L, 0L, 1L)
   x <- cumsum(x)
   return(x)
 }
