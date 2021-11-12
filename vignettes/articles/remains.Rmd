@@ -1,0 +1,121 @@
+---
+title: "Remains"
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  message = FALSE, 
+  warning = FALSE,
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+## Preamble
+
+This document is mostly a note to one self, a step-wise approach of me learing a little about how to process movement or track data. The data examples used af of fishing vessel activities. The structure of the text is largely borrowed from the XXX ...
+
+The following packages we load:
+
+```{r}
+library(ramb)
+library(traipse)
+library(tidyverse)
+```
+
+## The main track metric
+
+Initially started to seed various dplyrized funcions to calculate basic track metrics (distance, angle, turn, bearing, ...) into {ramb}. Halfway through I did however stumble across the {traipse} packages, that is a nice no-fuzz package that provides these types of functions. They align perfectly with the tidyverse flow, including grouping. There was thus no need to reinvent the wheel, but are included in the documentation in case somebody else is unaware of the {traipse}-package:
+
+```{r}
+creel %>% 
+  mutate(distance = track_distance(lon, lat), 
+         angle = track_angle(lon, lat),
+         turn = track_turn(lon, lat),
+         bearing = track_bearing(lon, lat),
+         duration = track_time(time),
+         speed = track_speed(lon, lat, time),
+         # here just distance and bearing to the start/first point
+         distance_to = track_distance_to(lon, lat, lon[1], lat[1]),
+         bearing_to = track_bearing_to(lon, lat, lon[1], lat[1])) %>% 
+  glimpse()
+```
+
+## Some nuances among packages
+
+The above discovery almost defeated the purpose of this package, but there may though still be justification of its existence. Case in points we have below.
+
+The function `moveHMM::prepData` calculates distance (called step, units in km!) and turn (called angle, units in radians) of consequitive points.
+
+```{r}
+creel01 <-
+  creel %>% 
+  filter(id == 1) %>% 
+  select(id, rowid, lon, lat) %>% 
+  as.data.frame() %>% 
+  moveHMM::prepData(type = "LL", coordNames = c("lon", "lat"), LLangle = TRUE) %>% 
+  as_tibble()
+d <- 
+  creel %>% 
+  select(id, rowid, time, lon, lat) %>% 
+  filter(id == 1) %>% 
+  left_join(creel01) %>% 
+  group_by(id) %>% 
+  mutate(distance = track_distance(lon, lat),
+         angle2 = track_angle(lon, lat),
+         turn = track_turn(lon, lat))
+# NOTE: here we drop 2 rows
+d %>% 
+  ggplot(aes(distance, step * 100)) +
+  geom_point()
+d %>% 
+  ggplot(aes(distance, lag(step) * 100)) +
+  geom_point()
+# NOTE: here we drop 2 rows
+d %>% 
+  ggplot(aes(pracma::deg2rad(turn), angle)) +
+  geom_point()
+d %>% 
+  ggplot(aes(pracma::deg2rad(-turn), angle)) +
+  geom_point()
+```
+
+## XXX
+
+```{r}
+d <- 
+  creel %>% 
+  group_by(id) %>% 
+  mutate(speed = track_speed(lon, lat, time) * 1.9438)
+
+d.use <- 
+  d %>% 
+  filter(!is.na(speed))
+
+mixtools::normalmixEM(d.use$speed, mu = c(1, 4, 8), sigma = c(1, 1, 1)) %>% 
+  # this function returns 3 times the number of original rows
+  tidy_normalmixEM() %>% 
+  glimpse()
+
+
+```
+
+```{r, eval = FALSE}
+o <-
+  creel01 %>%
+  select(time, lon, lat) %>% 
+  as.data.frame() %>% 
+  EMbC::stbc(., info = -1)
+r <- 
+  o %>% 
+  tidy_bin_clst_path() 
+r %>% glimpse()
+
+```
+
+## xxx
+
+```{r, eval = FALSE}
+
+```
+

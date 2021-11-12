@@ -1,121 +1,223 @@
 ---
 title: "Basics"
+date: "`r lubridate::now()`"
 ---
 
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
-  message = FALSE, 
-  warning = FALSE,
   collapse = TRUE,
+  message = FALSE,
+  warning = FALSE,
   comment = "#>"
 )
 ```
 
-## Preamble
+## Premble
 
-This document is mostly a note to one self, a step-wise approach of me learing a little about how to process movement or track data. The data examples used af of fishing vessel activities. The structure of the text is largely borrowed from the XXX ...
+The code presented here is inspired by the supplement to [“Identifying fishing grounds from vessel tracks: model-based inference for small scale fisheries” by Tania Mendo, Sophie Smout, Theoni Photopoulou and Mark James (2019) Royal Society Open Science](https://doi.org/10.1098/rsos.191161). The supplementary document provides a code for "five different methods for identifying hauling versus non-hauling activities in small scale fishing vessels from their movement trajectories."
 
-The following packages we load:
+A [sample dataset](https://doi.org/10.5061/dryad.k80bp46) of movement data collected every 60sec from 5 trips by 5 different small scale fishing vessels using creels is provided and used here (has been included in the {ramb}-package).
+
+The objective here is to provide a more structured code than provided in the supplement, relying fully on tidyverse lingo, including usage of the {purrr} map-function family, where possible rather than loops. The details are though hidden within the function-calls, the output only providing the essence needed for vessel track behavioural postprocessing analysis.
 
 ```{r}
 library(ramb)
-library(traipse)
 library(tidyverse)
+library(lubridate)
 ```
 
-## The main track metric
-
-Initially started to seed various dplyrized funcions to calculate basic track metrics (distance, angle, turn, bearing, ...) into {ramb}. Halfway through I did however stumble across the {traipse} packages, that is a nice no-fuzz package that provides these types of functions. They align perfectly with the tidyverse flow, including grouping. There was thus no need to reinvent the wheel, but are included in the documentation in case somebody else is unaware of the {traipse}-package:
-
 ```{r}
-creel %>% 
-  mutate(distance = track_distance(lon, lat), 
-         angle = track_angle(lon, lat),
-         turn = track_turn(lon, lat),
-         bearing = track_bearing(lon, lat),
-         duration = track_time(time),
-         speed = track_speed(lon, lat, time),
-         # here just distance and bearing to the start/first point
-         distance_to = track_distance_to(lon, lat, lon[1], lat[1]),
-         bearing_to = track_bearing_to(lon, lat, lon[1], lat[1])) %>% 
-  glimpse()
-```
-
-## Some nuances among packages
-
-The above discovery almost defeated the purpose of this package, but there may though still be justification of its existence. Case in points we have below.
-
-The function `moveHMM::prepData` calculates distance (called step, units in km!) and turn (called angle, units in radians) of consequitive points.
-
-```{r}
-creel01 <-
-  creel %>% 
-  filter(id == 1) %>% 
-  select(id, rowid, lon, lat) %>% 
-  as.data.frame() %>% 
-  moveHMM::prepData(type = "LL", coordNames = c("lon", "lat"), LLangle = TRUE) %>% 
-  as_tibble()
-d <- 
-  creel %>% 
-  select(id, rowid, time, lon, lat) %>% 
-  filter(id == 1) %>% 
-  left_join(creel01) %>% 
-  group_by(id) %>% 
-  mutate(distance = track_distance(lon, lat),
-         angle2 = track_angle(lon, lat),
-         turn = track_turn(lon, lat))
-# NOTE: here we drop 2 rows
-d %>% 
-  ggplot(aes(distance, step * 100)) +
-  geom_point()
-d %>% 
-  ggplot(aes(distance, lag(step) * 100)) +
-  geom_point()
-# NOTE: here we drop 2 rows
-d %>% 
-  ggplot(aes(pracma::deg2rad(turn), angle)) +
-  geom_point()
-d %>% 
-  ggplot(aes(pracma::deg2rad(-turn), angle)) +
-  geom_point()
-```
-
-## XXX
-
-```{r}
-d <- 
+creel.change <- 
   creel %>% 
   group_by(id) %>% 
-  mutate(speed = track_speed(lon, lat, time) * 1.9438)
-
-d.use <- 
-  d %>% 
-  filter(!is.na(speed))
-
-mixtools::normalmixEM(d.use$speed, mu = c(1, 4, 8), sigma = c(1, 1, 1)) %>% 
-  # this function returns 3 times the number of original rows
-  tidy_normalmixEM() %>% 
-  glimpse()
-
-
+  mutate(change = rb_event(behaviour)) %>% 
+  group_by(id, change, behaviour) %>% 
+  summarise(t1 = min(time),
+            t2 = max(time),
+            .groups = "drop") %>% 
+  # make a continuum, not loose the last point
+  group_by(id) %>% 
+  mutate(t2 = lead(t1)) %>% 
+  ungroup()
+p.base <- 
+  creel.change %>% 
+  ggplot() +
+  theme_bw() +
+  geom_rect(aes(xmin = t1, xmax = t2, ymin = -Inf, ymax = Inf,
+                fill = behaviour),
+            show.legend = FALSE) +
+  facet_wrap(~ id, scales = "free") +
+  scale_fill_manual(values = c("steaming" = "grey",
+                               "hauling" = "pink",
+                               "shooting" = "green")) +
+  ggnewscale::new_scale_fill()
 ```
 
-```{r, eval = FALSE}
-o <-
-  creel01 %>%
-  select(time, lon, lat) %>% 
-  as.data.frame() %>% 
-  EMbC::stbc(., info = -1)
-r <- 
-  o %>% 
-  tidy_bin_clst_path() 
-r %>% glimpse()
+## A restructured code
 
+### Model 1: Gaussian mixture model
+
+... not shown.
+
+### Model 2: Trip-based Gaussian mixture model
+
+```{r}
+d <-
+  creel %>%
+  group_by(id) %>%
+  ramb::rb_gaussian() %>% 
+  mutate(Fishing = ifelse(speed <= threshold.upper, TRUE, FALSE))
+
+d %>%
+  count(behaviour, Fishing) %>%
+  spread(Fishing, n) %>%
+  knitr::kable()
+d %>%
+  ggplot(aes(speed, fill = Fishing)) +
+  geom_histogram(binwidth = 0.1) +
+  facet_wrap(~ id, scales = "free_y") +
+  theme(legend.position = c(0.8, 0.2)) +
+  scale_fill_brewer(palette = "Set1") +
+  labs(x = "Speed [kt]", y = "Pings")
+p.base +
+  geom_point(data = d,
+             aes(time, speed, colour = Fishing),
+             size = 0.5) +
+  scale_colour_brewer(palette = "Set1") +
+  labs(x = "Time", y = "Speed [kt]") +
+  theme(legend.position = c(0.8, 0.2))
 ```
 
-## xxx
+### Model 3: Trip-based Binary Clustering using Gaussian mixture models on a trip-by-trip basis
 
-```{r, eval = FALSE}
-
+```{r}
+d <- 
+  creel %>% 
+  group_by(id) %>% 
+  ramb::rb_gaussian_binary_clustering() %>% 
+  mutate(Fishing = ifelse(A %in% 1:2, TRUE, FALSE))
+d %>%
+  count(behaviour, A) %>%
+  spread(A, n) %>%
+  knitr::kable()
+d %>%
+  count(behaviour, Fishing) %>%
+  spread(Fishing, n) %>%
+  knitr::kable()
+d %>%
+  ggplot(aes(speed, turn, colour = factor(A))) +
+  theme_bw() +
+  geom_point(size = 1) +
+  facet_wrap(~ id) +
+  scale_colour_brewer(palette = "Set1") +
+  labs(x = "Speed [nm]", y = "Turn", colour = "clusters") +
+  theme(legend.position = c(0.8, 0.25))
+d %>%
+  ggplot(aes(time, speed)) +
+  theme_bw() +
+  geom_point(aes(colour = factor(A)),
+             size = 1) +
+  facet_wrap(~ id, scales = "free") +
+  theme(legend.position = c(0.8, 0.2)) +
+  scale_colour_brewer(palette = "Set1") +
+  labs(x = "Time", y = "Speed [kt]")
+p.base +
+  geom_point(data = d,
+             aes(time, speed, colour = Fishing),
+             size = 0.5) +
+  scale_colour_brewer(palette = "Set1") +
+  labs(x = "Time", y = "Speed [kt]") +
+  theme(legend.position = c(0.8, 0.2))
+d %>%
+  ggplot(aes(time, turn)) +
+  theme_bw() +
+  geom_point(aes(colour = factor(A)),
+             size = 1) +
+  facet_wrap(~ id, scales = "free") +
+  theme(legend.position = c(0.8, 0.2)) +
+  scale_colour_brewer(palette = "Set1") +
+  labs(x = "Time", y = "Turn")
+p.base +
+  geom_point(data = d,
+             aes(time, turn, colour = Fishing),
+             size = 0.5) +
+  scale_colour_brewer(palette = "Set1") +
+  labs(x = "Time", y = "Turn") +
+  theme(legend.position = c(0.8, 0.2))
+d %>%
+  arrange(desc(A)) %>%
+  ggplot(aes(lon, lat, colour = factor(A))) +
+  theme_bw() +
+  geom_point(size = 1) +
+  facet_wrap(~ id, scales = "free") +
+  coord_quickmap() +
+  labs(x = NULL, y = NULL, colour = "clusters") +
+  scale_colour_brewer(palette = "Set1") +
+  theme(legend.position = c(0.8, 0.25))  +
+  scale_x_continuous(NULL, NULL) +
+  scale_y_continuous(NULL, NULL)
+d %>%
+  arrange(desc(A)) %>%
+  ggplot(aes(lon, lat, colour = Fishing)) +
+  theme_bw() +
+  geom_point(size = 1) +
+  facet_wrap(~ id, scales = "free") +
+  coord_quickmap() +
+  labs(colour = "Fishing") +
+  scale_colour_brewer(palette = "Set1") +
+  theme(legend.position = c(0.8, 0.25)) +
+  scale_x_continuous(NULL, NULL) +
+  scale_y_continuous(NULL, NULL)
 ```
+
+### Model 4: Hidden Markov model with speed only
+
+where is the speed here?
+
+
+```{r}
+d <-
+  creel %>%
+  ramb::rb_hidden_markov_step()
+d %>%
+  count(behaviour, vit) %>%
+  spread(vit, n) %>%
+  knitr::kable()
+p.base +
+  geom_point(data = d,
+             aes(time, step, colour = factor(vit)),
+             size = 0.5) +
+  scale_colour_brewer(palette = "Set1") +
+  labs(x = "Time", y = "Step [m]") +
+  theme(legend.position = c(0.8, 0.2))
+d %>%
+  mutate(id = paste(id, behaviour)) %>%
+  ggplot(aes(time, step, colour = factor(vit))) +
+  geom_point() +
+  facet_wrap(~id, scales = "free", ncol = 3) +
+  scale_colour_brewer(palette = "Set1")
+# why not on speed??
+```
+
+### Model 5: Hidden Markov Model with speed and turning angle
+
+```{r}
+d <- 
+  creel %>% 
+  ramb::rb_hidden_markov_step_and_turn()
+p.base +
+  geom_point(data = d,
+             aes(time, step, colour = factor(vit)),
+             size = 0.5) +
+  scale_colour_brewer(palette = "Set1") +
+  labs(x = "Time", y = "Step [m]") +
+  theme(legend.position = c(0.8, 0.2))
+d %>% 
+  mutate(id = paste(id, behaviour)) %>%
+  ggplot(aes(time, step, colour = factor(vit))) +
+  geom_point() +
+  facet_wrap(~id, scales = "free", ncol = 3) +
+  scale_colour_brewer(palette = "Set1")
+```
+
 
