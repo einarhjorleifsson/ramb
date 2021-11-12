@@ -21,3 +21,9 @@
 #' for small scale fisheries (\url{https://doi.org/10.5061/dryad.k80bp46})
 #'
 "creel"
+
+#' Bottom trawl survey
+#'
+#' Icelandic spring bottom trawl survey.
+#'
+"trawlsurvey"

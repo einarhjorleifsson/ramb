@@ -43,7 +43,8 @@ rb_gaussian_binary_clustering <- function(d, cs = 1.96) {
     dplyr::select(id, model.tbl) %>%
     tidyr::unnest(model.tbl) %>%
     dplyr::rename(time = dTm) %>%
-    dplyr::mutate(speed = speed * 1.9438)
+    dplyr::mutate(speed = speed * 1.9438) %>%
+    dplyr::ungroup()
 }
 
 #' Hidden Markov model with step only
