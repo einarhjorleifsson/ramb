@@ -27,3 +27,9 @@
 #' Icelandic spring bottom trawl survey.
 #'
 "trawlsurvey"
+
+#' Bottom trawl survey tows
+#'
+#' Icelandic spring bottom trawl survey.
+#'
+"trawlsurveytows"

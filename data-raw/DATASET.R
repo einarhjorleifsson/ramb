@@ -57,3 +57,21 @@ trawlsurvey <-
   mutate(behaviour = ifelse(!is.na(id.lgs), "hauling", "not hauling")) %>%
   select(vid, lon, lat, speed, heading, time, behaviour)
 usethis::use_data(trawlsurvey, overwrite = TRUE)
+
+trawlsurveytows <-
+  read_csv("ftp://ftp.hafro.is/pub/data/csv/is_smb_stations.csv") %>%
+  filter(year == 2019) %>%
+  arrange(t1, t2) %>% 
+  select(id.lgs = id, vid, lon.start = lon1, lat.start = lat1,
+         lon.end = lon2, lat.end = lat2, start = t1, end = t2) %>% 
+  select(id.lgs, x1 = lon.start, x2 = lon.end, y1 = lat.start, y2 = lat.end) %>% 
+  pivot_longer(-id.lgs,
+               names_to = c(".value", "set"),
+               names_pattern = "(.)(.)") %>% 
+  arrange(id.lgs) %>% 
+  sf::st_as_sf(coords = c("x", "y"),
+           crs = 4326) %>% 
+  group_by(id.lgs) %>% 
+  summarise(do_union = FALSE) %>% 
+  sf::st_cast("LINESTRING")
+usethis::use_data(trawlsurveytows, overwrite = TRUE)
