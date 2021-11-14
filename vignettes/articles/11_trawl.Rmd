@@ -8,6 +8,7 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 ```
 
 ```{r}
+library(mapdeck)
 library(tidyverse)
 library(lubridate)
 ```
@@ -81,6 +82,46 @@ d %>%
   select(-n) %>% 
   spread(A, p)
 ```
+
+
+```{r}
+vessel.track <- 
+  m %>% 
+  sf::st_as_sf(coords = c("lon", "lat"),
+               crs = 4326) %>% 
+  group_by(id) %>% 
+  summarise(do_union = FALSE) %>%
+  sf::st_cast("LINESTRING")
+
+mapdeck(location = c(-22.9, 66.15),
+        zoom = 8) %>% 
+  add_path(data = ramb::trawlsurveytows,
+           layer_id = "tows",
+           stroke_colour = "#AAFFFFFF",
+           stroke_width = 1000,
+           update_view = FALSE) %>% 
+  mapdeck::add_path(data = vessel.track,
+                          layer_id = "track",
+                          stroke_width = 250,
+                          width_min_pixels = 5,
+                          width_max_pixels = 10,
+                          tooltip = "id",
+                          auto_highlight = TRUE,
+                          highlight_colour = "#FF000095",
+                          update_view = FALSE,
+                          stroke_colour = "#E0FFFF80") %>% 
+  add_scatterplot(data = d %>% mutate(A = as_factor(A)),
+                  layer_id = "point",
+                  lon = "lon", 
+                  lat = "lat",
+                  radius = 250,
+                  fill_colour = "A",
+                  tooltip = "A",
+                  #palette = "inferno",
+                  update_view = FALSE)
+```
+
+
 
 
 ```{r, echo = FALSE, eval = FALSE}

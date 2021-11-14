@@ -1,0 +1,171 @@
+---
+title: "Long lines"
+date: "`r lubridate::now()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+The objective for now is only to check how well the algoritm scales when one has ~1 million plus ais records, not the accuracy of the method.
+
+```{r}
+library(mapdeck)
+library(tidyverse)
+library(lubridate)
+```
+
+```{r}
+library(omar)
+con <- connect_mar()
+YEAR <- 2019
+lb_static(con, correct_gear = TRUE) %>% 
+  filter(year == YEAR,
+         gid == 1, 
+         !is.na(t0),
+         !is.na(t1),
+         !is.na(t2)) %>% 
+  collect(n = Inf) ->
+  lb
+# check by veseel level, exclude vessels that do not fullfill critera
+lb %>% 
+  group_by(vid) %>% 
+  summarise(n = n(),
+            t1t0 = sum(t1 > t0),
+            t2t1 = sum(t2 > t1)) %>% 
+  filter(n == t1t0 & n == t2t1) %>% 
+  pull(vid) ->
+  vids
+lb <- 
+  lb %>% 
+  filter(vid %in% vids) %>% 
+  select(visir, vid, gid, date, lon:lat2, z1, z2, t0, t1, t2, effort,
+         m_sec, datel, hid, effort)
+mid_vid <- 
+  omar::stk_mobile_icelandic(con, correct = TRUE, vidmatch = TRUE, classify = FALSE) %>% 
+  collect(n = Inf) %>% 
+  filter(vid %in% unique(lb$vid))
+mids <-
+  mid_vid %>% 
+  pull(mid)
+stk <- 
+  omar::stk_trail(con, YEAR) %>% 
+  filter(mid %in% mids) %>% 
+  collect(n = Inf) %>% 
+  left_join(mid_vid) %>% 
+  dplyr::select(vid, time, lon, lat, speed, heading) %>% 
+  dplyr::mutate(speed = ifelse(speed > 12, 12, speed)) %>% 
+  arrange(vid, time) %>% 
+  group_by(vid) %>% 
+  mutate(rowid = 1:n(),
+         n.pings = n(),
+         # just a dummy
+         behaviour = TRUE) %>% 
+  ungroup() %>% 
+  filter(n.pings > 30) %>% 
+  select(-c(n.pings))
+# no missing records
+lb <-
+  lb %>% 
+  filter(vid %in% unique(stk$vid))
+```
+
+Number of vessels: `r length(unique(lb$vid))`
+Number of ais records: `r nrow(stk)`
+
+A view:
+```{r}
+# only some 50 vessels
+vids.sampled <- 
+  stk %>% 
+  count(vid) %>% 
+  sample_n(50) %>% 
+  pull(vid)
+
+mapdeck(location = c(-20, 65.5), zoom = 4) %>% 
+  add_scatterplot(stk %>% 
+                    filter(vid %in% vids.sampled) %>% 
+                    mutate(speed = ifelse(speed > 12, 12, speed)) %>% 
+                    filter(between(lon, -30, -5),
+                           between(lat, 62, 69)),
+                  lon = "lon", 
+                  lat = "lat",
+                  fill_colour = "speed",
+                  legend = FALSE,
+                  layer_id = "trail",
+                  radius = 250,
+                  radius_min_pixels = 2,
+                  radius_max_pixels = 10,
+                  update_view = FALSE,
+                  stroke_opacity = 1,
+                  palette = "inferno")
+```
+
+```{r}
+m <- 
+  stk %>% 
+  rename(id = vid) %>% 
+  select(id, rowid, time, lon, lat, behaviour) %>%
+  ramb::rb_gaussian_binary_clustering()
+```
+
+```{r}
+random.sample <- 
+  m %>% 
+  count(id) %>% 
+  sample_n(12)
+m %>% 
+  filter(id == random.sample$id) %>% 
+  filter(speed < 12) %>% 
+  ggplot(aes(speed, turn, colour = factor(A))) +
+  geom_point(size = 0.5) +
+  scale_colour_brewer(palette = "Set1") +
+  facet_wrap(~ id)
+```
+
+```{r}
+m2 <- 
+  m %>% 
+  filter(id %in% random.sample$id) %>% 
+  filter(speed < 12,
+         between(lon, -30, -5),
+         between(lat, 62, 69)) %>% 
+  mutate(A = as_factor(A))
+vessel.track <- 
+  m2 %>% 
+  sf::st_as_sf(coords = c("lon", "lat"),
+               crs = 4326) %>% 
+  group_by(id) %>% 
+  summarise(do_union = FALSE) %>%
+  sf::st_cast("LINESTRING")
+mapdeck(location = c(-20, 65.5), zoom = 4) %>% 
+  mapdeck::add_path(data = vessel.track,
+                          layer_id = "trail",
+                          stroke_width = 250,
+                          width_min_pixels = 5,
+                          width_max_pixels = 10,
+                          tooltip = "id",
+                          auto_highlight = TRUE,
+                          highlight_colour = "#FF000095",
+                          update_view = FALSE,
+                          stroke_colour = "#E0FFFF80") %>% 
+  add_scatterplot(data = m2,
+                  lon = "lon", 
+                  lat = "lat",
+                  fill_colour = "A",
+                  legend = TRUE,
+                  tooltip = "A",
+                  layer_id = "points",
+                  radius = 1000,
+                  radius_min_pixels = 2,
+                  radius_max_pixels = 10,
+                  update_view = FALSE,
+                  stroke_opacity = 1)
+```
+
+
+```{r}
+sessioninfo::platform_info()
+memuse::Sys.meminfo()
+```
+

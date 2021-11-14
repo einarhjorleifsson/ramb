@@ -18,7 +18,7 @@ The code presented here is inspired by the supplement to [“Identifying fishing
 
 A [sample dataset](https://doi.org/10.5061/dryad.k80bp46) of movement data collected every 60sec from 5 trips by 5 different small scale fishing vessels using creels is provided and used here (has been included in the {ramb}-package).
 
-The objective here is to provide a more structured code than provided in the supplement, relying fully on tidyverse lingo, including usage of the {purrr} map-function family, where possible rather than loops. The details are though hidden within the function-calls, the output only providing the essence needed for vessel track behavioural postprocessing analysis.
+The objective here is to provide a more structured code than provided in the supplement, relying fully on tidyverse lingo including usage of the {purrr} map-function family, rather than loops. Those details are though hidden within the function-calls, the aim of the default output those that are needed for vessel track behavioural postprocessing analysis.
 
 ```{r}
 library(ramb)
