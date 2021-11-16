@@ -15,6 +15,11 @@ library(tidyverse)
 library(lubridate)
 ```
 
+```{r, echo = FALSE}
+fil <- "~/r/Pakkar2/ramb/TOPSECRET.R"
+if(file.exists(fil)) source(fil) 
+```
+
 ```{r}
 library(omar)
 con <- connect_mar()
@@ -63,11 +68,21 @@ stk <-
          behaviour = TRUE) %>% 
   ungroup() %>% 
   filter(n.pings > 30) %>% 
-  select(-c(n.pings))
+  select(-c(n.pings)) %>% 
+  distinct(vid, lon, lat, .keep_all = TRUE)
 # no missing records
 lb <-
   lb %>% 
   filter(vid %in% unique(stk$vid))
+# trial: get rid of whacky points
+stk <- 
+  stk %>% 
+  group_by(vid) %>% 
+  ramb::rb_whacky_points() %>% 
+  ungroup()
+stk <- 
+  stk %>% 
+  filter(!whacky) 
 ```
 
 Number of vessels: `r length(unique(lb$vid))`
@@ -116,7 +131,7 @@ random.sample <-
   sample_n(12)
 m %>% 
   filter(id == random.sample$id) %>% 
-  filter(speed < 12) %>% 
+  mutate(speed = ifelse(speed > 12, 12, speed)) %>% 
   ggplot(aes(speed, turn, colour = factor(A))) +
   geom_point(size = 0.5) +
   scale_colour_brewer(palette = "Set1") +
@@ -127,8 +142,8 @@ m %>%
 m2 <- 
   m %>% 
   filter(id %in% random.sample$id) %>% 
-  filter(speed < 12,
-         between(lon, -30, -5),
+  mutate(speed = ifelse(speed > 12, 12, speed)) %>% 
+  filter(between(lon, -30, -5),
          between(lat, 62, 69)) %>% 
   mutate(A = as_factor(A))
 vessel.track <- 
