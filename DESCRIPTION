@@ -14,13 +14,17 @@ Depends:
     R (>= 2.10)
 RoxygenNote: 7.1.2
 Imports: 
+    data.table,
     dplyr,
     EMbC,
+    geo,
     magrittr,
     mixtools,
     moveHMM,
     plotmm,
-    purrr,    
+    purrr, 
+    readr,
+    sf,
     tibble,
     tidyr,
 Suggests: 

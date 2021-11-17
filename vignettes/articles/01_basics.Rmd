@@ -70,21 +70,49 @@ One could define a trip as all the consecutive points while not in harbour. Dete
 tracks <- 
   tracks.sf %>% 
   st_drop_geometry() %>% 
+  # here we do not want to count harbour stay as a separate trip
   group_by(vid) %>% 
-  mutate(tripid = data.table::rleid(inharbour)) %>% 
-  ungroup()
+  mutate(.gr0 = data.table::rleid(inharbour)) %>% 
+  group_by(vid, inharbour) %>% 
+  mutate(tripid = data.table::rleid(.gr0)) %>% 
+  ungroup() %>% 
+  select(-.gr0)
 tracks %>% 
-  filter(vid == 1579,
-         !inharbour) %>% 
+  filter(vid == 1579) %>% 
   ggplot() +
   theme_void() +
   geom_path(aes(lon, lat, colour = as_factor(tripid)), lwd = 1) +
-  geom_polygon(data = geo::island, aes(lon, lat), fill = "grey") +
+  geom_path(data = geo::island, aes(lon, lat), colour = "grey", lwd = 1) +
   scale_colour_brewer(palette = "Set1") +
   coord_quickmap() +
   labs(colour = "Trip no") +
   theme(legend.position = "bottom")
 ```
+
+We can take a peek at the trip info's:
+
+```{r}
+tracks %>% 
+  filter(vid == 1579) %>% 
+  group_by(tripid) %>% 
+  mutate(distance = geo::arcdist(lat, lon, lead(lat), lead(lon)),
+         distance = replace_na(distance, 0)) %>% 
+  summarise(n = n(),
+            distance = sum(distance), # nautical miles
+            t1 = min(time),
+            t2 = max(time),
+            das = as.numeric(difftime(t2, t1, units = "days")))
+```
+
+We see here that trip 5 is very short, the problem lies with having a wacky point, that needs to be fixed upstream:
+```{r}
+tracks %>% 
+  filter(vid == 1579) %>% 
+  slice(2370:2380) %>% 
+  mutate(dist = geo::arcdist(lat, lon, lead(lat), lead(lon))) %>% 
+  knitr::kable(digits = 2)
+```
+
 
 ```{r, eval = FALSE, echo = FALSE}
 d <- 
@@ -114,7 +142,7 @@ mapdeck(style = mapdeck_style("dark")) %>%
                   radius_max_pixels = 10)
 ```
 
-In the above case a trip number is assigned while in harbour, ideally one would like to setup a conditional function such that when inharbour is TRUE one would not assign a trip number.
+
 
 ## Calculation of trip length and duration, including cumulatives
 

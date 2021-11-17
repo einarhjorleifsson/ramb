@@ -45,7 +45,7 @@ rb_gaussian_binary_clustering <- function(d, cs = 1.96, minimal = TRUE) {
   d <- 
     d %>%
     dplyr::select(id:time, lon:behaviour) %>%
-    group_by(id) %>%
+    dplyr::group_by(id) %>%
     tidyr::nest(data = c(time, lon, lat, behaviour, rowid)) %>%
     # function EMbC expects a data.frame, a tibble is a no, no
     dplyr::mutate(data = purrr::map(data, as.data.frame)) %>%

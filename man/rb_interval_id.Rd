@@ -11,6 +11,16 @@ rb_interval_id(point, interval, vid, time, start, end, id)
 
 \item{interval}{A tibble containing variables vid, id.lgs (the fishing 
 activity id), start and end}
+
+\item{vid}{The vessel id variable name}
+
+\item{time}{The name of the time variable in the ais data}
+
+\item{start}{The name of the start time variable in the logbooks}
+
+\item{end}{The name of the end time variable in the logbooks}
+
+\item{id}{The name of the tow id variable in the logbooks}
 }
 \value{
 The point tibble with additional variable id.lgs (fishing activity
