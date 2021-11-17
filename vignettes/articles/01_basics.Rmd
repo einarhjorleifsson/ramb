@@ -31,29 +31,21 @@ if(file.exists(fil)) source(fil)
 Example data: Icelandic survey tracks and some harbour polygons
 
 ```{r}
-harbours <- 
-  ramb::read_is_harbours() %>% 
-  # filter out some smaller harbours, cause a nuisance downstream
-  filter(!hid %in% c("HRI", "ASS", "HAU", "GRE", "MJH", "MJO", "AED", "HJA"))
-```
+harbours.sf <- 
+  read_sf("ftp://ftp.hafro.is/pub/data/shapes/harbours.gpkg") %>% 
+         # only harbours in Iceland
+  filter(iso2a == "IS",
+         # filter out some smaller harbours, cause a nuisance downstream
+         !hid %in% c("HRI", "ASS", "HAU", "GRE", "MJH", "MJO", "AED", "HJA")) %>% 
+  select(hid)
 
-```{r}
-tracks <- 
+tracks.sf <- 
   read_is_survey_tracks() %>% 
   mutate(speed = ifelse(speed > 12, 12, speed)) %>% 
   st_as_sf(coords = c("lon", "lat"),
            crs = 4326,
-           remove = FALSE)
-harbours <- 
-  read_sf("ftp://ftp.hafro.is/pub/data/shapes/harbours.gpkg") %>% 
-  filter(iso2a == "IS",
-         !hid %in% c("HRI", "ASS", "HAU", "GRE", "MJH", "MJO", "AED", "HJA"))
-```
-
-```{r}
-tracks <-
-  tracks %>% 
-  st_join(harbours) %>% 
+           remove = FALSE) %>% 
+  st_join(harbours.sf) %>% 
   mutate(inharbour = ifelse(!is.na(hid), TRUE, FALSE))
 ```
 
@@ -63,12 +55,101 @@ bb <- st_bbox(c(xmin = -22.75, ymin = 64.05,
               crs = 4326)
 
 mapdeck(location = c(-22.0, 64.1), zoom = 9) %>% 
-  add_polygon(data = harbours, fill_colour = "#FF000095", tooltip = "hid", update_view = FALSE) %>% 
-  add_scatterplot(data = tracks %>% st_crop(bb) %>% arrange(inharbour), 
+  add_polygon(data = harbours.sf, fill_colour = "#FF000095", tooltip = "hid", update_view = FALSE) %>% 
+  add_scatterplot(data = tracks.sf %>% st_crop(bb) %>% arrange(inharbour), 
                   fill_colour  = "inharbour", radius = 100, update_view = FALSE)
 ```
 
-## some other stuff
+## Trip identification
+
+One could define a trip as all the consecutive points while not in harbour. Determining if points are inside or outside a harbour have been dealt with above. The {data.table} \code{rleid} function deals with generating a run-length type group id
+
+```{r}
+# rleid(cumsum(!mydata$Info == "3D"))
+# try a conditional rleid(cumsum(!inharbour == FALSE))
+tracks <- 
+  tracks.sf %>% 
+  st_drop_geometry() %>% 
+  group_by(vid) %>% 
+  mutate(tripid = data.table::rleid(inharbour)) %>% 
+  ungroup()
+tracks %>% 
+  filter(vid == 1579,
+         !inharbour) %>% 
+  ggplot() +
+  theme_void() +
+  geom_path(aes(lon, lat, colour = as_factor(tripid)), lwd = 1) +
+  geom_polygon(data = geo::island, aes(lon, lat), fill = "grey") +
+  scale_colour_brewer(palette = "Set1") +
+  coord_quickmap() +
+  labs(colour = "Trip no") +
+  theme(legend.position = "bottom")
+```
+
+```{r, eval = FALSE, echo = FALSE}
+d <- 
+  tracks %>% 
+  filter(vid == 1579) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326)
+d2 <- 
+  d %>% 
+  st_drop_geometry() %>% 
+  select(tripid) %>% 
+  distinct()
+pal <- c("#A6CEE3FF", "#1F78B4FF", "#B2DF8AFF", "#33A02CFF", "#FB9A99FF", 
+        "#E31A1CFF", "#FDBF6FFF", "#FF7F00FF", "#CAB2D6FF", "#6A3D9AFF", 
+        "#FFFF99FF", "#B15928FF")
+d2$pal <- c(pal, pal)[1:nrow(d2)]
+d <- 
+  d %>% 
+  left_join(d2)
+mapdeck(style = mapdeck_style("dark")) %>% 
+  add_scatterplot(data = d, 
+                  fill_colour = "pal", 
+                  tooltip = "tripid", 
+                  legend = FALSE,
+                  radius = 250,
+                  radius_min_pixels = 2,
+                  radius_max_pixels = 10)
+```
+
+In the above case a trip number is assigned while in harbour, ideally one would like to setup a conditional function such that when inharbour is TRUE one would not assign a trip number.
+
+## Calculation of trip length and duration, including cumulatives
+
+```{r}
+tracks <- 
+  tracks %>% 
+  group_by(vid, tripid) %>% 
+  mutate(dist = geo::arcdist(lat, lon, lead(lat), lead(lon)),
+         dist = replace_na(dist, 0),
+         cdist = cumsum(dist),
+         dura = as.numeric(difftime(lead(time), time, units = "hours")),
+         dura = replace_na(dura, 0),
+         cdura = cumsum(dura)) %>% 
+  ungroup()
+tracks %>% 
+  filter(vid == 1579,
+         !inharbour) %>% 
+  ggplot() +
+  theme_void() +
+  geom_point(aes(lon, lat, colour = cdist)) +
+  geom_path(aes(lon, lat, group = tripid), colour = "grey") +
+  geom_polygon(data = geo::island, aes(lon, lat), fill = "grey") +
+  scale_colour_viridis_c(option = "B", direction = -1) +
+  coord_quickmap()
+```
+
+
+```{r, eval = FALSE}
+# checkout: geosphere::distHaversine
+tracks %>% 
+  mutate(dist2 = geosphere::distHaversine(c(lon, lat)))
+```
+
+
+## remains
 
 ```{r}
 track <-
