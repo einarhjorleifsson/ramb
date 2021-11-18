@@ -195,35 +195,3 @@ tracks %>%
   mutate(dist2 = geosphere::distHaversine(c(lon, lat)))
 ```
 
-
-## remains
-
-```{r}
-track <-
-  read_csv("https://raw.githubusercontent.com/ices-eg/WKSSFGEO/main/example_data_AIS.csv") %>% 
-  # reduce typing in downstream code
-  rename(vid = vessel_id, time = time_stamp) %>% 
-  # unique rows
-  distinct() %>% 
-  # remove duplicate time
-  distinct(vid, time, .keep_all = TRUE) %>% 
-  # # remove same positions (this is not recommended could theoretically be possible
-  # distinct(vid, lon, lat, .keep_all = TRUE)
-  arrange(vid, time) %>% 
-  group_by(vid) %>% 
-  mutate(duration = difftime(time, lag(time), units = "hours"),
-         # warnings here are just because of the first datapoint
-         distance = geo::arcdist(lat, lon, lag(lat), lag(lon), scale = "nmi"),
-         speed_derived = distance / as.numeric(duration))
-```
-
-
-```{r}
-track %>% 
-  sample_n(1e4) %>% 
-  ggplot(aes(speed, speed_derived)) +
-  geom_point(alpha = 0.01, size = 1) +
-  geom_abline(colour = "red") +
-  coord_equal()
-```
-
