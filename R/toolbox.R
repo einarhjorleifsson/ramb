@@ -69,7 +69,7 @@ rb_interval_id2 <- function(point, interval, vid, time, start, end, cruise_id) {
   
   point.dt <-
     point %>%
-    mutate(rowid = 1:n()) %>% 
+    dplyr::mutate(rowid = 1:n()) %>% 
     dplyr::rename(vid = {{vid}},
                   t = {{time}}) %>% 
     #dplyr::arrange(t) %>% 
@@ -135,4 +135,116 @@ ms2kn <- function(x) {
 #'
 kn2ms <- function(x) {
   x / 1.94384449
+}
+
+
+#' rb_summary
+#'
+#' @param d ...
+#'
+#' @return A summary tibble, dependent on grouping upstream
+#' @export
+#'
+rb_summary <- function(d) {
+  d %>% 
+    dplyr::summarise(pings = n(),
+                     t.min = min(time),
+                     t.max = max(time),
+                     s.min = min(speed),
+                     s.med = median(speed),
+                     s.max = max(speed),
+                     di.min = min(dist, na.rm = TRUE),
+                     di.med = median(dist, na.rm = TRUE),
+                     di.max = max(dist, na.rm = TRUE),
+                     du.min = min(dura, na.rm = TRUE),
+                     du.med = median(dura, na.rm = TRUE),
+                     du.max = max(dura, na.rm = TRUE),
+                     n.tips = dplyr::n_distinct(tid, na.rm = TRUE),
+                     n.harb = dplyr::n_distinct(hid, na.rm = TRUE))
+}
+
+#' rb_identify_trip
+#'
+#' @param d ais/vms tracks tibble
+#' @param vid variable name containing vessel id
+#' @param hid variable name conaining harbour id
+#'
+#' @return A tibble
+#' @export
+#'
+rb_identify_trip <- function(d, vid = vid, hid = hid) {
+  d %>% 
+    dplyr::mutate(inharbour = ifelse(!is.na( {{hid}} ), TRUE, FALSE)) %>% 
+    dplyr::group_by( {{vid}} ) %>% 
+    dplyr::mutate(.gr0 = data.table::rleid( inharbour )) %>% 
+    dplyr::group_by( {{vid}}, inharbour) %>% 
+    dplyr::mutate(tid = data.table::rleid(.gr0)) %>% 
+    dplyr::ungroup() %>% 
+    dplyr::mutate(tid = ifelse(inharbour, NA, tid)) %>% 
+    dplyr::select(c(-.gr0, inharbour))
+  
+}
+
+#' rb_peek
+#' 
+#' Experimental function, returns rows adjacent to the one fulfilling a critera
+#'
+#' @param d ais/vms track tibble
+#' @param what the variable name to check
+#' @param criteria the critera.
+#'
+#' @return a tibble
+#' @export
+#'
+rb_peek <- function(d, what, criteria) {
+  
+  d %>% 
+    dplyr::filter( {{what}} > criteria) %>% 
+    dplyr::pull(rid) ->
+    rid
+  # need to vectorize:
+  rids <- NULL
+  for(i in 1:length(rid)) rids <- c(rids, rid[i] + c(-2, -1, 0, 1, 2))
+  d %>% dplyr::slice(unique(rids))
+  
+}
+
+
+#' pm_trip
+#'
+#' @param m A mapdeck object, normally one just created by mapview() 
+#' @param data The new data to be added
+#' @param radius Radius (in meters) of the point size
+#' @param trip add trip path, default FALSE
+#'
+#' @return
+#' @export
+#'
+#' @examples
+pm_trip <- function(m, data, radius = 10, trip = FALSE) {
+  m <- 
+    m %>% 
+    mapdeck::add_scatterplot(data = data,
+                    fill_colour = "tripid",
+                    radius = radius,
+                    palette = "inferno")
+  
+  if(trip) {
+    m <- 
+      m %>% 
+      mapdeck::add_path(data = data %>% 
+                          group_by(tid) %>% 
+                          summarise(do_union = FALSE) %>%
+                          sf::st_cast("LINESTRING"),
+                        layer_id = "track",
+                        stroke_width = 100,
+                        width_min_pixels = 5,
+                        width_max_pixels = 10,
+                        tooltip = "tripid",
+                        auto_highlight = TRUE,
+                        highlight_colour = "#FF000095",
+                        update_view = FALSE,
+                        stroke_colour = "#E0FFFF80")
+  }
+  return(m)
 }

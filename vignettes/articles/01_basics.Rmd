@@ -50,7 +50,7 @@ tracks.sf <-
 ```
 
 ```{r}
-bb <- st_bbox(c(xmin = -22.75, ymin = 64.05, 
+bb <- st_bbox(c(xmin = -22.85, ymin = 63.70, 
                 xmax = -21.65, ymax = 64.20), 
               crs = 4326)
 
@@ -62,7 +62,7 @@ mapdeck(location = c(-22.0, 64.1), zoom = 9) %>%
 
 ## Trip identification
 
-One could define a trip as all the consecutive points while not in harbour. Determining if points are inside or outside a harbour have been dealt with above. The {data.table} \code{rleid} function deals with generating a run-length type group id
+One could define a trip as all the consecutive points while not in harbour. Determining if points are inside or outside a harbour have been dealt with above. The {data.table} `rleid` function deals with generating a run-length type group id
 
 ```{r}
 # rleid(cumsum(!mydata$Info == "3D"))
@@ -110,8 +110,27 @@ tracks %>%
   filter(vid == 1579) %>% 
   slice(2370:2380) %>% 
   mutate(dist = geo::arcdist(lat, lon, lead(lat), lead(lon))) %>% 
+  select(vid:lat, hid:dist) %>% 
   knitr::kable(digits = 2)
 ```
+
+One way to exclude the wacky points without actually removing them from the time series is:
+
+```{r}
+tracks %>% 
+  filter(vid == 1579) %>% 
+  slice(2370:2380) %>% 
+  mutate(dist = geo::arcdist(lat, lon, lead(lat), lead(lon))) %>% 
+  mutate(ID = 1:n()) %>% 
+  # Need to find a robust algoritm that detects the first bad point
+  mutate(wacky = ifelse(ID == 7, TRUE, FALSE)) %>% 
+  group_by(vid, wacky) %>% 
+  mutate(dist2 = geo::arcdist(lat, lon, lead(lat), lead(lon))) %>% 
+  ungroup() %>% 
+  select(vid:lat, hid:dist2) %>% 
+  knitr::kable()
+```
+
 
 
 ```{r, eval = FALSE, echo = FALSE}

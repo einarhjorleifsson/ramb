@@ -19,6 +19,7 @@ Imports:
     EMbC,
     geo,
     magrittr,
+    mapdeck,
     mixtools,
     moveHMM,
     plotmm,
