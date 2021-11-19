@@ -163,16 +163,20 @@ rb_summary <- function(d) {
                      n.harb = dplyr::n_distinct(hid, na.rm = TRUE))
 }
 
-#' rb_identify_trip
+#' rb_define_trip
+#' 
+#' The input tibble needs a variable identifying vessel (default vid) and a variable that
+#' indicates the harbour id (default hid) whosee value indicate if in harbour. If out of harbour the value is NA.
 #'
 #' @param d ais/vms tracks tibble
 #' @param vid variable name containing vessel id
-#' @param hid variable name conaining harbour id
+#' @param hid variable name conaining harbour id, is NA if out of harbour
 #'
-#' @return A tibble
+#' @return A tibble with one additional variable named tid, sequential positive
+#' values indicate trip number, negative values indicate "harbour trip".
 #' @export
 #'
-rb_identify_trip <- function(d, vid = vid, hid = hid) {
+rb_define_trip <- function(d, vid = vid, hid = hid) {
   d %>% 
     dplyr::mutate(inharbour = ifelse(!is.na( {{hid}} ), TRUE, FALSE)) %>% 
     dplyr::group_by( {{vid}} ) %>% 
@@ -180,7 +184,7 @@ rb_identify_trip <- function(d, vid = vid, hid = hid) {
     dplyr::group_by( {{vid}}, inharbour) %>% 
     dplyr::mutate(tid = data.table::rleid(.gr0)) %>% 
     dplyr::ungroup() %>% 
-    dplyr::mutate(tid = ifelse(inharbour, NA, tid)) %>% 
+    dplyr::mutate(tid = ifelse(inharbour, -tid, tid)) %>% 
     dplyr::select(c(-.gr0, inharbour))
   
 }
@@ -210,41 +214,53 @@ rb_peek <- function(d, what, criteria) {
 }
 
 
-#' pm_trip
+#' md_trip
 #'
-#' @param m A mapdeck object, normally one just created by mapview() 
-#' @param data The new data to be added
-#' @param radius Radius (in meters) of the point size
+#' @param data A tibble containing variable names lon and lat (crs 4326)
+#' @param tid Trip id variable name, default tid
+#' @param radius Radius (in meters) of the point size (default 10)
+#' @param col What variable to be used for colour scale (default "speed")
 #' @param trip add trip path, default FALSE
 #'
 #' @return
 #' @export
 #'
-#' @examples
-pm_trip <- function(m, data, radius = 10, trip = FALSE) {
-  m <- 
-    m %>% 
-    mapdeck::add_scatterplot(data = data,
-                    fill_colour = "tripid",
-                    radius = radius,
-                    palette = "inferno")
+md_trip <- function(data, tid = tid, radius = 10, col = "speed", trip = TRUE) {
+  
+  if(any(!class(data) %in% "sf")) {
+    data <- 
+      data %>% 
+      sf::st_as_sf(coords = c("lon", "lat"),
+                   crs = 4326,
+                   remove = FALSE)
+  }
+  
+  m <- mapdeck()
   
   if(trip) {
     m <- 
       m %>% 
       mapdeck::add_path(data = data %>% 
-                          group_by(tid) %>% 
+                          group_by( {{tid}} ) %>% 
                           summarise(do_union = FALSE) %>%
                           sf::st_cast("LINESTRING"),
                         layer_id = "track",
-                        stroke_width = 100,
+                        stroke_width = 1000,
                         width_min_pixels = 5,
                         width_max_pixels = 10,
-                        tooltip = "tripid",
+                        # NEED TO MAKE THIS DYNAMIC
+                        tooltip = "tid",
                         auto_highlight = TRUE,
                         highlight_colour = "#FF000095",
                         update_view = FALSE,
                         stroke_colour = "#E0FFFF80")
   }
+  
+  m <- 
+    m %>% 
+    mapdeck::add_scatterplot(data = data,
+                             fill_colour = "speed",
+                             radius = radius,
+                             palette = "inferno")
   return(m)
 }
