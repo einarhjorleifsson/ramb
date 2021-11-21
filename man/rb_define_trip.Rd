@@ -19,5 +19,6 @@ values indicate trip number, negative values indicate "harbour trip".
 }
 \description{
 The input tibble needs a variable identifying vessel (default vid) and a variable that
-indicates the harbour id (default hid) whosee value indicate if in harbour. If out of harbour the value is NA.
+indicates the harbour identification number (default hid) whose value indicate 
+if in harbour.  If out of harbour the value is NA.
 }

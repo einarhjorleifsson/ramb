@@ -1,0 +1,279 @@
+---
+title: "On whacky points"
+date: "`r lubridate::now()`"
+---
+
+# Preamble
+
+One often gets "whacky", here is (will be) a little thought about that.
+
+"Whacky" points occur because there is an error in the time or coordinate positional recording or transmission. Here we will look at algorithm only related to detecting that latter, i.e. we will assume that time is correctly recorded.
+
+The steps taken are:
+
+* ...
+* ...
+
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  comment = "#>"
+)
+```
+
+```{r}
+library(sf)
+library(mapview)
+library(mapdeck)
+library(lubridate)
+# remotes::install_github("einarhjorleifsson/ramb")
+library(ramb)
+library(argosfilter)
+library(traipse)
+library(tidyverse) # alway load this last (because of potential function name conflicts)
+library(patchwork)
+source("~/r/Pakkar2/ramb/R/filters.R")
+fil <- "~/r/Pakkar2/ramb/TOPSECRET.R"
+if(file.exists(fil)) source(fil) 
+
+
+hbs <- 
+  read_sf("ftp://ftp.hafro.is/pub/data/shapes/harbours.gpkg") %>% 
+  # only harbours in Iceland
+  filter(iso2a == "IS",
+         # filter out some smaller harbours, cause a nuisance downstream
+         !hid %in% c("HRI", "ASS", "HAU", "GRE", "MJH", "MJO", "AED", "HJA")) %>% 
+  select(hid)
+ais <- 
+  read_is_survey_tracks() %>% 
+  arrange(vid, time) %>% 
+  distinct(vid, time, .keep_all = TRUE) %>% 
+  mutate(.rid = 1:n(),                # unique row id, may be useful downstream
+         speed = ifelse(speed > 12, 12, speed)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326,
+           remove = FALSE) %>% 
+  st_join(hbs) %>% 
+  mutate(inharbour = ifelse(!is.na(hid), TRUE, FALSE)) %>%  
+  st_drop_geometry() %>% 
+  ramb::rb_define_trip() %>% 
+  group_by(vid, tid) %>% 
+  mutate(n = n(),
+         st = track_time(time),
+         sd = ifelse(n > 3, track_distance(lon, lat), NA),
+         ss = ifelse(n > 3, track_speed(lon, lat, time), NA),
+         vm = ifelse(n > 5, argosfilter::vmask(lat, lon, time, vmax = ms2kn(20)), NA)) %>% 
+  rb_rms_tbl() %>% 
+  ungroup()
+ais %>% 
+  glimpse()
+```
+
+**Candidates points to remove**:
+
+```{r}
+d <- 
+  ais %>% 
+  filter(vid == 1976) %>% 
+  mutate(size = case_when(vm == "end_location" ~ 1,
+                          vm == "not" ~ 0.3,
+                          vm == "removed" ~ 1)) 
+d %>% 
+  ggplot(aes(time, ss)) +
+  geom_point(aes(colour = vm, size = size), alpha = 0.3) +
+  geom_line(aes(y = .vs)) +
+  scale_colour_manual(values = c("end_location" = "darkgreen",
+                               "not" = "grey",
+                               "removed" = "red")) +
+  scale_y_log10()
+d %>% 
+  ggplot(aes(lon, lat)) + 
+  theme_void() +
+  geom_path(aes(group = tid), colour = "grey") +
+  geom_point(aes(colour = vm, size = size)) +
+  geom_path(data = geo::island) +
+  coord_quickmap(xlim = range(d$lon), ylim = range(d$lat)) +
+  scale_colour_manual(values = c("end_location" = "darkgreen",
+                               "not" = "grey",
+                               "removed" = "red"))
+```
+
+```{r}
+d <- 
+  ais %>% 
+  filter(vid == 2350, tid == 23)  %>% 
+  mutate(size = case_when(vm == "end_location" ~ 1,
+                          vm == "not" ~ 0.3,
+                          vm == "removed" ~ 1))
+d %>% 
+  ggplot(aes(time, ss)) +
+  geom_point(aes(colour = vm, size = size), alpha = 0.3) +
+  geom_line(aes(y = .vs)) +
+  scale_colour_manual(values = c("end_location" = "darkgreen",
+                               "not" = "grey",
+                               "removed" = "red")) +
+  scale_y_log10()
+
+d %>% 
+  ggplot(aes(lon, lat)) + 
+  theme_void() +
+  geom_path(aes(group = tid), colour = "grey") +
+  geom_point(aes(colour = vm, size = size)) +
+  geom_path(data = geo::island) +
+  coord_quickmap(xlim = range(d$lon), ylim = range(d$lat)) +
+  scale_colour_manual(values = c("end_location" = "darkgreen",
+                               "not" = "grey",
+                               "removed" = "red"))
+```
+
+
+```{r eval = FALSE, echo = FALSE}
+# older stuff
+ais2 <-
+  ais %>% 
+  # This is really a NO, NO
+  filter(tid > 0, n.pings > 5) %>% 
+  group_by(vid, tid) %>% 
+  mutate(
+    vmask = argosfilter::vmask(lat, lon, time, vmax = kn2ms(20))) %>% 
+  ungroup()
+
+ais2 %>% 
+  filter(vmask == "removed")
+ais2 %>% 
+  filter(vid == 1275, tid == 1) %>% 
+  ggplot(aes(time, ss, colour = vmask)) +
+  geom_point()
+x <-
+  ais2 %>% 
+  filter(vid == 1275, tid == 1) %>% 
+  mutate(vmask = case_when(vmask == "removed" ~ -1L,
+                           vmask == "end_location" ~ 0L,
+                           TRUE ~ 1L),
+         size = case_when(vmask == -1L ~ 10,
+                          vmask == 0L ~ 5,
+                          vmask == 1L ~ 0))
+
+x %>% 
+  ggplot(aes(lon, lat)) +
+  theme_bw() +
+  geom_path(data = geo::island, aes(lon, lat)) +
+  geom_path(colour = "grey") +
+  geom_point(aes(colour = as_factor(vmask), size = size),
+             alpha = 0.3) +
+  scale_color_brewer(palette = "Set1") +
+  coord_quickmap(xlim = range(x$lon), ylim = range(x$lat))
+
+x <- 
+  x %>% 
+  mutate(vmask = ifelse(vmask == -1L & sd < 10000, 1L, vmask))
+x %>% 
+  ggplot(aes(lon, lat)) +
+  theme_bw() +
+  geom_path(data = geo::island, aes(lon, lat)) +
+  geom_path(colour = "grey") +
+  geom_point(aes(colour = as_factor(vmask), size = size),
+             alpha = 0.3) +
+  scale_color_brewer(palette = "Set1") +
+  coord_quickmap(xlim = range(x$lon), ylim = range(x$lat))
+
+x <- 
+  ais2 %>% 
+  filter(vmask == "removed") %>% 
+  count(vid, tid) %>% 
+  left_join(ais2) %>%  
+  mutate(vmask = case_when(vmask == "removed" ~ -1L,
+                           vmask == "end_location" ~ 0L,
+                           TRUE ~ 1L),
+         size = case_when(vmask == -1L ~ 10,
+                          vmask == 0L ~ 5,
+                          vmask == 1L ~ 0))
+x %>% 
+  ggplot(aes(lon, lat)) +
+  theme_bw() +
+  geom_path(data = geo::island, aes(lon, lat)) +
+  geom_path(aes(group = paste(vid, tid)), colour = "grey") +
+  geom_point(aes(colour = as_factor(vmask), size = size),
+             alpha = 0.3) +
+  scale_color_brewer(palette = "Set1") +
+  coord_quickmap(xlim = range(x$lon), ylim = range(x$lat))
+
+x <- 
+  x %>% 
+  mutate(vmask = ifelse(vmask == -1L & sd < 10000, 1L, vmask))
+x %>% 
+  ggplot(aes(lon, lat)) +
+  theme_bw() +
+  geom_path(data = geo::island, aes(lon, lat)) +
+  geom_path(aes(group = paste(vid, tid)), colour = "grey") +
+  geom_point(aes(colour = as_factor(vmask), size = size),
+             alpha = 0.3) +
+  scale_color_brewer(palette = "Set1") +
+  coord_quickmap(xlim = range(x$lon), ylim = range(x$lat))
+x %>% 
+  ggplot(aes(lon, lat)) +
+  theme_bw() +
+  geom_path(data = geo::island, aes(lon, lat)) +
+  geom_path(aes(group = paste(vid, tid)), colour = "grey") +
+  geom_point(aes(colour = as_factor(vmask), size = size),
+             alpha = 0.3) +
+  scale_color_brewer(palette = "Set1") +
+  coord_quickmap(xlim = c(-30, -9), ylim = c(62, 69)) +
+  facet_wrap(~ vid)
+
+x %>% 
+  filter(vid == 1976) %>% 
+  ggplot(aes(lon, lat)) +
+  theme_bw() +
+  geom_path(data = geo::island, aes(lon, lat)) +
+  geom_path(aes(group = paste(vid, tid)), colour = "grey") +
+  geom_point(aes(colour = as_factor(vmask), size = size),
+             alpha = 0.3) +
+  scale_color_brewer(palette = "Set1") +
+  coord_quickmap(xlim = c(-20, -10), ylim = c(63, 67.5)) +
+  facet_wrap(~ vid)
+
+
+x %>% 
+  filter(vid == 1976) %>% 
+  view()
+x %>% 
+  filter(.rid %in% c(111870:111890)) %>% 
+  view()
+x %>% 
+  filter(.rid %in% c(111870:111890)) %>% 
+  ggplot(aes(lon, lat)) +
+  geom_point(aes(colour = factor(vmask))) +
+  geom_path()
+
+p1 <- 
+  x %>% 
+  filter(.rid %in% c(111870:111890)) %>% 
+  select(time, lon, lat, speed, ss) %>% 
+  mutate(rms = rb_rms(lon, lat, time)) %>% 
+  select(time, speed:rms) %>% 
+  gather(var, val, -time) %>% 
+  ggplot((aes(time, val, colour = var))) +
+  geom_point() +
+  geom_line() +
+  scale_colour_brewer(palette = "Set1")
+
+
+p2 <-
+  x %>% 
+  filter(.rid %in% c(111870:111890)) %>% 
+  mutate(rms = rb_rms_distance(lon, lat, time)) %>% 
+  select(time, sd, rms) %>% 
+  gather(var, val, -time) %>% 
+  ggplot((aes(time, val, colour = var))) +
+  geom_point() +
+  geom_line() +
+  scale_colour_brewer(palette = "Set1")
+library(patchwork)
+p1 + p2 +plot_layout(ncol = 1)
+
+```
+

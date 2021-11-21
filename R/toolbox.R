@@ -166,7 +166,8 @@ rb_summary <- function(d) {
 #' rb_define_trip
 #' 
 #' The input tibble needs a variable identifying vessel (default vid) and a variable that
-#' indicates the harbour id (default hid) whosee value indicate if in harbour. If out of harbour the value is NA.
+#' indicates the harbour identification number (default hid) whose value indicate 
+#' if in harbour.  If out of harbour the value is NA.
 #'
 #' @param d ais/vms tracks tibble
 #' @param vid variable name containing vessel id
@@ -204,12 +205,15 @@ rb_peek <- function(d, what, criteria) {
   
   d %>% 
     dplyr::filter( {{what}} > criteria) %>% 
-    dplyr::pull(rid) ->
+    dplyr::pull(.rid) ->
     rid
+  d <-
+    d %>% 
+    mutate(whacky = ifelse(.rid %in% rid, "whacky", ""))
   # need to vectorize:
   rids <- NULL
   for(i in 1:length(rid)) rids <- c(rids, rid[i] + c(-2, -1, 0, 1, 2))
-  d %>% dplyr::slice(unique(rids))
+  d %>% dplyr::filter(.rid %in% rids)
   
 }
 

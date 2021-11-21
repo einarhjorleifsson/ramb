@@ -3,6 +3,11 @@ title: "Basics"
 date: "`r lubridate::now()`"
 ---
 
+```{r}
+# https://statsandr.com/blog/outliers-detection-in-r/
+```
+
+
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
@@ -17,14 +22,176 @@ library(sf)
 library(mapview)
 library(mapdeck)
 library(lubridate)
+# remotes::install_github("einarhjorleifsson/ramb")
 library(ramb)
 library(tidyverse) # alway load this last (because of potential function name conflicts)
+```
+
+```{r}
+# some conventient functions
+read_wgssfgeo_harbour <- function() {
+  tmpfile <- tempfile()
+  download.file("https://raw.githubusercontent.com/ices-eg/WKSSFGEO/main/jepol/harbours.rds", destfile = tmpfile)
+  readRDS(tmpfile)
+}
 ```
 
 ```{r, echo = FALSE}
 fil <- "~/r/Pakkar2/ramb/TOPSECRET.R"
 if(file.exists(fil)) source(fil) 
 ```
+
+# Some scandinavian data - case example 1
+
+## Preprocess the data
+
+```{r}
+d <-
+  "https://raw.githubusercontent.com/ices-eg/WKSSFGEO/main/example_data_AIS.csv" %>% 
+  read_csv() %>% 
+  # get rid of prefix in vessel_id, here we can turn things to integer
+  mutate(vid = str_sub(vessel_id, 4) %>% as.integer()) %>% 
+  # make typing downtream a little less painful
+  rename(time = time_stamp,
+         gid = gear) %>% 
+  # make sure time is in order within a vessel
+  arrange(vid, time) %>% 
+  # time has to be unique %>% 
+  distinct(vid, time, .keep_all = TRUE) %>% 
+  # unique row id, may be useful downstream
+  mutate(.rid = 1:n()) %>%
+  select(.rid, vid, time:behaviour)
+nrow0 <- d %>% nrow() # used for double checks downstream
+```
+
+
+## Points in harbour
+
+This is a classical point in polygon problem ([see e.g. example](https://splatter.netlify.app/posts/2019-01-17-geoinside-points-in-polygons-via-sf)). {sf}-functions come to the rescue
+
+```{r}
+hbs <- 
+  read_wgssfgeo_harbour() %>% 
+  # unique harbour id
+  mutate(hid = 1:n()) %>% 
+  select(hid)
+d <-
+  d %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326,
+           remove = FALSE) %>% 
+  st_join(hbs) %>% 
+  # having geometry may cause problem downstream, hence dropped
+  st_drop_geometry()
+
+nrow(d) == nrow0 # anything unexpected?
+# peekaboo
+d %>% 
+  count(hid)
+```
+
+## Definition of trips
+
+Consequitive points outside harbour are constitute a trip. The function below
+assigns a negative value for points inside harbour, each "harbour trip" gets
+a unique sequential negative number (-1, -2, ...).
+
+```{r}
+d <- 
+  d %>% 
+  ramb::rb_define_trip()
+
+nrow(d) == nrow0 # anything unexpected?
+# peekaboo
+d %>% 
+  ungroup() %>% 
+  filter(tid > 0) %>% 
+   # cap trip numbers, just for visuals, 19 trips is "a plus groups"
+  mutate(tid = ifelse(tid >= 19, 19, tid)) %>% 
+  count(vid, tid) %>% 
+  spread(tid, n) %>% 
+  knitr::kable(caption = "Number of pings per trip per vessel")
+```
+
+
+## Whacky points
+
+
+```{r}
+d <- 
+  d %>% 
+  group_by(vid, tid) %>% 
+  mutate(pings = n(),
+         dist    = ifelse(pings >= 3, traipse::track_distance(lon, lat), NA),     # meters
+         dura    = traipse::track_time(time),                                     # seconds
+         speed2  = ifelse(pings >= 3, traipse::track_speed(lon, lat, time), NA),  # ms
+         bearing = traipse::track_bearing(lon, lat),                              # degrees
+         angle   = ifelse(pings >= 3, traipse::track_angle(lon, lat), NA),        # degrees
+         turn    = traipse::track_turn(lon, lat)) %>%                             # degrees
+  ungroup()
+
+nrow(d) == nrow0 # anything unexpected?
+```
+
+### Distance 
+
+```{r}
+d %>% 
+  filter(tid > 0) %>% 
+  mutate(dist = round(dist)) %>% # just for downstream display
+  rb_peek(dist, 100) %>% 
+  select(.rid:speed, tid, dist:speed2, bearing, whacky) %>% 
+  mutate(dist = round(dist),
+         speed2 = round(speed2),
+         bearing = round(bearing)) %>% 
+  knitr::kable(digits = 4,
+               caption = "Records (and adjacent records) where step distance is more than 100 m")
+```
+
+### Time step 
+
+```{r}
+d %>% 
+  filter(tid > 0) %>% 
+  mutate(dist = round(dist)) %>% # just for downstream display
+  rb_peek(dura, 10 * 10) %>% 
+  select(.rid:speed, tid, dist:speed2, whacky) %>% 
+  knitr::kable(digits = 4,
+               caption = "Records (and adjacent records) where time step 100 seconds")
+```
+
+### Speed 
+
+```{r}
+d %>% 
+  filter(tid > 0) %>% 
+  mutate(dist = round(dist)) %>% # just for downstream display
+  rb_peek(speed, 20) %>% 
+  select(.rid:speed, tid, dist:speed2, whacky) %>% 
+  knitr::kable(digits = 4,
+               caption = "Records (and adjacent records) where speed is more than 20 knots")
+```
+
+### Derived speed 
+
+```{r}
+d %>% 
+  filter(tid > 0) %>% 
+  mutate(dist = round(dist)) %>% # just for downstream display
+  mutate(speed2 = ramb::ms2kn(speed2)) %>% 
+  rb_peek(speed2, 20) %>% 
+  select(.rid:speed, tid, dist:speed2, whacky) %>% 
+  knitr::kable(digits = 4,
+               caption = "Records (and adjacent records) where derived speed is more than 20 knots")
+```
+
+
+
+```{r}
+# Don't run step below for now
+knitr::opts_chunk$set(eval = FALSE)
+```
+
 
 ## Vessel in harbour (A point in polygon issue)
 
