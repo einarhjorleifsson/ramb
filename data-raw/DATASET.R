@@ -147,10 +147,10 @@ trail <-
             select(mid, vid))
 d <- 
   trail %>% 
-  rb_interval_id2(cruises, vid, time, T11, T12, cruise_id)
+  ramb:::rb_interval_id2(cruises, vid, time, T11, T12, cruise_id)
 d %>% 
   filter(!is.na(cruise_id)) %>% 
-  select(vid, time = t, lon, lat, speed, heading, cruise_id) %>% 
+  select(vid, time = t, lon, lat, speed, heading, cruise_id, rectime) %>%  
   write_csv("/net/www/export/home/ftp/pub/data/csv/is_survey-tracks.csv")
 system("chmod a+rX /net/www/export/home/ftp/pub/data/csv/is_survey-tracks.csv")
 trail <- read_csv("ftp://ftp.hafro.is/pub/data/csv/is_survey-tracks.csv")

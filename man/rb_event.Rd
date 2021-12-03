@@ -10,7 +10,7 @@ rb_event(x)
 \item{x}{A vector, normally character or integer}
 }
 \value{
-A numerical vector that labels each "discreet" event
+A numerical vector that labels each discreet event
 }
 \description{
 Event id

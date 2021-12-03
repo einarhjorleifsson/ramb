@@ -17,3 +17,6 @@ A tibble with a boolean variable whacky
 \description{
 rb_whacky_points
 }
+\author{
+Einar Hjörleifsson, \email{einar.hjorleifsson@gmail.com}
+}

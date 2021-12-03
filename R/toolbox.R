@@ -2,7 +2,7 @@
 #'
 #' @param x A vector, normally character or integer
 #'
-#' @return A numerical vector that labels each "discreet" event
+#' @return A numerical vector that labels each discreet event
 #' @export
 #'
 rb_event <- function(x) {
@@ -10,6 +10,8 @@ rb_event <- function(x) {
   x <- cumsum(x)
   return(x)
 }
+
+
 
 # NOTE: Need to check if data is properly arranged
 #' rb_interval_id
@@ -101,6 +103,9 @@ rb_interval_id2 <- function(point, interval, vid, time, start, end, cruise_id) {
 #' @param tolerance The tolerance atomic value for marking a whacky point (TRUE), units in nautical miles
 #'
 #' @return A tibble with a boolean variable whacky
+#' 
+#' @author Einar Hjörleifsson, \email{einar.hjorleifsson@gmail.com}
+#' 
 #' @export
 #'
 rb_whacky_points <- function(d, tolerance = 10) {
@@ -111,29 +116,37 @@ rb_whacky_points <- function(d, tolerance = 10) {
 }
 
 
-#' ms2kn
+#' rb_ms2kn
 #'
-#' meters per second to knots
+#' meters per second to knots for those of us that forget the convertion number
 #' 
 #' @param x A numerical vector of speed in meters per second
 #'
 #' @return A vector, speed in knots (nautical miles per hour)
 #' @export
+#' 
+#' @author Einar Hjörleifsson, \email{einar.hjorleifsson@gmail.com}
 #'
-ms2kn <- function(x) {
+#' @examples
+#' rb_ms2kn(0:8)
+rb_ms2kn <- function(x) {
   x * 1.94384449
 }
 
-#' kn2ms
+#' rb_kn2ms
 #'
-#' knots to meters per second
+#' knots to meters per second for those of us that forget the convertion number
 #' 
 #' @param x A numerical vector of speed in knots
 #'
 #' @return A vector, speed in meters per second
 #' @export
+#' 
+#' @author Einar Hjörleifsson, \email{einar.hjorleifsson@gmail.com}
 #'
-kn2ms <- function(x) {
+#' @examples
+#' rb_kn2ms(seq(0, 16, by = 2))
+rb_kn2ms <- function(x) {
   x / 1.94384449
 }
 
@@ -223,13 +236,14 @@ rb_peek <- function(d, what, criteria) {
 #' @param data A tibble containing variable names lon and lat (crs 4326)
 #' @param tid Trip id variable name, default tid
 #' @param radius Radius (in meters) of the point size (default 10)
-#' @param col What variable to be used for colour scale (default "speed")
+#' @param col What variable to be used for colour scale (default speed)
 #' @param trip add trip path, default FALSE
 #'
-#' @return
+#' @return xxx
+#' 
 #' @export
 #'
-md_trip <- function(data, tid = tid, radius = 10, col = "speed", trip = TRUE) {
+md_trip <- function(data, tid, radius = 10, col = "speed", trip = TRUE) {
   
   if(any(!class(data) %in% "sf")) {
     data <- 

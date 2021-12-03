@@ -4,9 +4,9 @@
 \name{ramb-package}
 \alias{ramb}
 \alias{ramb-package}
-\title{ramb: Convert "move"-object into tibbles}
+\title{ramb: Rambling}
 \description{
-The goal of {ramb} is to return various "move"-objects to tibbles for further downstream processing using the tidyverse lingo. And then some.
+Some stuff done at WKSSFGEO 2021. On vessels tracks and things.
 }
 \author{
 \strong{Maintainer}: Einar Hjörleifsson \email{einar.hjorleifsson@gmail.com}

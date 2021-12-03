@@ -4,7 +4,7 @@
 \alias{md_trip}
 \title{md_trip}
 \usage{
-md_trip(data, tid = tid, radius = 10, col = "speed", trip = TRUE)
+md_trip(data, tid, radius = 10, col = "speed", trip = TRUE)
 }
 \arguments{
 \item{data}{A tibble containing variable names lon and lat (crs 4326)}
@@ -13,12 +13,12 @@ md_trip(data, tid = tid, radius = 10, col = "speed", trip = TRUE)
 
 \item{radius}{Radius (in meters) of the point size (default 10)}
 
-\item{col}{What variable to be used for colour scale (default "speed")}
+\item{col}{What variable to be used for colour scale (default speed)}
 
 \item{trip}{add trip path, default FALSE}
 }
 \value{
-
+xxx
 }
 \description{
 md_trip

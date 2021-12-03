@@ -2,7 +2,7 @@
 % Please edit documentation in R/filters.R
 \name{rb_rms_tbl}
 \alias{rb_rms_tbl}
-\title{rb_rms_tbl}
+\title{rb_rms}
 \usage{
 rb_rms_tbl(d)
 }
@@ -13,5 +13,8 @@ rb_rms_tbl(d)
 A tibble
 }
 \description{
+The root mean square of value and the 2 upstream and 2 downstream values
+}
+\details{
 rb_rms_tbl
 }
