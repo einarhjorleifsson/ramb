@@ -1,23 +1,4 @@
-#' Distance between steps
-#' 
-#' @description Calculate distance from previous point or to next point. 
-#' Insired by traipse::track_distance but simplified and allows to pass
-#' additional arguement to geodist::geodist.
-#' 
-#'
-#' @param x longitude
-#' @param y latitude
-#' @param ... additional arguements to geodist
-#'
-#' @return A distance vector in meters.
-#' @export
-#' 
-rb_sd <- function (x, y, ...) 
-{
-  x <- 
-    geodist::geodist(cbind(x, y), sequential = TRUE, pad = TRUE, ...)
-  return(x)
-}
+# Compare track_time vs rb_time (rb_st)
 
 #' Time between steps, forcing users to explicitly specify the unit
 #'

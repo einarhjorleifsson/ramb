@@ -25,6 +25,9 @@ read_is_survey_tracks <- function() {
                   show_col_types = FALSE)
 }
 
+
+
+
 #' read_is_survey_stations
 #'
 #' A conenient wrapper that read a dataframe of Icelandic trawl vessel survey

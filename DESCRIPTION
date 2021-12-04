@@ -28,5 +28,6 @@ Imports:
     sf,
     tibble,
     tidyr,
+    traipse
 Suggests: 
     rmarkdown

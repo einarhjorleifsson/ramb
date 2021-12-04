@@ -6,7 +6,7 @@
 \alias{ramb-package}
 \title{ramb: Rambling}
 \description{
-Some stuff done at WKSSFGEO 2021. On vessels tracks and things.
+Some stuff on vessels tracks.
 }
 \author{
 \strong{Maintainer}: Einar Hjörleifsson \email{einar.hjorleifsson@gmail.com}

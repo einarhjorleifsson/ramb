@@ -122,7 +122,8 @@ cruises <-
             .groups = "drop") %>% 
   # a buffer around cruise time
   mutate(T11 = T1 - days(2),
-         T12 = T2 + days(2)) %>% 
+         # was 2, trying 3
+         T12 = T2 + days(3)) %>% 
   arrange(T11, T12)
 
 vid.mid.link <- 
@@ -148,9 +149,33 @@ trail <-
 d <- 
   trail %>% 
   ramb:::rb_interval_id2(cruises, vid, time, T11, T12, cruise_id)
-d %>% 
+d <- 
+  d %>% 
   filter(!is.na(cruise_id)) %>% 
-  select(vid, time = t, lon, lat, speed, heading, cruise_id, rectime) %>%  
+  select(vid, time = t, lon, lat, speed, heading, cruise_id, rectime) 
+# start series in harbour, end series in harbour
+hb <- ramb::read_is_harbours() %>% mutate(inharbour = TRUE)
+d2 <-
+  d %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326,
+           remove = FALSE) %>% 
+  st_join(hb %>% select(inharbour)) %>% 
+  st_drop_geometry()
+d2.sum <-
+  d2 %>% 
+  group_by(cruise_id) %>% 
+  summarise(inport = which(inharbour, TRUE)) %>% 
+  summarise(first = min(inport),
+            last = max(inport))
+d2 %>% 
+  group_by(cruise_id) %>% 
+  mutate(n = n(),
+         .rid = 1:n()) %>% 
+  ungroup() %>% 
+  left_join(d2.sum) %>% 
+  filter(.rid >= first, .rid <= last) %>% 
+  select(-c(inharbour:last)) %>%   
   write_csv("/net/www/export/home/ftp/pub/data/csv/is_survey-tracks.csv")
 system("chmod a+rX /net/www/export/home/ftp/pub/data/csv/is_survey-tracks.csv")
 trail <- read_csv("ftp://ftp.hafro.is/pub/data/csv/is_survey-tracks.csv")
@@ -221,13 +246,13 @@ hb.mfri <-
   left_join(median) %>%  
   select(hid, harbour, iso2a, lon, lat, geometry)
 st_geometry(hb.mfri) <- hb.mfri$geometry
-
+hb.mfri <-
+  hb.mfri %>% 
+  st_buffer(500)
 #harbours <- rbind(hb.mfri, harbours.vmstools)
 #hb <- harbours %>% filter(harbour == "Dunbar")
 #source("TOPSECRET.R")
 #mapdeck() %>% add_polygon(data = hb.mfri)
-
-
 
 write_sf(hb.mfri, "/net/www/export/home/ftp/pub/data/shapes/harbours.gpkg")
 system("chmod a+rX /net/www/export/home/ftp/pub/data/shapes/harbours.gpkg")

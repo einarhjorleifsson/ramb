@@ -71,7 +71,7 @@ rb_interval_id2 <- function(point, interval, vid, time, start, end, cruise_id) {
   
   point.dt <-
     point %>%
-    dplyr::mutate(rowid = 1:n()) %>% 
+    dplyr::mutate(rowid = 1:dplyr::n()) %>% 
     dplyr::rename(vid = {{vid}},
                   t = {{time}}) %>% 
     #dplyr::arrange(t) %>% 
@@ -91,7 +91,7 @@ rb_interval_id2 <- function(point, interval, vid, time, start, end, cruise_id) {
   
   data.table::foverlaps(point.dt, interval.dt, nomatch = NA) %>% 
     tibble::as_tibble() %>%  
-    select(-c(t1, t2, dummy)) %>% 
+    dplyr::select(-c(t1, t2, dummy)) %>% 
     return()
   
 }
@@ -160,7 +160,7 @@ rb_kn2ms <- function(x) {
 #'
 rb_summary <- function(d) {
   d %>% 
-    dplyr::summarise(pings = n(),
+    dplyr::summarise(pings = dplyr::n(),
                      t.min = min(time),
                      t.max = max(time),
                      s.min = min(speed),
@@ -222,63 +222,10 @@ rb_peek <- function(d, what, criteria) {
     rid
   d <-
     d %>% 
-    mutate(whacky = ifelse(.rid %in% rid, "whacky", ""))
+    dplyr::mutate(whacky = ifelse(.rid %in% rid, "whacky", ""))
   # need to vectorize:
   rids <- NULL
   for(i in 1:length(rid)) rids <- c(rids, rid[i] + c(-2, -1, 0, 1, 2))
   d %>% dplyr::filter(.rid %in% rids)
   
-}
-
-
-#' md_trip
-#'
-#' @param data A tibble containing variable names lon and lat (crs 4326)
-#' @param tid Trip id variable name, default tid
-#' @param radius Radius (in meters) of the point size (default 10)
-#' @param col What variable to be used for colour scale (default speed)
-#' @param trip add trip path, default FALSE
-#'
-#' @return xxx
-#' 
-#' @export
-#'
-md_trip <- function(data, tid, radius = 10, col = "speed", trip = TRUE) {
-  
-  if(any(!class(data) %in% "sf")) {
-    data <- 
-      data %>% 
-      sf::st_as_sf(coords = c("lon", "lat"),
-                   crs = 4326,
-                   remove = FALSE)
-  }
-  
-  m <- mapdeck()
-  
-  if(trip) {
-    m <- 
-      m %>% 
-      mapdeck::add_path(data = data %>% 
-                          group_by( {{tid}} ) %>% 
-                          summarise(do_union = FALSE) %>%
-                          sf::st_cast("LINESTRING"),
-                        layer_id = "track",
-                        stroke_width = 1000,
-                        width_min_pixels = 5,
-                        width_max_pixels = 10,
-                        # NEED TO MAKE THIS DYNAMIC
-                        tooltip = "tid",
-                        auto_highlight = TRUE,
-                        highlight_colour = "#FF000095",
-                        update_view = FALSE,
-                        stroke_colour = "#E0FFFF80")
-  }
-  
-  m <- 
-    m %>% 
-    mapdeck::add_scatterplot(data = data,
-                             fill_colour = "speed",
-                             radius = radius,
-                             palette = "inferno")
-  return(m)
 }
