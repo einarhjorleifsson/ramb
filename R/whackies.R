@@ -20,5 +20,8 @@
 rb_whacky_speed <- function(lon, lat, time, criteria = rb_kn2ms(25)) {
   x1 <- traipse::track_speed(lon, lat, time)
   x2 <- dplyr::lead(x1)
-  dplyr::if_else(x1 > criteria & x2 > criteria, TRUE, FALSE, NA)
+  dplyr::if_else(x1 > criteria & (x2 > criteria | is.na(x2)), TRUE, FALSE, TRUE)
 }
+
+
+

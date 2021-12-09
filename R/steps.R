@@ -13,3 +13,18 @@ rb_st <- function(time, units = "secs")  {
   difftime(time, dplyr::lag(time), units = units) %>% 
     as.numeric()
 }
+
+#' Calculate step acceleration
+#' 
+#' To use this on multiple vessels or trips, use a grouped data frame with tidyverse code like ... 
+#'
+#' @param lon longitude
+#' @param lat latitude
+#' @param time time in POSIXct
+#'
+#' @return A numerical vector
+#' @export
+#'
+rb_sa <- function(lon, lat, time) {
+  traipse::track_speed(lon, lat, time) / traipse::track_time(time)
+}

@@ -176,32 +176,24 @@ rb_summary <- function(d) {
                      n.harb = dplyr::n_distinct(hid, na.rm = TRUE))
 }
 
-#' rb_define_trip
-#' 
-#' The input tibble needs a variable identifying vessel (default vid) and a variable that
-#' indicates the harbour identification number (default hid) whose value indicate 
-#' if in harbour.  If out of harbour the value is NA.
+#' Create trip
 #'
-#' @param d ais/vms tracks tibble
-#' @param vid variable name containing vessel id
-#' @param hid variable name conaining harbour id, is NA if out of harbour
+#' @param x A vector
 #'
-#' @return A tibble with one additional variable named tid, sequential positive
-#' values indicate trip number, negative values indicate "harbour trip".
+#' @return An integer vector of the same length as input, providing unique trip number
 #' @export
 #'
-rb_define_trip <- function(d, vid = vid, hid = hid) {
-  d %>% 
-    dplyr::mutate(inharbour = ifelse(!is.na( {{hid}} ), TRUE, FALSE)) %>% 
-    dplyr::group_by( {{vid}} ) %>% 
-    dplyr::mutate(.gr0 = data.table::rleid( inharbour )) %>% 
-    dplyr::group_by( {{vid}}, inharbour) %>% 
-    dplyr::mutate(tid = data.table::rleid(.gr0)) %>% 
-    dplyr::ungroup() %>% 
-    dplyr::mutate(tid = ifelse(inharbour, -tid, tid)) %>% 
-    dplyr::select(c(-.gr0, inharbour))
-  
+rb_trip <- function(x) {
+  tibble::tibble(x = x) %>% 
+    dplyr::mutate(tid = dplyr::if_else(x != dplyr::lag(x), 1L, 0L, 1L),
+                  tid = ifelse(x, -tid, tid)) %>% 
+    dplyr::group_by(x) %>% 
+    dplyr::mutate(tid = cumsum(tid)) %>% 
+    dplyr::ungroup(x) %>% 
+    dplyr::pull(tid)
 }
+
+
 
 #' rb_peek
 #' 
