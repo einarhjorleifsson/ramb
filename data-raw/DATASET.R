@@ -106,11 +106,12 @@ is_survey_station <-
          vid = skip_nr) %>% 
   collect(n = Inf) %>% 
   filter(t1 >= ymd_hms("2010-01-01 01:00:00")) %>% 
-  mutate(date = as_date(date)) 
+  mutate(date = as_date(date))
 
 is_survey_station %>% 
-  write_csv("/net/www/export/home/ftp/pub/data/csv/is_survey-stations.csv")
-system("chmod a+rX /net/www/export/home/ftp/pub/data/csv/is_survey-stations.csv")
+  write_csv("/home/ftp/pub/data/csv/is_survey-stations.csv")
+system("chmod a+rX /home/ftp/pub/data/csv/is_survey-stations.csv")
+tows <- read_csv("ftp://ftp.hafro.is/pub/data/csv/is_survey-stations.csv")
 
 tows <- 
   # read_csv("ftp://ftp.hafro.is/pub/data/csv/is_survey-stations.csv") %>% 
@@ -184,8 +185,8 @@ trail <-
   select(-c(inharbour:last))
 trail %>% write_csv("trail.csv")
 trail %>%   
-  write_csv("/net/www/export/home/ftp/pub/data/csv/is_survey-tracks.csv")
+  write_csv("/home/ftp/pub/data/csv/is_survey-tracks.csv")
 system("chmod a+rX /net/www/export/home/ftp/pub/data/csv/is_survey-tracks.csv")
 trail <- read_csv("ftp://ftp.hafro.is/pub/data/csv/is_survey-tracks.csv")
-trail
+
 

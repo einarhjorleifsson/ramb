@@ -6,3 +6,6 @@ ramb.Rproj
 docs
 Basic functionality
 vignettes/articles/*.txt
+
+zgarbage/
+TOPSECRET.R
