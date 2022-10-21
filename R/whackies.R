@@ -2,7 +2,7 @@
 
 #' rb_whacky_speed
 #'
-#' Marks derived speed (units in m per s) above a certain criterion as whacky (TRUE,
+#' Marks derived speed (unit knots) above a certain criterion as whacky (TRUE,
 #' rest will be FALSE).
 #' 
 #' To use this on multiple vessels or trips, use a grouped data frame with 
@@ -12,15 +12,24 @@
 #' @param lon longitude
 #' @param lat latitude
 #' @param time date-time in POSIXct
-#' @param criteria speed in meters per second
+#' @param criteria speed in nautical miles per hour
 #'
 #' @return A boolean vector
 #' @export
 #'
-rb_whacky_speed <- function(lon, lat, time, criteria = rb_kn2ms(25)) {
-  x1 <- traipse::track_speed(lon, lat, time)
-  x2 <- dplyr::lead(x1)
-  dplyr::if_else(x1 > criteria & (x2 > criteria | is.na(x2)), TRUE, FALSE, TRUE)
+rb_whacky_speed <- function(lon, lat, time, criteria = 20) {
+  n <- length(lon)
+  if(n >= 2) {
+    x1 <- rb_speed(lon, lat, time)
+    # first point has undefined speed
+    x1[1] <- x1[2]
+    x2 <- dplyr::lead(x1)
+    x2[length(x2)] <- x2[length(x2) - 1]
+    x <- ifelse(x1 > criteria & x2 > criteria, TRUE, FALSE)
+  } else {
+    x <- rep(NA, n)
+  }
+  return(x)
 }
 
 

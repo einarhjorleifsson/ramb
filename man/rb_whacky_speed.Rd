@@ -4,7 +4,7 @@
 \alias{rb_whacky_speed}
 \title{rb_whacky_speed}
 \usage{
-rb_whacky_speed(lon, lat, time, criteria = rb_kn2ms(25))
+rb_whacky_speed(lon, lat, time, criteria = 20)
 }
 \arguments{
 \item{lon}{longitude}
@@ -13,13 +13,13 @@ rb_whacky_speed(lon, lat, time, criteria = rb_kn2ms(25))
 
 \item{time}{date-time in POSIXct}
 
-\item{criteria}{speed in meters per second}
+\item{criteria}{speed in nautical miles per hour}
 }
 \value{
 A boolean vector
 }
 \description{
-Marks derived speed (units in m per s) above a certain criterion as whacky (TRUE,
+Marks derived speed (unit knots) above a certain criterion as whacky (TRUE,
 rest will be FALSE).
 }
 \details{

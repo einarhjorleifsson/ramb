@@ -4,7 +4,7 @@
 \alias{rb_read_trails}
 \title{Read all trails}
 \usage{
-rb_read_trails(con, VID, YEARS)
+rb_read_trails(con, VID, YEARS, use_PAM = FALSE)
 }
 \arguments{
 \item{con}{oracle connection}

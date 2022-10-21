@@ -17,7 +17,6 @@ rb_mapdeck <- function(d, col = "speed") {
   
   track <- 
     d |> 
-    group_by(.cid) |> 
     summarise(do_union = FALSE) |> 
     sf::st_cast("LINESTRING")
   

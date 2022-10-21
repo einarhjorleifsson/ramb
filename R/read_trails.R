@@ -7,7 +7,7 @@
 #' @return a tibble
 #' @export
 #'
-rb_read_trails <- function(con, VID, YEARS) {
+rb_read_trails <- function(con, VID, YEARS, use_PAM = FALSE) {
   
   D1 <- paste0(min(YEARS), "-01-01")
   D2 <- paste0(max(YEARS), "-12-31")
@@ -27,15 +27,24 @@ rb_read_trails <- function(con, VID, YEARS) {
     dplyr::arrange(time) %>% 
     dplyr::distinct(time, .keep_all = TRUE)
   
-  pam <- 
-    omar::mmsi_vessel(con) |> 
-    dplyr::select(vid, mmsi) |> 
-    dplyr::filter(vid %in% VID) |> 
-    dplyr::left_join(omar::pame_trail(con),
-                     by = "mmsi") |> 
-    dplyr::filter(time >= to_date(D1, "YYYY:MM:DD"),
-                  time <= to_date(D2, "YYYY:MM:DD")) %>% 
-    dplyr::collect(n = Inf)
+  if(use_PAM) {
+    pam <- 
+      PAM |> 
+      dplyr::filter(vid %in% VID) |> 
+      dplyr::filter(time >= lubridate::ymd(D1),
+                    time <= lubridate::ymd(D2))
+  } else {
+    
+    pam <- 
+      omar::mmsi_vessel(con) |> 
+      dplyr::select(vid, mmsi) |> 
+      dplyr::filter(vid %in% VID) |> 
+      dplyr::left_join(omar::pame_trail(con),
+                       by = "mmsi") |> 
+      dplyr::filter(time >= to_date(D1, "YYYY:MM:DD"),
+                    time <= to_date(D2, "YYYY:MM:DD")) %>% 
+      dplyr::collect(n = Inf)
+  }
   if(nrow(pam) > 10) {
     pam <- 
       pam %>% 
@@ -71,17 +80,21 @@ rb_read_trails <- function(con, VID, YEARS) {
   if(nrow(ais) > 100) {
     ais <- 
       ais %>% 
-    dplyr::arrange(vid, time) %>% 
-    dplyr::mutate(.rid = 1:dplyr::n()) %>% 
-    dplyr::select(.rid, dplyr::everything()) |> 
-    dplyr::group_by(vid) %>% 
-    # NA approximated, note not operating on a sphere, should not matter because distance small
-    dplyr::mutate(lon = approx(time, lon, time, method = "linear", rule = 1, f = 0, ties = mean)$y,
-                  lat = approx(time, lat, time, method = "linear", rule = 1, f = 0, ties = mean)$y) |> 
-    dplyr::distinct(vid, time, .keep_all = TRUE) |> 
-    dplyr::ungroup() |> 
-    dplyr::filter(between(lon, -60, 60),
-                  between(lat,  50, 80))
+      dplyr::arrange(vid, time) %>% 
+      dplyr::mutate(.rid = 1:dplyr::n()) %>% 
+      dplyr::select(.rid, dplyr::everything()) |> 
+      dplyr::group_by(vid) %>% 
+      # NA approximated, note not operating on a sphere, should not matter because distance small
+      dplyr::mutate(lon = approx(time, lon, time, method = "linear", rule = 1, f = 0, ties = mean)$y,
+                    lat = approx(time, lat, time, method = "linear", rule = 1, f = 0, ties = mean)$y,
+                    speed = ifelse(!is.na(speed),
+                                   speed,
+                                   # speed sometimes missing in the lgs gps
+                                   approx(time, speed, time, method = "linear", rule = 1, f = 0, ties = mean)$y)) |> 
+      dplyr::distinct(vid, time, .keep_all = TRUE) |> 
+      dplyr::ungroup() |> 
+      dplyr::filter(between(lon, -60, 60),
+                    between(lat,  50, 80))
   }
   return(ais)
 }
