@@ -33,4 +33,18 @@ rb_whacky_speed <- function(lon, lat, time, criteria = 20) {
 }
 
 
-
+#' Title
+#'
+#' @param d A dataframe contain lon, lat and time
+#'
+#' @return a dataframe with addition variable ".whacky"
+#' @export
+#'
+rb_whacky_speed_trip <- function(d) {
+  tr <- d |> dplyr::mutate(id = 1) |> dplyr::select(lon, lat, time, id, dplyr::everything())
+  sp::coordinates(tr) <- ~lon+lat
+  sp::proj4string(tr) <- sp::CRS("+proj=longlat +datum=WGS84", doCheckCRSArgs = FALSE)
+  suppressWarnings(tr <- trip::trip(tr, c("time", "id")))
+  d$.whacky <- !trip::speedfilter(tr, max.speed = ramb::rb_kn2ms(20) / 1000 * 60 * 60)
+  return(d)
+}

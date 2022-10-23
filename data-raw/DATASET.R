@@ -92,6 +92,7 @@ is_survey_station <-
   filter(synaflokkur_nr %in% c(30, 35)) %>%
   select(cruise_id = leidangur_id, 
          station_id = stod_id,
+         id = synis_id,
          station_nr = stod_nr,
          date = dags,
          vid = skip_nr,
@@ -143,7 +144,7 @@ trail.raw <-
   collect(n = Inf)
 trail <- 
   trail.raw %>% 
-  filter(time >= ymd_hms("2010-01-01 01:00:00")) %>% 
+  filter(time >= ymd_hms("2010-01-01 01:00:00")) %>%
   distinct(mid, time, .keep_all = TRUE) %>% 
   arrange(time, mid) %>% 
   mutate(rowid = 1:n())
@@ -153,14 +154,14 @@ trail <-
             select(mid, vid))
 d <- 
   trail %>% 
-  ramb:::rb_interval_id2(cruises, vid, time, T11, T12, cruise_id)
+  ramb:::rb_interval_id2(cruises, vid, time, T11, T12, cruise_id) %>% 
+  rename(cruise_id = .id)
 d <- 
   d %>% 
   filter(!is.na(cruise_id)) %>% 
-  select(vid, time = t, lon, lat, speed, heading, cruise_id, rectime) 
+  select(vid, time, lon, lat, speed, heading, cruise_id, rectime)
 # start series in harbour, end series in harbour
 hb <- ramb::read_is_harbours() %>% mutate(inharbour = TRUE)
-hb <- hb %>%  mutate(inharbour = TRUE)
 d2 <-
   d %>% 
   st_as_sf(coords = c("lon", "lat"),
@@ -183,10 +184,18 @@ trail <-
   left_join(d2.sum) %>% 
   filter(.rid >= first, .rid <= last) %>% 
   select(-c(inharbour:last))
-trail %>% write_csv("trail.csv")
+trail <- 
+  trail %>% 
+  distinct(vid, time, .keep_all = TRUE) %>% 
+  rename(.vid = vid) %>% 
+  ramb::rb_interval_id2(tows %>% rename(.vid = vid) %>% filter(!is.na(t2)),cruise_id, time, t1, t2, id) %>% 
+  rename(id = .id) %>% 
+  # should not really need to do this
+  distinct(vid, time, .keep_all = TRUE) %>% 
+  select(-rectime)
+                        
 trail %>%   
   write_csv("/home/ftp/pub/data/csv/is_survey-tracks.csv")
 system("chmod a+rX /net/www/export/home/ftp/pub/data/csv/is_survey-tracks.csv")
 trail <- read_csv("ftp://ftp.hafro.is/pub/data/csv/is_survey-tracks.csv")
-
 

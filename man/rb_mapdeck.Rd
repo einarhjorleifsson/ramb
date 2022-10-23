@@ -4,7 +4,7 @@
 \alias{rb_mapdeck}
 \title{Plot trails}
 \usage{
-rb_mapdeck(d, col = "speed")
+rb_mapdeck(d, col = "speed", add_harbour = TRUE)
 }
 \arguments{
 \item{d}{a tibble containing trails}

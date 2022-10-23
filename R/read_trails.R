@@ -32,7 +32,10 @@ rb_read_trails <- function(con, VID, YEARS, use_PAM = FALSE) {
       PAM |> 
       dplyr::filter(vid %in% VID) |> 
       dplyr::filter(time >= lubridate::ymd(D1),
-                    time <= lubridate::ymd(D2))
+                    time <= lubridate::ymd(D2)) |> 
+      dplyr::mutate(source = "pam") |> 
+      dplyr::distinct(time, .keep_all = TRUE)
+    
   } else {
     
     pam <- 
@@ -43,23 +46,24 @@ rb_read_trails <- function(con, VID, YEARS, use_PAM = FALSE) {
                        by = "mmsi") |> 
       dplyr::filter(time >= to_date(D1, "YYYY:MM:DD"),
                     time <= to_date(D2, "YYYY:MM:DD")) %>% 
+      dplyr::select(-c(mmsi, imo, vessel, flag)) |> 
       dplyr::collect(n = Inf)
   }
-  if(nrow(pam) > 10) {
-    pam <- 
-      pam %>% 
-      dplyr::select(vid, 
-                    time,
-                    lon,
-                    lat) %>% 
-      dplyr::arrange(time) %>% 
-      dplyr::mutate(source = "pam",
-                    speed = traipse::track_speed(lon, lat, time),
-                    speed = rb_ms2kn(speed)) %>% 
-      # first record has speed as NA
-      tidyr::fill(speed, .direction = "up") |> 
-      dplyr::distinct(time, .keep_all = TRUE)
-  }
+  # if(nrow(pam) > 10) {
+  #   pam <- 
+  #     pam %>% 
+  #     dplyr::select(vid, 
+  #                   time,
+  #                   lon,
+  #                   lat) %>% 
+  #     dplyr::arrange(time) %>% 
+  #     dplyr::mutate(source = "pam",
+  #                   speed = traipse::track_speed(lon, lat, time),
+  #                   speed = rb_ms2kn(speed)) %>% 
+  #     # first record has speed as NA
+  #     tidyr::fill(speed, .direction = "up") |> 
+  #     dplyr::distinct(time, .keep_all = TRUE) 
+  # }
   
   
   lbs <- 
@@ -73,28 +77,40 @@ rb_read_trails <- function(con, VID, YEARS, use_PAM = FALSE) {
                   source = "lgs") |> 
     dplyr::arrange(time) %>% 
     dplyr::distinct(time, .keep_all = TRUE)
+  
   ais <-
     dplyr::bind_rows(stk,
                      lbs,
-                     pam)
-  if(nrow(ais) > 100) {
+                     pam) |> 
+    dplyr::arrange(vid, time) |> 
+    dplyr::filter(between(lon, -60, 60),
+                  between(lat,  50, 80))
+  
+  if(nrow(ais > 0)) {
     ais <- 
-      ais %>% 
-      dplyr::arrange(vid, time) %>% 
+      ais |> 
       dplyr::mutate(.rid = 1:dplyr::n()) %>% 
-      dplyr::select(.rid, dplyr::everything()) |> 
-      dplyr::group_by(vid) %>% 
-      # NA approximated, note not operating on a sphere, should not matter because distance small
-      dplyr::mutate(lon = approx(time, lon, time, method = "linear", rule = 1, f = 0, ties = mean)$y,
-                    lat = approx(time, lat, time, method = "linear", rule = 1, f = 0, ties = mean)$y,
-                    speed = ifelse(!is.na(speed),
-                                   speed,
-                                   # speed sometimes missing in the lgs gps
-                                   approx(time, speed, time, method = "linear", rule = 1, f = 0, ties = mean)$y)) |> 
-      dplyr::distinct(vid, time, .keep_all = TRUE) |> 
-      dplyr::ungroup() |> 
-      dplyr::filter(between(lon, -60, 60),
-                    between(lat,  50, 80))
+      dplyr::select(.rid, dplyr::everything())
   }
+    
+  # if(nrow(ais) > 100) {
+  #   ais <- 
+  #     ais %>% 
+  #     dplyr::arrange(vid, time) %>% 
+  #     dplyr::mutate(.rid = 1:dplyr::n()) %>% 
+  #     dplyr::select(.rid, dplyr::everything()) |> 
+  #     dplyr::group_by(vid) %>% 
+  #     # NA approximated, note not operating on a sphere, should not matter because distance small
+  #     dplyr::mutate(lon = approx(time, lon, time, method = "linear", rule = 1, f = 0, ties = mean)$y,
+  #                   lat = approx(time, lat, time, method = "linear", rule = 1, f = 0, ties = mean)$y,
+  #                   speed = ifelse(!is.na(speed),
+  #                                  speed,
+  #                                  # speed sometimes missing in the lgs gps
+  #                                  approx(time, speed, time, method = "linear", rule = 1, f = 0, ties = mean)$y)) |> 
+  #     dplyr::distinct(vid, time, .keep_all = TRUE) |> 
+  #     dplyr::ungroup() |> 
+  #     dplyr::filter(between(lon, -60, 60),
+  #                   between(lat,  50, 80))
+  # }
   return(ais)
 }
