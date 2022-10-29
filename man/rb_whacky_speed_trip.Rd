@@ -4,10 +4,14 @@
 \alias{rb_whacky_speed_trip}
 \title{Title}
 \usage{
-rb_whacky_speed_trip(d)
+rb_whacky_speed_trip(d, filter = TRUE, max_speed = 20)
 }
 \arguments{
-\item{d}{A dataframe contain lon, lat and time}
+\item{d}{An sf-dataframe contain lon, lat and time}
+
+\item{filter}{Drop whacky points}
+
+\item{max_speed}{Criteria for drops, units in knots}
 }
 \value{
 a dataframe with addition variable ".whacky"

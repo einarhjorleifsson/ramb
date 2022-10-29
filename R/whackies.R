@@ -1,4 +1,21 @@
-# todo If time step is very very small one may get high derived speed
+# todo If time step is very very small one may get high derived speedn
+
+
+
+
+#' A wrapper around approx
+#'
+#' @param x A vector, nomally time
+#' @param y The value to interpolate
+#'
+#' @return A vector with orgiginal and interpolated values, if any
+#' @export
+#'
+rb_interpolate <- function(x, y) {
+  approx(x, y, x, method = "linear", rule = 1, f = 0, ties = mean)$y
+}
+# fix this in ramb - expect that the tibble is sf
+
 
 #' rb_whacky_speed
 #'
@@ -35,16 +52,30 @@ rb_whacky_speed <- function(lon, lat, time, criteria = 20) {
 
 #' Title
 #'
-#' @param d A dataframe contain lon, lat and time
+#' @param d An sf-dataframe contain lon, lat and time
+#' @param filter Drop whacky points
+#' @param max_speed Criteria for drops, units in knots
 #'
 #' @return a dataframe with addition variable ".whacky"
 #' @export
 #'
-rb_whacky_speed_trip <- function(d) {
-  tr <- d |> dplyr::mutate(id = 1) |> dplyr::select(lon, lat, time, id, dplyr::everything())
-  sp::coordinates(tr) <- ~lon+lat
-  sp::proj4string(tr) <- sp::CRS("+proj=longlat +datum=WGS84", doCheckCRSArgs = FALSE)
-  suppressWarnings(tr <- trip::trip(tr, c("time", "id")))
-  d$.whacky <- !trip::speedfilter(tr, max.speed = ramb::rb_kn2ms(20) / 1000 * 60 * 60)
+rb_whacky_speed_trip <- function(d, filter = TRUE, max_speed = 20) {
+  tr <- as(d |> mutate(.idtrip = 1), "Spatial")
+  tr <- suppressWarnings( trip::trip(tr, c("time", ".idtrip")) )
+  d$.whacky <- !trip::speedfilter(tr, max.speed = ramb::rb_kn2ms(max_speed) / 1000 * 60 * 60)
+  if(filter) {
+    d |> 
+      dplyr::filter(!.whacky) |> 
+      dplyr::select(-.whacky)
+  }
+  # some extra precaution - would be of interest why not capured above
+  if(filter) {
+    d <-
+      d |> 
+      dplyr::mutate(.whacky = ramb::rb_whacky_speed(lon, lat, time)) |> 
+      dplyr::filter(!.whacky) |> 
+      dplyr::select(-.whacky)
+  }
+  
   return(d)
 }
