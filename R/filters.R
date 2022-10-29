@@ -1,5 +1,8 @@
-# argosfilter functions - tease out algorithm, "export" more details
+# current approach -------------------------------------------------------------
 
+
+
+# argosfilter functions - tease out algorithm, "export" more details
 
 #' rb_rms
 #' 
