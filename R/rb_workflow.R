@@ -109,10 +109,8 @@ rb_cap_effort <- function(lb) {
 #'
 #' @param lb logbooks
 #'
-#' @return
 #' @export
 #'
-#' @examples
 rb_std_meshsize <- function(lb) {
   lb <- 
     lb %>% 

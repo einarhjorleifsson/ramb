@@ -12,7 +12,7 @@ Encoding: UTF-8
 LazyData: true
 Depends: 
     R (>= 3.5.0)
-RoxygenNote: 7.2.1
+RoxygenNote: 7.2.3
 Imports: 
     data.table,
     dplyr,

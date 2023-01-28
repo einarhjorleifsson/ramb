@@ -1,0 +1,457 @@
+---
+title: "Machine-learning toy example"
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  message = FALSE, 
+  warning = FALSE,
+  collapse = TRUE,
+  error = TRUE,
+  comment = "#>"
+)
+```
+
+```
+### From Jeppe's code and DTU dataset 
+
+
+### 2021, december 3 rd
+### Julien Rodriguez, Ifremer
+### François Danhiez, CapGemini Engineering
+### Jeppe Olsen, DTU Aqua 
+
+
+### Contact
+### julien.rodriguez@ifremer.fr 
+
+### What is it about?
+
+# This code aims at giving a toy example on how home-made machine-learning methods and cross-validation can be applied to a dataset
+# This code and the associated functions were produced during ICES workshop on using high resolution spatial data for SSF monitoring, 
+# SO, please take into account it was produced in less than 2 days of coding activity!
+# All the necessary reflexion regarding the purpose of the algorithm (and so, the cross-validation process to be applied for proper qualification), 
+# is an absolute prerequisite before performing this kind of process. 
+# For this example, the decision was made to apply a ping-level decision rule on fishing/non-fishing.
+# depending on the objective, choosing a different level of aggregation might prove to be relevant (for example, a "fishing event", to identify a fishing gear)
+# then different aggregated index have to be produced =  average, quantiles, skewness, kurthosis....
+# Also a reflexion has to be done on the covariates that can be computed. 
+# In that case, these covariates, calculated from the associated functions, have been created for the purpose of the demonstration and are suggestions, 
+# but probably not the most relevant! Even sometimes, their computation might be wrong, but this wasn't the objective of the exercice!
+```
+
+## Comparison on trip calculation
+
+```{r setup}
+# remotes::install_github("ices-eg/WKSSFGEO", ref = "pkg")
+library(WKSSFGEO)
+library(sf)
+library(ranger)
+library(caret)
+library(sfc)
+library(dplyr)
+fld <- getwd()
+library(doMC)
+registerDoMC(20)
+```
+
+#### The data:
+
+```{r}
+track01 %>% dplyr::glimpse()
+harbours
+```
+
+#### Processing:
+
+```{r}
+tracks <- 
+  track01 %>% 
+  data.table::setDT() %>% 
+  # only unique time per veseel, first record retained - which may be the wrong one
+  unique(by = c("vessel_id", "time_stamp")) %>% 
+  WKSSFGEO::add_harbours(harbours) %>% 
+  WKSSFGEO::interpolate_ais() %>% 
+  WKSSFGEO::define_trips_pol(min_dur = 0.8, max_dur = 48, 
+                             split_trips = T, preserve_all = F)
+```
+
+```{r}
+### Identify missing values to retrieve it in the final dataset used to build the model
+nnai <- apply( tracks[, c("speed", "course", "behaviour" )], 1, function(x) !anyNA(x))
+trips <- unique(tracks$trip_id)
+out2 <- tracks
+out.ComNewCovar <- do.call( rbind, lapply( trips, function(tp) {
+  
+  out.trip <- out2[nnai, ] %>% as.data.frame
+  out.trip <- out.trip[ out.trip$trip_id %in% tp, ]
+  out.NewCovar <- CalcAcceleration(
+    CalcDistBetweenNearestNeighbours(
+      CalcStraigthness(
+        CalcHeading( st_as_sf( out.trip, 
+                               coords = c("lon", "lat"), crs = 4326))
+        ,   col.Dir = "course"),
+      nnn = 9))
+  return(out.NewCovar)
+  
+}))
+glimpse(out.ComNewCovar)
+```
+
+```{r}
+out.ComNewCovar %>% 
+  gather(var, value) %>%
+  ggplot(aes(x=value)) + 
+  geom_histogram(fill="steelblue", alpha=.7) +
+  theme_minimal() +
+  facet_wrap(~key, scales="free")
+```
+
+
+
+```{r dplyr_trials, eval = FALSE, echo = FALSE}
+tracks2 <- 
+  tracks %>% 
+  as_tibble() %>% 
+  filter(!is.na(trip_id), !is.na(course), !is.na(behaviour)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326, 
+           remove = TRUE) %>% 
+  group_by(trip_id) %>% 
+  CalcHeading() %>% 
+  CalcStraigthness(col.Dir = "geometry") %>% 
+  CalcDistBetweenNearestNeighbours() %>% 
+  ungroup()
+tracks2 <- 
+  tracks %>% 
+  as_tibble() %>% 
+  filter(!is.na(trip_id), !is.na(course), !is.na(behaviour)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326, 
+           remove = FALSE) %>% 
+  group_by(trip_id) %>% 
+  mutate(heading = traipse::track_bearing(lon, lat)) %>% 
+  CalcHeading()
+tracks2 %>% 
+  ungroup() %>% 
+  sample_n(1e4) %>% 
+  ggplot(aes(course, HEADING.deg)) +
+  geom_point(size = 0.05)
+tracks2 %>% 
+  ungroup() %>% 
+  sample_n(1e4) %>% 
+  ggplot(aes(course, heading)) +
+  geom_point(size = 0.05)
+tracks2 %>% 
+  ungroup() %>% 
+  sample_n(1e4) %>% 
+  ggplot(aes(heading, HEADING.deg)) +
+  geom_point(size = 0.05)
+
+CalcHeading() %>% 
+  CalcStraigthness(col.Dir = "geometry") %>% 
+  CalcDistBetweenNearestNeighbours() %>% 
+  ungroup()
+table(near(tracks2$HEADING.deg, out.ComNewCovar$HEADING.deg))
+table(near(tracks2$DistWithNeighbour_1, out.ComNewCovar$DistWithNeighbour_1))
+table(tracks2$geometry == out.ComNewCovar$geometry)
+
+bind_cols(tracks2 %>% select(hd = HEADING.deg) %>% st_drop_geometry(),
+          out.ComNewCovar %>% select(hd2 = HEADING.deg) %>% st_drop_geometry()) %>% 
+  sample_n(1e4) %>% 
+  ggplot(aes(hd, hd2)) +
+  geom_point(size = 0.1)
+```
+
+
+## Part 2 Build customized randomForest model
+
+```{r random_forest_simple}
+out.ComNewCovar$behaviour <-  factor(as.character(out.ComNewCovar$behaviour ))
+form <- as.formula( paste( "behaviour", paste("speed", collapse = "+"), sep = "~"))
+optim.rf <- tune_RF(formula = form, sf::st_set_geometry(out.ComNewCovar[nnai, ], NULL))
+```
+
+
+```{r random_forest}
+nnn <- 9 # Number of nearest neighbours chosen
+covar.names <- 
+  c("speed", "course", "abs.HeadingChange", "HEADING.deg", "acceleration", 
+    paste0( "DistWithNeighbour_", WKSSFGEO:::set_0nbr(1:nnn), 1:nnn))
+form <- as.formula( paste( "behaviour", paste(covar.names, collapse = "+"), sep = "~"))
+out.ComNewCovar$behaviour <-  factor(as.character(out.ComNewCovar$behaviour ))
+
+# Identify indexes without missing values (normally, none of them should contain missing values)
+nnai <- apply( out.ComNewCovar[, c("behaviour", covar.names)], 1, function(x) !anyNA(x))
+!nnai %>% any
+
+# EINAR: the {tune_RF} finds the "optimimum" min.node.size and mtry to be passed
+#        to {ranger} in the next step
+optim.rf <- WKSSFGEO::tune_RF(formula = form, sf::st_set_geometry(out.ComNewCovar[nnai, ], NULL))
+optim.rf # Automatically selected hyper-parameters with tune_RF function
+mod.rf <- ranger::ranger(form, 
+                         sf::st_set_geometry(out.ComNewCovar[nnai, ], NULL),  
+                         importance = "impurity", 
+                         mtry =  optim.rf$mtry, 
+                         min.node.size =  optim.rf$min.node.size, 
+                         num.trees = 500,
+                         write.forest = TRUE)
+#saveRDS( list(optim.rf = optim.rf, mod.rf = mod.rf), file= sprintf( "%s/RandomForestModel.rds", fld))
+
+
+
+mod.rf$prediction.error
+# OOB prediction error 11.17%
+# Shows variable importance regarding how they contribute to the model
+tibble::tibble(var = names(mod.rf$variable.importance),
+               val = mod.rf$variable.importance) %>% 
+  ggplot2::ggplot() +
+  ggplot2::geom_pointrange(ggplot2::aes(reorder(var, val), val, ymin = 0, ymax = val)) +
+  ggplot2::coord_flip()
+
+# Error matrix
+table(mod.rf$predictions, out.ComNewCovar$behaviour[nnai])
+
+# Select only the most relevant variables for LDA and QDA
+mod.rf$variable.importance %>% sort(decreasing = TRUE)
+# Course and heading to be avoided because it may lead to overfitting 
+# These variables have been kept in randomforest which is less sensitive to colinearity and overfitting
+
+covar.names <- c("speed", "abs.HeadingChange", "acceleration", paste0( "DistWithNeighbour_", c(8,6,2,9)))
+form.lda <- as.formula( paste( "behaviour", paste(covar.names, collapse = "+"), sep = "~"))
+
+mod.lda <- MASS::lda(form,  out.ComNewCovar[nnai, ])
+mod.qda <- MASS::qda(form,  out.ComNewCovar[nnai, ])
+
+#saveRDS( list(mod.lda = mod.lda, mod.qda = mod.qda), file= sprintf( "%s/LDAModel.rds", fld))
+
+pred.lda <- predict(mod.lda)
+pred.qda <- predict(mod.qda)
+mod.lda %>% names
+mod.lda$prior
+
+out.ComNewCovar$behaviour[nnai] %>% table
+
+table(pred.lda$class, out.ComNewCovar$behaviour[nnai])
+table(pred.qda$class, out.ComNewCovar$behaviour[nnai])
+```
+
+## Perform 5 folds Cross-validation on trips to evaluate a realistic accuracy for new predictions
+
+```{r cross_validation}
+out.ComNewCovar %>% colnames
+nnn = 9 ## Number of nearest neighbours chosen
+covar.names <- c("speed", "course", "abs.HeadingChange", "HEADING.deg", "acceleration", paste0( "DistWithNeighbour_", WKSSFGEO:::set_0nbr(1:nnn), 1:nnn))
+form <- as.formula( paste( "behaviour", paste(covar.names, collapse = "+"), sep = "~"))
+
+# Identify indexes without missing values (normally, none of them should contain missing values)
+nnai <- apply( out.ComNewCovar[, c("behaviour", covar.names)], 1, function(x) !anyNA(x))
+!nnai %>% any
+
+## Create a CV design
+
+# Create Subset with 5 folds with a selection based on trip
+# If we want to test the capacity to make predictions for a new boat, we could perform CV for boats instead of trips.
+trips <- unique(out.ComNewCovar$trip_id)
+
+db.index <- 1:nrow(out.ComNewCovar)
+set.seed(021221)
+n.samp <- floor(length(trips)/5)
+
+CV.subset <- vector(mode = "list", length = 5)
+
+for(k in 1:5){
+  
+  if(k < 5){
+    samp.ids <- sample( trips, size = n.samp)
+    trips <- trips[ !trips %in% samp.ids]
+  }else{
+    samp.ids <- trips
+  }
+  
+  samp.index <- which( out.ComNewCovar$trip_id[nnai] %in% samp.ids)
+  CV.subset[[k]] <- samp.index
+  
+}
+
+# Chech the CV.subset and its consistency for CV purpose
+trips <- unique(out.ComNewCovar$trip_id)
+lapply(CV.subset, length)
+lapply(CV.subset, function(x) unique(out.ComNewCovar$trip_id[x]))
+do.call(c, lapply(CV.subset, function(x) unique(out.ComNewCovar$trip_id[x]))) %>% duplicated %>% any
+any(!trips %in% do.call(c, lapply(CV.subset, function(x) unique(out.ComNewCovar$trip_id[x]))))
+
+### Create empty columns in dataset to retrieve CV predictions
+if( !"predCV.rf" %in% colnames(out.ComNewCovar)){
+  
+  out.ComNewCovar$predCV.rf <- rep(NA, nrow(out.ComNewCovar))
+  out.ComNewCovar$predCV.lda <- rep(NA, nrow(out.ComNewCovar))
+  out.ComNewCovar$predCV.qda <- rep(NA, nrow(out.ComNewCovar))
+  
+  # Perform 5-folds CV
+  for(k in 1:5){
+    
+    samp.index <- sort(CV.subset[[k]])
+    training.dataset <- sf::st_set_geometry(out.ComNewCovar[ -samp.index, ], NULL)
+    ap.dataset <- sf::st_set_geometry(out.ComNewCovar[ samp.index, ], NULL)
+    
+    mod.rf.CV <- ranger::ranger( form,   training.dataset ,  
+                                 importance = "impurity", mtry =  optim.rf$mtry, min.node.size =  optim.rf$min.node.size, num.trees = 500, write.forest = TRUE)
+    
+    out.ComNewCovar$predCV.rf[ samp.index ] <- predict(mod.rf.CV, ap.dataset)$predictions
+    
+    mod.lda.CV <- MASS::lda(form,  training.dataset)
+    mod.qda.CV <- MASS::qda(form,  training.dataset)
+    
+    out.ComNewCovar$predCV.lda[ samp.index ] <- predict(mod.lda.CV, ap.dataset)$class
+    out.ComNewCovar$predCV.qda[ samp.index ] <- predict(mod.qda.CV, ap.dataset)$class
+    
+    #saveRDS(out.ComNewCovar , file= sprintf( "%s/SavedDataWithCVResults.rds", fld))
+    
+  }
+}
+
+### Error contingency matrix
+table( out.ComNewCovar$behaviour)
+with(out.ComNewCovar[nnai,], table(predCV.lda, behaviour))
+with(out.ComNewCovar[nnai,], table(predCV.qda, behaviour))
+
+mod.rf$prediction.error
+ErrMat.RF <- with(out.ComNewCovar[nnai,], table(predCV.rf, behaviour))
+ErrMat.RF
+
+# Compute overall accuracy
+sum(diag(ErrMat.RF))/(sum(ErrMat.RF))
+
+# From 11.2 % error, it is evaluated to 27% with this validation process! 
+# which is a more realistic appreciation of that could be achieved from a new dataset
+# You can guess the result if cross-validation was performed on boats instead of fishing trips !
+out.ComNewCovar %>% dim
+out.ComNewCovar$vessel_id %>% unique %>% length
+out.ComNewCovar$gear %>% table
+out.ComNewCovar$trip_id %>% unique %>% length
+# too few boats in this toy example to do so, but this can be interesting depending on the objective
+# This also shows the interest of being able to manage its own validation process instead of being dependent on micro-waved methods for whom the qualification unit is the line 
+
+# but if you look closer, most of the good qualification comes from the non-fishing pings which are not the most interesting ones!
+
+# Event if OOB prediction error could be well to qualify algorithm quality , 
+# the input selection is based on rows index which may not be the purpose of the model qualification
+# the result shows it is best to make its own validation procedure based on the purpose of machine-learning application
+# In my opinion, to be decided depending on user application
+
+# The confusion can also be checked by fishing gear
+gears <- out.ComNewCovar$gear  %>% unique
+
+for( g in 1:length(gears)){
+  
+  print(gears[g])
+  print( with(out.ComNewCovar[out.ComNewCovar$gear %in% gears[g],], table(predCV.rf, behaviour)))
+  
+}
+
+ErrMat.RF
+
+
+### Plot for one trip
+
+k = 10
+trip = trips[k]
+
+plot.new()
+print(
+  sp::spplot( out.ComNewCovar[out.ComNewCovar$trip_id %in% trip,] %>% as_Spatial, "behaviour"),
+  position = c(0,0,.5,1),more=T)
+print(
+  sp::spplot( out.ComNewCovar[out.ComNewCovar$trip_id %in% trip,] %>% as_Spatial, "predCV.rf"),
+  position = c(.5,0,1,1),more = T)
+```
+
+## Using Caret batch of functions to calibrate more machine learning methods.
+
+```{r caret_batch}
+#Loading data
+import <- out.ComNewCovar
+data <- st_drop_geometry(import)
+
+#Selecting features for the prediction
+predictors <-
+  c("speed", "HEADING.deg", "abs.HeadingChange", "DistWithNeighbour_1",
+    "DistWithNeighbour_2", "DistWithNeighbour_3", "DistWithNeighbour_4",
+    "DistWithNeighbour_5", "DistWithNeighbour_6", "DistWithNeighbour_7",
+    "DistWithNeighbour_8", "acceleration")
+
+#Define the classification target
+target <- c("behaviour")
+
+
+#Selecting the dataset
+variables <- select(data,c(predictors))
+#Select the target to be predict
+target <- data.frame(behaviour=data[,target])
+
+
+#Spliting the dataset into training and validation dataset
+set.seed(123)
+
+#Applying a split ratio of 70/30
+train_index <- sample(1:nrow(data), nrow(data)*0.70)
+
+# Creating the training set
+train.data <- variables[train_index,]
+train.label <- target[train_index,]
+train.data <- cbind(train.data, data.frame(behaviour = train.label))
+train.data$behaviour <- as.character(train.data$behaviour)
+
+# Creating the validation set
+test.data <- variables[-train_index,]
+test.label <- target[-train_index,]
+test.data <- cbind(test.data,data.frame(behaviour = test.label))
+test.data$behaviour <- as.character(test.data$behaviour)
+
+# Training and validation for RandomForest
+rf.model <- train(behaviour ~., data = train.data, method = "ranger",
+                  trControl = trainControl("cv", number = 10),
+                  preProcess = c("center", "scale"))
+rf.pred <- predict(rf.model, test.data)
+rf.conf.mat <- confusionMatrix(as.factor(rf.pred), as.factor(test.label))
+print("rf done")
+# Training and validation for SVM
+# svm.model <- train(behaviour ~., data = train.data, method = "svmRadial",
+#                    trControl = trainControl("cv", number = 10),
+#                    preProcess = c("center", "scale"))
+# svm.pred <- predict(svm.model, test.data)
+# svm.conf.mat <- confusionMatrix(as.factor(svm.pred), as.factor(test.label))
+
+# Training and validation for C5.0
+c5.model <- train(behaviour ~., data = train.data, method = "C5.0",
+                  trControl = trainControl("cv", number = 10),
+                  preProcess = c("center", "scale"))
+c5.pred <- predict(c5.model, test.data)
+c5.conf.mat <- confusionMatrix(as.factor(c5.pred), as.factor(test.label))
+print("c5 done")
+# Training and validation for XGBoost
+xgb.model <- train(behaviour ~., data = train.data, method = "xgbTree",
+                   trControl = trainControl("cv", number = 10),
+                   preProcess = c("center", "scale"))
+xgb.pred <- predict(xgb.model, test.data)
+xgb.conf.mat <- confusionMatrix(as.factor(xgb.pred), as.factor(test.label))
+print("xgb done")
+# Training and validation for Decision Tree
+treebag.model <- train(behaviour ~., data = train.data, method = "treebag",
+                       trControl = trainControl("cv", number = 10),
+                       preProcess = c("center", "scale"))
+treebag.pred <- predict(treebag.model, test.data)
+treebag.conf.mat <- confusionMatrix(as.factor(treebag.pred), as.factor(test.label))
+print("treebag done")
+# Construction statistics data frame
+stats.table <- cbind(data.frame(Model="RF"), t(rf.conf.mat$overall))
+#stats.table <- rbind(stats.table, cbind(data.frame(Model = "SVM"),  t(svm.conf.mat$overall)))
+stats.table <- rbind(stats.table, cbind(data.frame(Model = "C5.0"), t(c5.conf.mat$overall)))
+stats.table <- rbind(stats.table, cbind(data.frame(Model = "XGB"),  t(xgb.conf.mat$overall)))
+stats.table <- rbind(stats.table, cbind(data.frame(Model = "DT"),   t(treebag.conf.mat$overall)))
+print(stats.table)
+```
+
+
+

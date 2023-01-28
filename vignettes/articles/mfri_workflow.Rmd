@@ -1,0 +1,403 @@
+---
+title: "MFRI workflow"
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  message = FALSE, 
+  warning = FALSE,
+  collapse = TRUE,
+  error = TRUE,
+  comment = "#>"
+)
+```
+
+## Preamble
+
+```{r}
+library(data.table)
+library(ramb)
+library(sf)
+library(mapdeck)
+library(traipse)
+library(tidyverse)
+source("~/r/Pakkar2/ramb/TOPSECRET.R")
+```
+
+## Concept
+
+We have one day of track (1 minute interval) for three vesssels (lon and lat not inluded) and three logbook records (two from one vessel, one from another vessel - one vessel has no logbook record). The logbooks recordings are among other things: time of setting (to), time of start hauling (t1) and time of end hauling (t2).
+
+Want to assign ...
+
+```{r}
+stk <- 
+  expand_grid(vid = c(1000, 1001, 1002),
+              time = seq(ymd_hms("2022-09-22 00:00:00"), 
+                         ymd_hms("2022-09-22 23:59:59"), 
+                         by = "min"))
+lgs <- 
+  tibble(vid = c(1000, 1000, 1001),
+         visir = c(-1, -2, -3),
+         start_setting = c(ymd_hms("2022-09-22 10:00:00"), ymd_hms("2022-09-22 15:00:00"), ymd_hms("2022-09-22 10:00:00")),
+         start_haul = c(ymd_hms("2022-09-22 11:00:00"), ymd_hms("2022-09-22 16:00:00"), ymd_hms("2022-09-22 11:30:00")),
+         end_haul = c(ymd_hms("2022-09-22 14:00:00"), ymd_hms("2022-09-22 18:30:00"), ymd_hms("2022-09-22 18:00:00")))
+lgs
+stk %>% 
+  rb_interval_id2(lgs, vid, time, start_haul, end_haul, visir) %>% 
+  ggplot(aes(time, factor(vid), fill = factor(.id))) +
+  geom_tile()
+```
+
+## Longline
+
+```{r}
+library(omar)
+source("R/rb_workflow.R")
+con <- connect_mar()
+```
+
+```{r}
+YEARS <- 2021
+vessels <- 
+  omar::vid_registry(con, standardize = TRUE) %>% 
+  # no dummy vessels
+  filter(!vid %in% c(0, 1, 3:5),
+         !is.na(vessel))
+gears <-
+  tbl_mar(con, "ops$einarhj.gid_orri_plus") %>% 
+  select(gid = veidarfaeri, gclass = gid2) %>% 
+  collect(n = Inf) %>% 
+  mutate(#description = ifelse(gid == 92, "G.halibut net", description),
+    gid = as.integer(gid),
+    gclass = as.integer(gclass))
+```
+
+
+### Logbooks
+
+PROCESSING STEPS:
+
+1. Get and merge logbook and landings data
+* gear correction part of the process
+2. Lump some gears
+3. Cap effort and end of action
+4. Mesh size "corrections"
+5. Set gear width proxy
+6. Set gear class
+
+
+8. Match vid with mobileid in stk - pending
+9. Add vessel information - only needed for ICES datacall - pending
+10. Add metier - only needed for ICES datacall - pending
+11. ICES rectangles - only needed for ICES datacall - pending
+12. Anonymize vid - only needed for ICES datacall - pending
+
+
+```{r}
+lb <- 
+  vessels %>% 
+  # need to carefully review the changes, went from mar to omar in the function call
+  #  the old process is in the rb_logbooks_2022
+  rb_logbook(YEARS)
+lb %>% count(gid)
+
+ # only vessels that are longlining, and that always fill out t0, t1, t2
+lb %>% 
+  mutate(crit = ifelse(!is.na(t0) & !is.na(t1) & !is.na(t2), TRUE, FALSE)) %>% 
+  group_by(vid) %>% 
+  summarise(n.settings = n(),
+            gid1 = sum(gid == 1),
+            crit = sum(crit),
+            .groups = "drop") %>% 
+  filter(n.settings == gid1) %>% 
+  filter(n.settings == crit) %>% 
+  arrange(n.settings) %>% 
+  filter(n.settings > 10) %>% 
+  pull(vid) ->
+  VIDs
+lb <- 
+  lb %>% 
+  filter(vid %in% VIDs) %>% 
+  # get the mobileid
+  #  Here we get into the problem that we have multiple mid for a vid
+  #  ergo: repeated records in the logbooks
+  left_join(tbl_mar(con, "ops$einarhj.MID_VID_ICELANDIC_20220418") %>% 
+              select(mid, vid) %>% 
+              collect(n = Inf),
+            by = "vid") %>% 
+  select(vid, mid, visir, gid, date, t0, t1, t2, effort, catch, fj_kroka)
+```
+
+```{r}
+MIDs <- 
+  lb %>% 
+  pull(mid) %>% 
+  unique()
+stk.raw <- 
+  omar::stk_trail(con, YEARS) %>% 
+  filter(mid %in% MIDs) %>% 
+  collect(n = Inf) %>% 
+  left_join(lb %>% select(vid, mid) %>% distinct()) %>% 
+  mutate(time = round_date(time, unit = "seconds"))
+# without extrapolations
+stk.tmp <- 
+  stk.raw %>% 
+  rb_interval_id2(lb, vid, time, t1, t2, visir) %>% 
+  rename(visir = .id) %>% 
+  mutate(fishing = if_else(!is.na(visir),TRUE, FALSE, FALSE)) 
+stk.tmp %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  mapdeck %>% 
+  add_scatterplot(fill_colour = "fishing",
+                  radius = 500,
+                  palette = "inferno")
+```
+
+
+```{r}
+tmp <-
+  stk.tmp %>% 
+  filter(fishing) %>%
+  # try also filtering speed
+  filter(between(speed, 0.375, 2.750)) %>% 
+  select(vid, visir, lon, lat) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  group_by(vid, visir) %>% 
+  summarise(do_union = FALSE,
+            .groups = "drop") %>% 
+  st_cast("LINESTRING")
+tmp %>% 
+  slice(1:10) %>% 
+  select(visir) %>% 
+  mutate(visir = as_factor(visir)) %>% 
+  plot()
+
+tmp %>% 
+  #sample_n(1000) %>% 
+  mutate(length = as.numeric(st_length(.))) %>% 
+  st_drop_geometry() %>% 
+  left_join(lb %>% select(vid, visir, effort)) %>% 
+  filter(between(effort, 13000, 19400) | between(effort, 36000, 46000)) %>% 
+  mutate(small = ifelse(effort < 20000, TRUE, FALSE)) %>% 
+  mutate(n = effort / length) %>% 
+  mutate(n = ifelse(n > 2, 2, n)) %>% 
+  ggplot(aes(n)) +
+  geom_histogram(binwidth = 0.05) +
+  facet_wrap(~ small, ncol = 1, scales = "free_y") +
+  scale_x_continuous(breaks = seq(0, 2, by = 0.1))
+
+
+
+tmp10 <-
+  tmp %>% 
+  #sample_n(1000) %>% 
+  mutate(length = as.numeric(st_length(.)) / 1852) %>% 
+  st_drop_geometry() %>% 
+  left_join(lb %>% select(vid, visir, effort)) 
+tmp10 %>% 
+  filter(effort < 70000) %>% 
+  filter(length < 100) %>% 
+  mutate(effort.class = case_when(effort < 21000 ~ "1",
+                                  between(effort, 21000, 35000) ~ "2",
+                                  TRUE ~ "3")) %>% 
+  ggplot(aes(effort, length)) +
+  geom_smooth(aes(group = effort.class),
+              method = "lm") +
+  geom_jitter(alpha = 0.1, size = 0.5, colour = "red") +
+  scale_x_log10() +
+  scale_y_log10()
+tmp10.median <- 
+  tmp10 %>% 
+  filter(effort < 70000) %>% 
+  filter(length < 100) %>% 
+  mutate(effort = plyr::round_any(effort, 1000)) %>% 
+  group_by(effort) %>% 
+  summarise(n = n(),
+            median = median(length))
+tmp10.median %>% 
+  filter(n > 20) %>% 
+  ggplot(aes(effort, median)) +
+  geom_smooth(method = "lm") +
+  geom_point() +
+  expand_limits(x = 0, y = 0)
+tmp10 %>% 
+  filter(effort < 70000) %>% 
+  filter(length < 40) %>% 
+  ggplot(aes(effort, length)) +
+  geom_jitter(alpha = 0.1, size = 0.5, colour = "red") +
+  geom_point(data = tmp10.median %>% filter(n > 15), 
+             aes(effort, median), colour = "blue", size = 2)
+
+
+tmp10 %>% 
+  filter(effort < 70000) %>% 
+  filter(length < 100) %>% 
+  ggplot(aes(effort, length)) +
+  geom_hex()
+tmp10 %>% 
+  count(vid, effort) %>% 
+  arrange(n)
+  
+```
+
+
+```{r}
+knitr::opts_chunk$set(eval = FALSE)
+```
+
+
+
+# INTERPOLATIONS
+
+
+```{r}
+# before interpolation, filter out whacky points
+```
+
+```{r}
+grid <- 
+  expand_grid(vid = unique(lb$vid),
+                    time = seq(ymd_hms("2021-01-01 00:00:00"),
+                               ymd_hms("2021-12-31 23:59:00"),
+                               by = "min")) %>% 
+  arrange(vid, time)
+```
+
+
+## HERE THINGS GO WRONG
+
+### VID 2817
+
+```{r}
+VID <- 2817
+stk.tmp %>% 
+  filter(vid == VID) %>% 
+  arrange(fishing) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  mapdeck() %>% 
+  add_scatterplot(fill_colour = "fishing",
+                  radius = 100,
+                  palette = "inferno")
+stk.tmp %>% 
+  filter(vid == VID) %>% 
+  ggplot(aes(time, speed)) +
+  geom_vline(xintercept = lb %>% filter(vid == VID) %>% pull(t2), colour = "blue") +
+  geom_point(size = 0.2, colour = "red")
+grd.tmp <- 
+  grid %>% 
+  filter(vid == VID) %>% 
+  left_join(stk.raw %>% filter(vid == VID) %>% distinct(time, .keep_all = TRUE),
+            by = c("vid", "time")) %>% 
+  arrange(vid, time) %>% 
+  group_by(vid) %>% 
+  mutate(y = 1:n(),
+         lon = approx(y, lon, y, method = "linear", rule = 1, f = 0, ties = mean)$y,
+         lat = approx(y, lat, y, method = "linear", rule = 1, f = 0, ties = mean)$y,
+         speed = approx(y, speed, y, method = "linear", rule = 1, f = 0, ties = mean)$y) %>% 
+
+grd.tmp %>% 
+  #filter(!is.na(lon)) %>% 
+  ggplot(aes(time, speed)) +
+  geom_vline(xintercept = lb %>% filter(vid == VID) %>% pull(t2),
+             colour = "blue") +
+  geom_point(size = 0.2, colour = "red")
+
+
+tmp2 %>% 
+  filter(!is.na(lon)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  mapdeck() %>% 
+  add_scatterplot(fill_colour = "speed",
+                  radius = 100,
+                  palette = "inferno")
+```
+
+
+### VID 2739
+
+```{r}
+VID <- 2739
+tmp %>% 
+  filter(vid == VID) %>% 
+  arrange(fishing) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  mapdeck() %>% 
+  add_scatterplot(fill_colour = "fishing",
+                  radius = 500,
+                  palette = "inferno")
+
+
+
+tmp2 <- 
+  grid %>% 
+  filter(vid == VID) %>% 
+  left_join(stk.raw %>% filter(vid == VID) %>% distinct(time, .keep_all = TRUE),
+            by = c("vid", "time")) %>% 
+  arrange(vid, time) %>% 
+  group_by(vid) %>% 
+  mutate(y = 1:n(),
+         lon = approx(y, lon, y, method = "linear", rule = 1, f = 0, ties = mean)$y,
+         lat = approx(y, lat, y, method = "linear", rule = 1, f = 0, ties = mean)$y,
+         speed = approx(y, speed, y, method = "linear", rule = 1, f = 0, ties = mean)$y) %>% 
+  ungroup()
+tmp2 %>% 
+  filter(!is.na(lon)) %>% 
+  ggplot(aes(time, speed)) +
+  geom_vline(xintercept = lb %>% filter(vid == VID) %>% pull(t2),
+             colour = "blue") +
+  geom_point(size = 0.2, colour = "red")
+
+
+tmp2 %>% 
+  filter(!is.na(lon)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  mapdeck() %>% 
+  add_scatterplot(fill_colour = "speed",
+                  radius = 100,
+                  palette = "inferno")
+```
+
+
+
+```{r}
+
+
+d <-
+  grid %>% 
+  left_join(stk.raw) %>% 
+  group_by(vid) %>% 
+  mutate(y = 1:n()) %>% 
+  rb_interval_id2(lb, vid, time, t1, t2, visir) %>% 
+  #filter(vid %in% VIDs[11:20]) %>% 
+  mutate(fishing = ifelse(!.id, TRUE, FALSE))
+d
+
+
+
+
+
+d %>% count(vid)
+tmp <- 
+  d %>% 
+  ungroup() %>% 
+  filter(vid == 2739) %>% 
+  mutate(lon = approx(y, lon, y, method = "linear", rule = 1, f = 0, ties = mean)$y,
+         lat = approx(y, lat, y, method = "linear", rule = 1, f = 0, ties = mean)$y,
+         speed = approx(y, speed, y, method = "linear", rule = 1, f = 0, ties = mean)$y) %>% 
+  rb_interval_id2(lb %>% filter(vid == 2739), vid, time, t1, t2, visir)
+tmp %>% 
+  filter(!is.na(lon)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  mapdeck() %>% 
+  add_scatterplot(fill_colour = "speed",
+                  palette = "inferno")
+```
+

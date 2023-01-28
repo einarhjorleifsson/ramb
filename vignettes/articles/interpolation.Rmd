@@ -1,0 +1,241 @@
+---
+title: "Interpolations"
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  message = FALSE, 
+  warning = FALSE,
+  collapse = TRUE,
+  error = TRUE,
+  comment = "#>"
+)
+```
+
+**NOTE**: 
+
+* just a templated document so far, need to code
+* check out and compare jepol's function and the traipse::track_intermediate
+
+```{r, eval = FALSE}
+library(data.table)
+library(sf)
+library(traipse)
+library(tidyverse)
+# code snippet example, needs further work
+tmp <-
+  out.eh %>% 
+  filter(vessel_id == 1) %>% 
+  group_by(vessel_id, tid) %>% 
+  mutate(x = track_intermediate(lon, lat,
+                                date = time_stamp, duration = 2)) %>% 
+  ungroup()
+tmp %>% 
+  unnest(x)
+
+hb <- 
+  ramb::read_is_harbours() %>%
+  filter(iso2a == "IS",
+         # filter out some smaller harbours, cause a nuisance downstream
+         !hid %in% c("HRI", "ASS", "HAU", "GRE", "MJH", "MJO", "AED", "HJA")) %>% 
+  mutate(hid = 1:n())
+d <- 
+  ramb::read_is_survey_tracks() %>% 
+  mutate(.rid = 1:n()) %>% 
+  arrange(vid, time) %>% 
+  select(.rid, everything()) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326,
+           remove = FALSE) %>% 
+  st_join(hb %>% select(hid)) %>% 
+  st_drop_geometry() %>% 
+  # here check for wacky points
+  group_by(vid) %>% 
+  mutate(pings = n(),
+         sd = ifelse(pings > 3, track_distance(lon, lat), NA_real_),
+         ss = ifelse(pings > 3, track_speed(lon, lat, time), NA_real_),
+         st = track_time(time),
+         duration = sum(st) / 60,      # duration in minutues
+         whacky = ramb::rb_whacky_speed(lon, lat, time)) %>% 
+  ungroup()
+# define trips, then interpolate
+d <- 
+  d %>% 
+  group_by(vid) %>% 
+  mutate(inh = !is.na(hid),
+         tid = ramb::rb_trip(inh)) %>% 
+  ungroup()
+d %>% 
+  filter(vid == 1131, tid == 1) %>% 
+  filter(between(lon, -22, -10),
+         between(lat, 66.25, 70)) %>% 
+  group_by(vid, tid) %>% 
+  mutate(x = track_intermediate(lon, lat,
+                                date = time, duration = 10*60)) %>% 
+  ungroup() %>% 
+  unnest(x) %>% 
+  ggplot() +
+  geom_point(aes(int_x, int_y), colour = "blue", size = 0.7) +
+  geom_point(aes(lon, lat), colour = "red", size = 0.3) +
+  coord_quickmap()
+  ```
+
+
+## Comparison on trip calculation
+
+```{r}
+library(data.table)
+library(traipse)
+library(tidyverse)
+```
+
+Data:
+
+```{r}
+hbs  <- readRDS("~/ass/2021/WKSSFGEO/github/WKSSFGEO/data/harbours.rds")
+githubURL1 <- "https://raw.githubusercontent.com/ices-eg/WKSSFGEO/main/data-examples/example_data_AIS.csv"
+d <- 
+  readr::read_csv(githubURL1) %>% 
+  unique(by = c("vessel_id", "time_stamp")) %>% # Remove duplicates
+  mutate(vessel_id = str_sub(vessel_id, 4) %>% as.integer(),
+         .rid = 1:n())
+```
+
+
+Jeppe:
+
+```{r}
+devtools::source_url("https://raw.githubusercontent.com/ices-eg/WKSSFGEO/main/R-dev/jepol/define_trips_pol.R")
+devtools::source_url("https://raw.githubusercontent.com/ices-eg/WKSSFGEO/main/R-dev/jepol/add_harbours.R")
+# devtools::source_url("https://raw.githubusercontent.com/ices-eg/WKSSFGEO/main/R-dev/jepol/interpolate_ais.R")
+system.time(out.jp <-
+              readr::read_csv(githubURL1) %>% 
+              unique(by = c("vessel_id", "time_stamp")) %>% # Remove duplicates
+              mutate(vessel_id = str_sub(vessel_id, 4) %>% as.integer(),
+                     .rid = 1:n()) %>% 
+              setDT() %>% 
+              add_harbours(hbs) %>% 
+              define_trips_pol(min_dur = 0.0001, max_dur = 50e6, 
+                               split_trips = FALSE, preserve_all = TRUE))
+```
+
+Einar:
+
+```{r}
+rb_trip <- function(x) {
+  tibble::tibble(x = x) %>% 
+    dplyr::mutate(tid = dplyr::if_else(x != dplyr::lag(x), 1L, 0L, 1L),
+                  tid = ifelse(x, -tid, tid)) %>% 
+    dplyr::group_by(x) %>% 
+    dplyr::mutate(tid = cumsum(tid)) %>% 
+    dplyr::ungroup(x) %>% 
+    dplyr::pull(tid)
+}
+
+system.time(out.eh <- 
+              readr::read_csv(githubURL1) %>% 
+              unique(by = c("vessel_id", "time_stamp")) %>% # Remove duplicates
+              mutate(vessel_id = str_sub(vessel_id, 4) %>% as.integer(),
+                     .rid = 1:n()) %>% 
+              sf::st_as_sf(coords = c("lon", "lat"),
+                           crs = 4326,
+                           remove = FALSE) %>% 
+              sf::st_join(hbs %>% mutate(hid = 1:n()) %>% select(hid)) %>% 
+              sf::st_drop_geometry() %>% 
+              group_by(vessel_id) %>% 
+              mutate(inh = !is.na(hid),
+                     tid = rb_trip(inh)) %>% 
+              ungroup())
+
+
+# Pad harbour id, adding harbour id left to the first ping of a trip and harbour id entered
+#  to the last ping of the trip.
+rb_pad_harbour <- function(tid, hid) {
+  tibble::tibble(.tid = tid,
+                 .hid = hid) %>% 
+    dplyr::mutate(.hid = dplyr::case_when(.tid !=  dplyr::lag(.tid) & .tid > 0 ~  dplyr::lag(.hid),
+                                          .tid != dplyr::lead(.tid) & .tid > 0 ~ dplyr::lead(.hid),
+                                          TRUE ~ .hid)) %>% 
+    dplyr::pull(.hid)
+}
+out.eh %>% 
+  group_by(vessel_id) %>% 
+  mutate(hid = rb_pad_harbour(tid, hid)) %>% 
+  filter(tid > 0) %>% 
+  group_by(vessel_id, tid) %>% 
+  slice_tail(n = 1) %>% 
+  view()
+```
+
+Number of records:
+
+```{r}
+tibble(original = nrow(d),
+       jp = nrow(out.jp),
+       eh = nrow(out.eh))
+```
+
+Any vessel difference?:
+
+```{r}
+full_join(out.eh %>% count(vessel_id, name = "n.eh"),
+          out.jp %>% count(vessel_id, name = "n.jp"))
+```
+
+So vessels 5 and 8 not returned in the jp-workflow.
+
+```{r}
+out.eh %>% 
+  filter(vessel_id %in% c(5, 8)) %>% 
+  count(vessel_id, inh)
+```
+
+Reason seemms the jp-flow does not return records if all pings are in harbour. This may be intentional - should possibly be mentioned in the help file that this takes place.
+
+Number of pings per trip:
+
+```{r}
+full_join(out.eh %>% mutate(tid = ifelse(tid < 0, NA, tid)) %>% count(vessel_id, tid, name = "n.eh"),
+          out.jp %>% separate(trip_id, c("dummy", "tid"), convert = TRUE) %>% count(vessel_id, tid, name = "n.jp")) %>% 
+  mutate(diff = n.eh - n.jp) %>% 
+  knitr::kable()
+```
+
+So difference is in all cases except vessel 7, trip 8 one less ping in the eh-algorithm compared with the jp-algoritm. 
+
+```{r}
+tmp <-
+  out.eh %>%
+  select(.rid, vessel_id, time_stamp, hid.eh = hid, inh, tid.eh = tid) %>%
+  full_join(out.jp %>% as_tibble() %>% select(.rid, hid.jp = SI_HARB, tid.jp = trip_id) %>% mutate(in.jp = TRUE)) %>%
+  mutate(in.jp = replace_na(in.jp, TRUE)) %>%
+  separate(tid.jp, c("dummy", "tid.jp"), convert = TRUE) %>%
+  select(-dummy)
+```
+
+The reason for the difference of one is that the jp-algorithm includes the first harbour ping at the end of a trip as being part of the trip. Case in point:
+
+```{r}
+tmp %>% 
+  filter(vessel_id == 1, tid.jp == 1) %>% 
+  tail()
+```
+
+What about vessel 7, trip 8? 
+
+```{r}
+tmp %>% 
+  filter(vessel_id == 7, tid.jp == 8) %>% 
+  data.table()
+```
+
+Seems like the last record for this trip did not terminate in a harbour, as illustrated here (actually it does not even start in a harbour):
+
+```{r}
+out.eh %>% 
+  filter(vessel_id == 7, .rid > 137770) %>% 
+  sf::st_as_sf(coords = c("lon", "lat"),
+               crs = 4326) %>% 
+  mutate(tid = as.character(tid)) %>% 
+  mapview::mapview(zcol = "tid")
+```

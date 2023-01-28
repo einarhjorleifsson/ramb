@@ -1,0 +1,81 @@
+---
+title: "EDA on WKSSFGEO Danish vessel data"
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  message = FALSE, 
+  warning = FALSE,
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+
+```{r}
+library(traipse)
+library(tidyverse)
+```
+
+```{r}
+fil <- "https://raw.githubusercontent.com/ices-eg/WKSSFGEO/main/data-examples/example_data_AIS.csv"
+d <- 
+  read_csv(fil) %>% 
+  rename(vid = vessel_id,
+         time = time_stamp,
+         gid = gear) %>% 
+  distinct() %>% 
+  mutate(vid = str_sub(vid, 4) %>% as.integer(),
+         # original row number
+         .rid = 1:n()) %>% 
+  arrange(vid, time)
+```
+
+## Distinctness
+
+
+... time, lon and lat
+
+```{r}
+d2 <-
+  d %>% 
+  group_by(vid, time, lon, lat) %>% 
+  mutate(nd.tll = n()) %>% 
+  ungroup()
+```
+
+```{r}
+d2 %>% 
+  filter(nd.tll > 1) %>% 
+  as.data.frame()
+```
+
+... so we have 4 pair of records whose difference seems only to be in variable `gid` and `behaviour`. Let's keep the first record:
+
+```{r}
+d <- 
+  d %>% 
+  distinct(vid, time, lon, lat, .keep_all = TRUE) %>% 
+  # renumber rows
+  mutate(.rid = 1:n())
+```
+
+... lets check time duplicates:
+
+```{r}
+d %>% 
+  group_by(vid, time) %>% 
+  mutate(nd.t = n()) %>% 
+  ungroup() %>% 
+  filter(nd.t > 1) %>% 
+  group_by(vid, time) %>% 
+  mutate(same.lon = near(lon, lead(lon)),
+         same.lat = near(lon, lead(lat)),
+         same.seed = near(speed, lead(speed)),
+         same.course = near(course, lead(course))) %>% 
+  as.data.frame()
+```
+
+... so lon, lat, speed and course are different. The question that may need to be addressed is if the time is the error here but the rest of the variables are correct?
+
+

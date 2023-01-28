@@ -7,3 +7,7 @@
 ^basics$
 ^Basic functionality$
 ^vignettes/articles$
+^supplement$
+^data-raw$
+TOPSECRET.R
+^zgarbage$

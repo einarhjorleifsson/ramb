@@ -1,0 +1,31 @@
+---
+title: "Machine-learning 2"
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  message = FALSE, 
+  warning = FALSE,
+  collapse = TRUE,
+  error = TRUE,
+  comment = "#>"
+)
+```
+
+```
+https://hal.archives-ouvertes.fr/hal-03116922/document
+
+https://dataverse.ird.fr/dataset.xhtml?persistentId=doi:10.23708/IBZJGD
+
+check data and scripts in data-raw
+```
+
+
+```{r}
+library(sf)
+library(tidyverse)
+load("~/r/Pakkar2/ramb/data-raw/Supplementary material2_Data_gillnet.Rdata")
+d <- gillnet_dataset
+glimpse(d)
+```
+
