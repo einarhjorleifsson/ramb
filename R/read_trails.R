@@ -39,7 +39,7 @@ rb_read_trails <- function(con, VID, YEARS, use_PAM = FALSE) {
   } else {
     
     pam <- 
-      omar::mmsi_vessel(con) |> 
+      omar::mmsi_icelandic_registry(con) |> 
       dplyr::select(vid, mmsi) |> 
       dplyr::filter(vid %in% VID) |> 
       dplyr::left_join(omar::pame_trail(con),
@@ -47,7 +47,11 @@ rb_read_trails <- function(con, VID, YEARS, use_PAM = FALSE) {
       dplyr::filter(time >= to_date(D1, "YYYY:MM:DD"),
                     time <= to_date(D2, "YYYY:MM:DD")) %>% 
       dplyr::select(-c(mmsi, imo, vessel, flag)) |> 
-      dplyr::collect(n = Inf)
+      dplyr::collect(n = Inf) |> 
+      # what happens if nrow == 0?
+      dplyr::mutate(source = "pam") |> 
+      dplyr::mutate(speed = rb_ms2kn(speed))
+      
   }
   # if(nrow(pam) > 10) {
   #   pam <- 
@@ -76,7 +80,8 @@ rb_read_trails <- function(con, VID, YEARS, use_PAM = FALSE) {
                   lat = NA_real_,
                   source = "lgs") |> 
     dplyr::arrange(time) %>% 
-    dplyr::distinct(time, .keep_all = TRUE)
+    dplyr::distinct(time, .keep_all = TRUE) |> 
+    dplyr::mutate(source = "lbs")
   
   ais <-
     dplyr::bind_rows(stk,
