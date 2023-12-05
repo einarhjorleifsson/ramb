@@ -4,12 +4,30 @@
 \alias{rb_mapdeck}
 \title{Plot trails}
 \usage{
-rb_mapdeck(d, col = "speed", add_harbour = TRUE)
+rb_mapdeck(
+  d,
+  col = "speed",
+  tooltip = "speed",
+  add_harbour = TRUE,
+  no_lines = TRUE,
+  highlight_colour = "black",
+  stroke_colour = "cyan"
+)
 }
 \arguments{
 \item{d}{a tibble containing trails}
 
 \item{col}{the variable that controls colour}
+
+\item{tooltip}{the variable to show as tooltip}
+
+\item{add_harbour}{add harbour (default TRUE)}
+
+\item{no_lines}{plot track as lines (default = TRUE)}
+
+\item{highlight_colour}{colour of track (default black)}
+
+\item{stroke_colour}{stroke colour of track (default cyan)}
 }
 \value{
 a mapdeck map

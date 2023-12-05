@@ -6,7 +6,7 @@ library(lubridate)
 library(tidyverse)
 library(mar)
 con <- connect_mar()
-source("TOPSECRET.R")
+# source("TOPSECRET.R")
 
 # The creel data ---------------------------------------------------------------
 prj <- '+proj=utm +zone=30 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0'

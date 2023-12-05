@@ -2,7 +2,7 @@
 % Please edit documentation in R/read_trails.R
 \name{rb_read_trails}
 \alias{rb_read_trails}
-\title{Read all trails}
+\title{Read all trails - redundant}
 \usage{
 rb_read_trails(con, VID, YEARS, use_PAM = FALSE)
 }
@@ -17,5 +17,5 @@ rb_read_trails(con, VID, YEARS, use_PAM = FALSE)
 a tibble
 }
 \description{
-Read all trails
+Read all trails - redundant
 }

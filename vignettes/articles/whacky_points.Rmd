@@ -2,9 +2,13 @@
 title: "Whacky points"
 ---
 
+https://besjournals.onlinelibrary.wiley.com/doi/10.1111/1365-2656.13610
+
+https://pratikunterwegs.github.io/atlastools/
 
 https://nmml.github.io/tidy-movt-modeling/outlier-locs.html
 
+https://github.com/pratikunterwegs/watlastools
 
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
@@ -27,16 +31,71 @@ library(mapview)
 library(traipse)
 library(lubridate)
 library(tidyverse)
-source("~/r/Pakkar2/ramb/TOPSECRET.R")
+library(patchwork)
+library(argosfilter)
+source("~/R/Pakkar2/ramb/TOPSECRET.R")
+```
+
+```{r}
+whacks <- c(5, 10, 11, 15, 16, 17, 27:31)
+w <-
+  tibble(time = seq(ymd_hms("2022-10-15 00:00:00"),
+                    ymd_hms("2022-10-15 01:00:00"),
+                    by = "60 sec")) |> 
+  mutate(vid = 1,      # vessel id
+         tid = 1,      # trip id
+         .rid = 1:n(), # unique number
+         lat = seq(62, 62.2, length.out = max(.rid)),
+         lon = -25,
+         lon = ifelse(.rid %in% whacks, -24, lon),
+         whacks = ifelse(.rid %in% whacks, TRUE, FALSE),
+         lat = ifelse(.rid == 40, 62.04, lat),
+         lon = ifelse(.rid == 40, -25.04, lon),
+         whacks = ifelse(.rid == 40, TRUE, whacks),
+         speed = ramb::rb_speed(lon, lat, time)) |> 
+  select(vid, tid, .rid, lon, lat, time, speed, whacks)
+p1 <- 
+  w |> 
+  ggplot(aes(lon, lat)) +
+  geom_path() +
+  geom_point(aes(colour = whacks), size = 0.5) +
+  scale_colour_manual(values = c("FALSE" = "darkgreen", "TRUE" = "red"))
+p2 <-
+  w |> 
+  ggplot(aes(time, speed)) +
+  geom_line() +
+  geom_point(aes(colour = whacks), size = 0.5) +
+  scale_y_log10() +
+  scale_colour_manual(values = c("FALSE" = "darkgreen", "TRUE" = "red"))
+
+p1 + p2 + plot_layout(guides = "collect")
+```
+
+## Argos filter (vmask)
+
+```{r}
+w_argos <- 
+  w |> 
+  mutate(v = vmask(lat, lon, time, vmax = rb_kn2ms(15)))
+p1 <- 
+  w_argos |> 
+  ggplot(aes(lon, lat)) +
+  theme_bw() +
+  geom_path() +
+  geom_point(aes(colour = v), size = 1) +
+  scale_colour_manual(values = c("end_location" = "darkgreen",
+                                 "not" = "darkgreen",
+                                 "removed" = "red"))
+p1
 ```
 
 
 ```{r}
 whacks <- c(5, 10, 11, 15, 16, 17, 27:31)
-whacky.trail <-
+w <-
   tibble(time = seq(ymd_hms("2022-10-15 00:00:00"),
-                  ymd_hms("2022-10-15 01:00:00"),
-                  by = "60 sec")) |> 
+                    ymd_hms("2022-10-15 01:00:00"),
+                    by = "60 sec")) |> 
   mutate(id = 1:n(),
          lat = seq(62, 62.2, length.out = max(id)),
          lon = -25,
@@ -48,11 +107,89 @@ whacky.trail <-
   #slice(1:20) |> 
   mutate(id = 1) |> 
   select(lon, lat, time, id, whacks)
-whacky.trail |> 
+w |> 
   ggplot(aes(lon, lat)) +
   geom_path() +
   geom_point(aes(colour = whacks))
+```
 
+We can derive the speed as follows:
+
+```{r}
+w <-
+  w |> 
+  mutate(speed = traipse::track_speed(lon, lat, time) |> ramb::rb_ms2kn())
+w |> 
+  ggplot(aes(time, speed)) +
+  geom_line() +
+  geom_point(aes(colour = whacks)) +
+  scale_y_log10()
+```
+
+We could try this (taniamendo):
+
+```{r}
+rb_lh <- function(df, speed_filter = 25) {
+  org <- df
+  repeat { 
+    # here it is assumed that speed is already in place
+    subset <-
+      df %>%
+      filter(speed > speed_filter)
+    
+    sel <- factor(subset$seq)
+    
+    nrows <- length(sel)
+    
+    if (nrows==0) {
+      break
+    } else {
+      df <- df[!df$seq %in% sel,] 
+    }
+    
+    df |> 
+      group_by(device_id) |> 
+      mutate(speed = traipse::track_speed(lon, lat, time) |> ramb::rb_ms2kn())
+    
+    if(FALSE) {
+    df <-
+      df%>%
+      group_by(device_id)%>%
+      mutate(dx=c(0, abs(diff(x_utm))),
+             dy=c(0, abs(diff(y_utm))),
+             dt=c(0, abs(diff(time_stamp))))
+    
+    df <-
+      df %>%
+      group_by(device_id)%>%
+      mutate(dist = sqrt(dx^2 + dy^2),
+             dt=c(0,abs(diff(time_stamp))))
+    
+    df$speed <- df$dist / df$dt * 1.943
+    }
+    
+  }
+  
+  org |> 
+    
+  return(df)
+  
+}
+
+```
+
+```{r}
+w |> 
+  rename(device_id = id) |> 
+  mutate(seq = 1:n()) |> 
+  rb_lh() |> 
+  ggplot(aes(lon, lat)) +
+  geom_path() +
+  geom_point(aes(colour = whacks))
+```
+
+
+```{r}
 lh <- function(d) {
   tr <- d |> dplyr::select(lon, lat, time) |> mutate(id = 1)
   sp::coordinates(tr) <- ~lon+lat
@@ -61,7 +198,7 @@ lh <- function(d) {
   d$.whacky <- !trip::speedfilter(tr, max.speed = ramb::rb_kn2ms(20) / 1000 * 60 * 60)
   return(d)
 }
-whacky.trail |> 
+w |> 
   lh() |> 
   ggplot(aes(lon, lat)) +
   geom_path() +
@@ -70,19 +207,19 @@ whacky.trail |>
 
 
 
-d <- whacky.trail |> select(-whacks)
+d <- w |> select(-whacks)
 trip(d)
 sp::coordinates(d) <- ~lon+lat
 sp::proj4string(d) <- sp::CRS("+proj=longlat +datum=WGS84", doCheckCRSArgs = FALSE)
 tr <- trip(d, c("time", "id"))
-whacky.trail$whacky <- !speedfilter(tr, max.speed = ramb::rb_kn2ms(20) / 1000 * 60 * 60)
-whacky.trail
-whacky.trail |> rb_mapdeck(col = "whacky")
-whacky.trail |> 
+w$whacky <- !speedfilter(tr, max.speed = ramb::rb_kn2ms(20) / 1000 * 60 * 60)
+w
+w |> rb_mapdeck(col = "whacky")
+w |> 
   count(whacks, whacky)
 
-whacky.trail$whacky2 <- !sda(tr, smax = ramb::rb_kn2ms(20) / 1000 * 60 * 60, distlim = c(0.001, 1))
-whacky.trail
+w$whacky2 <- !sda(tr, smax = ramb::rb_kn2ms(20) / 1000 * 60 * 60, distlim = c(0.001, 1))
+w
 ```
 
 ```{r}
@@ -254,7 +391,7 @@ d.whacky %>%
   ggplot(aes(lon, lat)) +
   geom_path(aes(group = paste(vid, year, tid))) +
   geom_point(data = d.whacky %>% filter(lon < -10, lat > 62.5) %>% arrange(whacky),
-  aes(colour = factor(whacky)))
+             aes(colour = factor(whacky)))
 d.whacky %>% 
   filter(whacky == 0) %>% 
   mutate(tid = paste(vid, year, tid)) %>% 

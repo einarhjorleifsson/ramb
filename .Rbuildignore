@@ -8,6 +8,7 @@
 ^Basic functionality$
 ^vignettes/articles$
 ^supplement$
-^data-raw$
+data-raw
+data-raw/DATASET.R
 TOPSECRET.R
 ^zgarbage$

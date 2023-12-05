@@ -1,7 +1,7 @@
 Package: ramb
 Type: Package
 Title: Rambling
-Version: 0.2.0
+Version: 2023.12.05
 Authors@R: c(
   person("Einar", "Hjörleifsson", role = c("aut", "cre"), email = "einar.hjorleifsson@gmail.com")
   )

@@ -1,11 +1,77 @@
-#' Read all trails
+#' Mapping between mobileid and vessel id
+#'
+#' @param con oracle connection
+#'
+#' @return a query
+#'
+rb_mobile_vid <- function(con) {
+  tbl_mar(con, "ops$einarhj.mobile_vid") |> 
+    dplyr::mutate(t1 = to_date(t1, "YYYY:MM:DD"),
+                  t2 = to_date(t2, "YYYY:MM:DD")) 
+}
+
+#' Query ais/vms database
+#'
+#' @name rb_stk_trail
+#'
+#' @param con oracle connection
+#'
+#'
+#' @return a query
+#'
+rb_stk_trail <- function(con, vid) {
+  
+  omar::tbl_mar(con, "stk.trail") %>%
+    dplyr::mutate(lon = poslon * 180 / pi,
+                  lat = poslat * 180 / pi,
+                  heading = heading * 180 / pi,
+                  speed = speed * 3600/1852) |> 
+    dplyr::select(mid = mobileid,
+                  time = posdate,
+                  lon, lat, speed, heading,
+                  hid = harborid,
+                  io = in_out_of_harbor,
+                  rectime = recdate)
+  
+}
+
+#' Read vessel trails
+#'
+#' @param con oracle connection
+#' @param vid vessel id, if missing the function returns all trails
+#'
+#' @return a tibble
+#' @export
+#'
+rb_trail <- function(con, vid) {
+  
+  if(!missing(vid)) {
+    VID <- vid
+    q <- 
+      rb_mobile_vid(con) |> 
+      dplyr::filter(!is.na(pings) | link == "manual") |> 
+      dplyr::select(mid, vid, t1, t2) |> 
+      dplyr::filter(vid %in% VID) |> 
+      dplyr::left_join(rb_stk_trail(con),
+                       by = "mid") |> 
+      dplyr::filter(time >= t1,
+                    time <= t2) |> 
+      dplyr::select(-c(t1, t2))
+      
+  } else {
+    q <- 
+      rb_stk_trail(con)
+  }
+  return(q)
+}
+
+#' Read all trails - redundant
 #'
 #' @param con oracle connection
 #' @param VID vessel
 #' @param YEARS years
 #'
 #' @return a tibble
-#' @export
 #'
 rb_read_trails <- function(con, VID, YEARS, use_PAM = FALSE) {
   
@@ -51,23 +117,8 @@ rb_read_trails <- function(con, VID, YEARS, use_PAM = FALSE) {
       # what happens if nrow == 0?
       dplyr::mutate(source = "pam") |> 
       dplyr::mutate(speed = rb_ms2kn(speed))
-      
+    
   }
-  # if(nrow(pam) > 10) {
-  #   pam <- 
-  #     pam %>% 
-  #     dplyr::select(vid, 
-  #                   time,
-  #                   lon,
-  #                   lat) %>% 
-  #     dplyr::arrange(time) %>% 
-  #     dplyr::mutate(source = "pam",
-  #                   speed = traipse::track_speed(lon, lat, time),
-  #                   speed = rb_ms2kn(speed)) %>% 
-  #     # first record has speed as NA
-  #     tidyr::fill(speed, .direction = "up") |> 
-  #     dplyr::distinct(time, .keep_all = TRUE) 
-  # }
   
   
   lbs <- 
@@ -97,25 +148,6 @@ rb_read_trails <- function(con, VID, YEARS, use_PAM = FALSE) {
       dplyr::mutate(.rid = 1:dplyr::n()) %>% 
       dplyr::select(.rid, dplyr::everything())
   }
-    
-  # if(nrow(ais) > 100) {
-  #   ais <- 
-  #     ais %>% 
-  #     dplyr::arrange(vid, time) %>% 
-  #     dplyr::mutate(.rid = 1:dplyr::n()) %>% 
-  #     dplyr::select(.rid, dplyr::everything()) |> 
-  #     dplyr::group_by(vid) %>% 
-  #     # NA approximated, note not operating on a sphere, should not matter because distance small
-  #     dplyr::mutate(lon = approx(time, lon, time, method = "linear", rule = 1, f = 0, ties = mean)$y,
-  #                   lat = approx(time, lat, time, method = "linear", rule = 1, f = 0, ties = mean)$y,
-  #                   speed = ifelse(!is.na(speed),
-  #                                  speed,
-  #                                  # speed sometimes missing in the lgs gps
-  #                                  approx(time, speed, time, method = "linear", rule = 1, f = 0, ties = mean)$y)) |> 
-  #     dplyr::distinct(vid, time, .keep_all = TRUE) |> 
-  #     dplyr::ungroup() |> 
-  #     dplyr::filter(between(lon, -60, 60),
-  #                   between(lat,  50, 80))
-  # }
+  
   return(ais)
 }
