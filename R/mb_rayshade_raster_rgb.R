@@ -1,3 +1,10 @@
+#' Rayshayd
+#'
+#' @param r A {terra} raster
+#'
+#' @return A rgb {terra} raster
+#' @export 
+#'
 mb_rayshade_raster_rgb <- function(r) {
 
   # determine split ------------------------------------------------------------
