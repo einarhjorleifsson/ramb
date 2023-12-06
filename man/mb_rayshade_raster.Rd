@@ -4,10 +4,12 @@
 \alias{mb_rayshade_raster}
 \title{Rayshade raster}
 \usage{
-mb_rayshade_raster(r, zscale = 4)
+mb_rayshade_raster(r, zscale = 1)
 }
 \arguments{
 \item{r}{A single banded raster ({raster} or {terra}).}
+
+\item{zscale}{A value (default 1) dictating how much ...}
 }
 \value{
 A RGB array
@@ -17,4 +19,7 @@ An opinionated rayshading of rasterized bathymetry depth data.
 }
 \details{
 The returned object can be viewed via rayshader::plot_maps
+
+Generally the lower the zscale the more exaggeration. Suggest using a
+value 1 for 8x8 meter, value 2 for 16x6 meters, value 3 for 32x32 meters, ...
 }

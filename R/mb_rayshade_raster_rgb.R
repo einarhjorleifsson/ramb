@@ -1,11 +1,11 @@
 #' Rayshayd
 #'
 #' @param r A {terra} raster
-#'
+#' @param zscale Value (default 1) passed to rayshader
 #' @return A rgb {terra} raster
 #' @export 
 #'
-mb_rayshade_raster_rgb <- function(r) {
+mb_rayshade_raster_rgb <- function(r, zscale = 1) {
 
   # determine split ------------------------------------------------------------
   dr <- ceiling(nrow(r) / 4000)
@@ -43,7 +43,7 @@ mb_rayshade_raster_rgb <- function(r) {
       org[2] <- -3500
       org <-
         org |>
-        mb_rayshade_raster() |>
+        mb_rayshade_raster(zscale = zscale) |>
         mb_rayshade_to_rgb(org)
       org |>
         terra::writeRaster(filename = paste0(tempdir(), "/out/rs_", i, ".tiff"))

@@ -4,10 +4,12 @@
 \alias{mb_rayshade_raster_rgb}
 \title{Rayshayd}
 \usage{
-mb_rayshade_raster_rgb(r)
+mb_rayshade_raster_rgb(r, zscale = 1)
 }
 \arguments{
 \item{r}{A {terra} raster}
+
+\item{zscale}{Value (default 1) passed to rayshader}
 }
 \value{
 A rgb {terra} raster
