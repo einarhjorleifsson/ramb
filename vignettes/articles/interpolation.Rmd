@@ -78,7 +78,7 @@ d %>%
   geom_point(aes(int_x, int_y), colour = "blue", size = 0.7) +
   geom_point(aes(lon, lat), colour = "red", size = 0.3) +
   coord_quickmap()
-  ```
+```
 
 
 ## Comparison on trip calculation

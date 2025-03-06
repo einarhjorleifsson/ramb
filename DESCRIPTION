@@ -31,4 +31,5 @@ Imports:
     traipse,
     trip
 Suggests: 
+    ggnewscale,
     rmarkdown

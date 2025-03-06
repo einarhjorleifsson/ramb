@@ -33,10 +33,10 @@ ramb::creel %>%
   ramb::rb_gaussian() %>% 
   dplyr::glimpse()
 #> number of iterations= 18 
-#> number of iterations= 23 
-#> number of iterations= 48 
-#> number of iterations= 20 
-#> number of iterations= 74 
+#> number of iterations= 25 
+#> number of iterations= 50 
+#> number of iterations= 22 
+#> number of iterations= 72 
 #> Rows: 2,221
 #> Columns: 14
 #> $ id              <int> 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, …
@@ -71,7 +71,6 @@ ramb::creel %>%
 #> [1] ... Stable clustering
 #> Rows: 2,226
 #> Columns: 12
-#> Groups: id [5]
 #> $ id        <int> 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, …
 #> $ time      <dttm> 2017-05-19 06:50:28, 2017-05-19 06:51:28, 2017-05-19 06:52:…
 #> $ lon       <dbl> -4.113320, -4.116755, -4.120097, -4.123131, -4.125934, -4.12…
@@ -94,7 +93,7 @@ ramb::creel %>%
 #> number of iterations= 19 
 #> number of iterations= 50 
 #> number of iterations= 20 
-#> number of iterations= 86 
+#> number of iterations= 87 
 #> Rows: 2,221
 #> Columns: 11
 #> $ id        <int> 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, …
