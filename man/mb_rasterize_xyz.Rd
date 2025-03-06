@@ -4,7 +4,7 @@
 \alias{mb_rasterize_xyz}
 \title{Rasterize xyz data}
 \usage{
-mb_rasterize_xyz(xyz, r0, agg = 1, fun = "mean")
+mb_rasterize_xyz(xyz, r0, agg = 1, fun = "mean", no_trim = TRUE)
 }
 \arguments{
 \item{xyz}{A tiblle}
