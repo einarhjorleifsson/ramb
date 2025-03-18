@@ -16,7 +16,7 @@ mb_rasterize_xyz(xyz, r0, agg = 1, fun = "mean", no_trim = TRUE)
 \item{fun}{Normally mean or count}
 }
 \value{
-A {terra} raster
+A terra raster
 }
 \description{
 Rasterize xyz data

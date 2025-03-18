@@ -3,7 +3,7 @@
 #' Create a skeleton covering eez with no associated cell values.
 #' Make it divisable by 8, 16,  ..., 2048
 
-#' @return a {terra} raster
+#' @return a terra raster
 #' @export
 #'
 mb_base_raster <- function() {

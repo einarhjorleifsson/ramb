@@ -27,7 +27,7 @@ mb_rasterize_xyz <- function (xyz, r0, agg = 1, fun = "mean") {
 #' @param agg Level of aggregation (2, 4, ...)
 #' @param fun Normally mean or count
 #'
-#' @return A {terra} raster
+#' @return A terra raster
 #' @export
 #'
 mb_rasterize_xyz <- function(xyz, r0, agg = 1, fun = "mean", no_trim = TRUE) {

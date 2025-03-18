@@ -10,8 +10,8 @@ col2hex <- function (cname) {
 #' @param d a tibble containing trails
 #' @param col the variable that controls colour
 #' @param tooltip the variable to show as tooltip
-#' @param add_harbour add harbour (default TRUE)
 #' @param no_lines plot track as lines (default = TRUE)
+#' @param radius the radius of the points (default 400 m)
 #' @param highlight_colour colour of track (default black)
 #' @param stroke_colour stroke colour of track (default cyan)
 #' 
@@ -20,10 +20,9 @@ col2hex <- function (cname) {
 #' @export
 #'
 rb_mapdeck <- 
-  function(d, col = "speed", tooltip = "speed", add_harbour = TRUE, no_lines = TRUE,
+  function(d, col = "speed", tooltip = "speed", no_lines = TRUE,
+           radius = 400,
            highlight_colour = "black", stroke_colour = "cyan") {
-    
-    if(add_harbour) hb <- gisland::gl_read_is_harbours(trim = FALSE)
     
     if(!"sf" %in% class(d)) {
       d <- 
@@ -40,13 +39,6 @@ rb_mapdeck <-
     }
     
     m <- mapdeck::mapdeck() 
-    if(add_harbour) {
-      m <- 
-        m |> 
-        mapdeck::add_polygon(data = hb,
-                             fill_colour = col2hex("pink"),
-                             layer_id = "harbour")
-    }
     
     if(!no_lines) {
       m <- 
@@ -66,7 +58,7 @@ rb_mapdeck <-
     m |> 
       mapdeck::add_scatterplot(data = d,
                                fill_colour = col,
-                               radius = 400,
+                               radius = radius,
                                tooltip = tooltip,
                                layer_id = "points",
                                palette = "inferno",

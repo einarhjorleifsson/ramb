@@ -1,9 +1,9 @@
 #' Rayshayd
 #'
-#' @param r A {terra} raster
+#' @param r A terra raster
 #' @param zscale Value (default 1) passed to rayshader
 #' @param zrange In NULL (default) no scaling
-#' @return A rgb {terra} raster
+#' @return A rgb terra raster
 #' @export 
 #'
 mb_rayshade_raster_rgb <- function(r, zscale = 1, zrange = NULL) {

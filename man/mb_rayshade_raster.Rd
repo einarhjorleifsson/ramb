@@ -7,7 +7,7 @@
 mb_rayshade_raster(r, zscale = 1)
 }
 \arguments{
-\item{r}{A single banded raster ({raster} or {terra}).}
+\item{r}{A single banded raster (raster or terra).}
 
 \item{zscale}{A value (default 1) dictating how much ...}
 }

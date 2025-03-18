@@ -7,10 +7,9 @@
 mb_rashade_xyz_dynamic(
   xyz,
   r0,
-  ping_cutoff = 5,
+  ping_cutoff = 10,
   file_prefix = "tmp/tmp",
-  res = c(1, 2, 3, 4, 5),
-  agg = c(1, 2, 4, 8, 16)
+  max_meters = 1024
 )
 }
 \arguments{
@@ -22,9 +21,7 @@ mb_rashade_xyz_dynamic(
 
 \item{file_prefix}{xxx}
 
-\item{res}{xxx}
-
-\item{agg}{xxx}
+\item{max_meters}{Default 1024}
 }
 \description{
 Dynamic rayshading

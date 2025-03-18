@@ -34,9 +34,9 @@ ramb::creel %>%
   dplyr::glimpse()
 #> number of iterations= 18 
 #> number of iterations= 25 
-#> number of iterations= 50 
-#> number of iterations= 22 
-#> number of iterations= 72 
+#> number of iterations= 49 
+#> number of iterations= 23 
+#> number of iterations= 73 
 #> Rows: 2,221
 #> Columns: 14
 #> $ id              <int> 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, …
@@ -116,7 +116,7 @@ ramb::creel %>%
 #> number of iterations= 16 
 #> number of iterations= 19 
 #> number of iterations= 50 
-#> number of iterations= 21 
+#> number of iterations= 20 
 #> number of iterations= 86 
 #> Rows: 2,221
 #> Columns: 11

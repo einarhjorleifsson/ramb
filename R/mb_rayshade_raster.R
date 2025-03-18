@@ -7,7 +7,7 @@
 #' Generally the lower the zscale the more exaggeration. Suggest using a
 #' value 1 for 8x8 meter, value 2 for 16x6 meters, value 3 for 32x32 meters, ...
 #'
-#' @param r A single banded raster ({raster} or {terra}).
+#' @param r A single banded raster (raster or terra).
 #' @param zscale A value (default 1) dictating how much ... 
 #'
 #' @return A RGB array

@@ -8,8 +8,8 @@ rb_mapdeck(
   d,
   col = "speed",
   tooltip = "speed",
-  add_harbour = TRUE,
   no_lines = TRUE,
+  radius = 400,
   highlight_colour = "black",
   stroke_colour = "cyan"
 )
@@ -21,9 +21,9 @@ rb_mapdeck(
 
 \item{tooltip}{the variable to show as tooltip}
 
-\item{add_harbour}{add harbour (default TRUE)}
-
 \item{no_lines}{plot track as lines (default = TRUE)}
+
+\item{radius}{the radius of the points (default 400 m)}
 
 \item{highlight_colour}{colour of track (default black)}
 

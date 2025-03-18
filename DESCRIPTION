@@ -1,7 +1,7 @@
 Package: ramb
 Type: Package
 Title: Rambling
-Version: 2023.12.05
+Version: 2025.03.18
 Authors@R: c(
   person("Einar", "Hjörleifsson", role = c("aut", "cre"), email = "einar.hjorleifsson@gmail.com")
   )
@@ -12,12 +12,13 @@ Encoding: UTF-8
 LazyData: true
 Depends: 
     R (>= 3.5.0)
-RoxygenNote: 7.2.3
+RoxygenNote: 7.3.2
 Imports: 
     data.table,
     dplyr,
     EMbC,
     geo,
+    lubridate,
     magrittr,
     mapdeck,
     mixtools,
@@ -26,10 +27,13 @@ Imports:
     purrr, 
     readr,
     sf,
+    stringr,
+    terra,
     tibble,
     tidyr,
     traipse,
     trip
 Suggests: 
     ggnewscale,
+    rayshader,
     rmarkdown

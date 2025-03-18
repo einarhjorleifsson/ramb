@@ -7,7 +7,7 @@
 mb_base_raster()
 }
 \value{
-a {terra} raster
+a terra raster
 }
 \description{
 Create a skeleton covering eez with no associated cell values.
