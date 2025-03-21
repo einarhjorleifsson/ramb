@@ -40,7 +40,7 @@ rb_mmsi_category <- function(mmsi) {
 #' @param mmsi MMSI
 #' @param lookup A tibble
 #'
-#' @return
+#' @return A vector
 #' @export
 #'
 rb_mmsi_flag <- function(mmsi, lookup) {

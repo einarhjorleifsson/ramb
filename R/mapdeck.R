@@ -1,10 +1,3 @@
-# should add the alpa/transparency here
-col2hex <- function (cname) {
-  colMat <- col2rgb(cname)
-  rgb(red = colMat[1, ]/255, green = colMat[2, ]/255, blue = colMat[3, 
-  ]/255)
-}
-
 #' Plot trails
 #'
 #' @param d a tibble containing trails
@@ -24,6 +17,12 @@ rb_mapdeck <-
            radius = 400,
            highlight_colour = "black", stroke_colour = "cyan") {
     
+    col2hex <- function (cname) {
+      colMat <- col2rgb(cname)
+      grDevices::rgb(red = colMat[1, ]/255, green = colMat[2, ]/255, blue = colMat[3, 
+      ]/255)
+    }
+    
     if(!"sf" %in% class(d)) {
       d <- 
         d |> 
@@ -34,7 +33,7 @@ rb_mapdeck <-
     if(!no_lines) {
       track <- 
         d |> 
-        summarise(do_union = FALSE) |> 
+        dplyr::summarise(do_union = FALSE) |> 
         sf::st_cast("LINESTRING")
     }
     

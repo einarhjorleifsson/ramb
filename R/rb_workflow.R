@@ -7,7 +7,7 @@
 #'
 #' @param con connection to Oracle
 #' @param VIDs Vessel identification numbers
-#' @param YEARS 
+#' @param YEARS xxx
 #'
 #' @return A tibble with both mobile and static tows
 #' @export
@@ -19,7 +19,7 @@ rb_logbook <- function(con, VIDs, YEARS) {
   if(!missing(VIDs)) {
     mb <- 
       mb |> 
-      filter(vid %in% VIDs)
+      dplyr::filter(vid %in% VIDs)
   }
   mb <- 
     mb |> 
@@ -35,7 +35,7 @@ rb_logbook <- function(con, VIDs, YEARS) {
   if(!missing(VIDs)) {
     st <-
       st |> 
-      filter(vid %in% VIDs)
+      dplyr::filter(vid %in% VIDs)
   }
   
   st <- 
@@ -73,7 +73,7 @@ rb_cap_effort <- function(lb) {
   median.effort <- 
     lb %>% 
     dplyr::group_by(gid) %>% 
-    dplyr::summarise(median = median(effort, na.rm = TRUE),
+    dplyr::summarise(median = stats::median(effort, na.rm = TRUE),
                      .groups = "drop") %>% 
     tidyr::drop_na()
   lb <- 
@@ -90,11 +90,11 @@ rb_cap_effort <- function(lb) {
     #    NOTE: Effort not adjusted accordingly
     dplyr::arrange(vid, t1) %>%
     dplyr::group_by(vid) %>%
-    dplyr::mutate(overlap = dplyr::if_else(t2 > lead(t1), TRUE, FALSE, NA),
-                  t22 = if_else(overlap,
-                                dplyr::lead(t1) - minutes(1), # need to subtract 1 minute but get the format right
-                                t2,
-                                as.POSIXct(NA)),
+    dplyr::mutate(overlap = dplyr::if_else(t2 > dplyr::lead(t1), TRUE, FALSE, NA),
+                  t22 = dplyr::if_else(overlap,
+                                       dplyr::lead(t1) - tidyverse::minutes(1), # need to subtract 1 minute but get the format right
+                                       t2,
+                                       as.POSIXct(NA)),
                   t22 = lubridate::ymd_hms(format(as.POSIXct(t22, origin="1970-01-01", tz="UTC"))),
                   t2 = dplyr::if_else(overlap & !is.na(t22), t22, t2, as.POSIXct(NA))) %>%
     dplyr::ungroup() %>% 
@@ -163,17 +163,17 @@ rb_gearwidth_proxy <- function(lb) {
     lb %>% 
     dplyr::filter(gid %in% c(6, 7, 9, 14, 15, 37, 38, 40)) %>% 
     dplyr::group_by(gid) %>% 
-    dplyr::summarise(gear.width.median = median(gear.width, na.rm = TRUE),
-              .groups = "drop")
+    dplyr::summarise(gear.width.median = stats::median(gear.width, na.rm = TRUE),
+                     .groups = "drop")
   # use median gear width by gear, if gear width is missing
   #   could also try to do this by vessels. time scale (year) may also matter here
   lb <- 
     lb %>% 
     dplyr::left_join(gear.width,
-              by = "gid") %>% 
+                     by = "gid") %>% 
     dplyr::mutate(gear.width = ifelse(gid %in% c(6, 7, 9, 14, 15, 37, 38, 40) & is.na(gear.width),
-                               gear.width.median,
-                               gear.width)) %>% 
+                                      gear.width.median,
+                                      gear.width)) %>% 
     dplyr::select(-gear.width.median)
   
   # Put gear width of 5 as 500 - this is taken from thin air
@@ -187,48 +187,13 @@ rb_gearwidth_proxy <- function(lb) {
 
 rb_lump_gears <- function(lb) {
   lb %>% 
-    mutate(gid = case_when(gid %in% c(10L, 12L) ~ 4L,       # purse seines
-                           gid %in% c(18L, 39L) ~ 18L,      # traps
-                           TRUE ~ gid)) %>% 
+    dplyr::mutate(gid = dplyr::case_when(gid %in% c(10L, 12L) ~ 4L,       # purse seines
+                                         gid %in% c(18L, 39L) ~ 18L,      # traps
+                                         TRUE ~ gid)) %>% 
     # make the rest a negative number
-    mutate(gid = ifelse(is.na(gid), -666L, gid)) %>% 
+    dplyr::mutate(gid = ifelse(is.na(gid), -666L, gid)) %>% 
     # "skip" these also in downstream processing
-    mutate(gid = ifelse(gid %in% c(4, 12, 42), -666, gid)) %>% 
+    dplyr::mutate(gid = ifelse(gid %in% c(4, 12, 42), -666, gid)) %>% 
     # lump dredges into one single gear
-    mutate(gid = ifelse(gid %in% c(15, 37, 38, 40), 15, gid))
+    dplyr::mutate(gid = ifelse(gid %in% c(15, 37, 38, 40), 15, gid))
 }
-
-
-
-
-# OLDER BELOW ------------------------------------------------------------------
-
-match_nearest_date <- function(lb, ln) {
-  
-  lb.dt <-
-    lb %>%
-    select(vid, datel) %>%
-    distinct() %>%
-    setDT()
-  
-  ln.dt <-
-    ln %>%
-    select(vid, datel) %>%
-    distinct() %>%
-    mutate(dummy = datel) %>%
-    setDT()
-  
-  res <-
-    lb.dt[, date.ln := ln.dt[lb.dt, dummy, on = c("vid", "datel"), roll = "nearest"]] %>%
-    as_tibble()
-  
-  lb %>%
-    left_join(res,
-              by = c("vid", "datel")) %>%
-    left_join(ln %>% select(vid, date.ln = datel, gid.ln),
-              by = c("vid", "date.ln"))
-  
-}
-
-
-

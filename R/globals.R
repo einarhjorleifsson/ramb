@@ -1,0 +1,16 @@
+utils::globalVariables(
+  c(".MID", ".d1", ".d2", ".d_1", ".d_2", ".hid", ".mmsi_category",
+    ".rid", ".s1", ".s2", ".s_1", ".s_2", ".t1", ".t2", ".t_1", ".t_2",
+    ".whacky", "PAM", "behaviour", "catch", "dTm", "date.ln", "datel",
+    "dd", "device_id", "dist", "dummy", "dura", "dx", "dy", "effort",
+    "gear.width.median",  "gid", "gid.ln", "harborid", "heading", "hid",
+    "id", "imo", "in_out_of_harbor", "lamda", "lat", "lon",
+    "mesh", "mesh.std", "mesh_min", "mid", ",mmsi", "mobileid",
+    "model.tbl", "modes", "mu", "par0", "pings", "posdate", "poslat",
+    "poslon", "prepdat", "recdate", "rowid", "sigma", "speed", "step",
+    "t1", "t2", "t22", "threshold.lower", "threshold.upper", "tid", "time",
+    "tommur", "values", "vessel", "vid", "visir", "vit", "x", "y",
+    "dt", "overlap", "model", "data", "data2", "mixEM", "median",
+    "year", "MID", "flag", "mmsi", "link", ".dis99"
+  )
+)

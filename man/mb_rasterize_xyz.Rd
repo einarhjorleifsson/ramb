@@ -14,6 +14,8 @@ mb_rasterize_xyz(xyz, r0, agg = 1, fun = "mean", no_trim = TRUE)
 \item{agg}{Level of aggregation (2, 4, ...)}
 
 \item{fun}{Normally mean or count}
+
+\item{no_trim}{No trimming}
 }
 \value{
 A terra raster

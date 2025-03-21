@@ -11,7 +11,7 @@ rb_logbook(con, VIDs, YEARS)
 
 \item{VIDs}{Vessel identification numbers}
 
-\item{YEARS}{}
+\item{YEARS}{xxx}
 }
 \value{
 A tibble with both mobile and static tows

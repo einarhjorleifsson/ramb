@@ -23,6 +23,9 @@ mb_rashade_xyz_dynamic(
 
 \item{max_meters}{Default 1024}
 }
+\value{
+A raster
+}
 \description{
 Dynamic rayshading
 }

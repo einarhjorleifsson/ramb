@@ -6,7 +6,7 @@
 #' @param file_prefix xxx 
 #' @param max_meters Default 1024
 #'
-#' @return
+#' @return A raster
 #' @export
 #'
 mb_rashade_xyz_dynamic <- function(xyz,
@@ -48,21 +48,21 @@ mb_rashade_xyz_dynamic <- function(xyz,
     if(i < max(res)) RS[v < ping_cutoff] <- NA
     # some fix, something about "in memory" or not
     if(i == 1) {
-      writeRaster(RS, tfile, overwrite = TRUE)
-      RS <- rast(tfile)
+      terra::writeRaster(RS, tfile, overwrite = TRUE)
+      RS <- terra::rast(tfile)
     }
     if(i > 1) RS <- RS |> terra::disagg(agg[i])
-    if(i == 1) e <- ext(RS)
-    RS <- crop(RS, e)
+    if(i == 1) e <- terra::ext(RS)
+    RS <- terra::crop(RS, e)
     terra::writeRaster(RS, paste0(file_prefix, "_r", res[i], ".tif"), overwrite = TRUE)
   }
   print("Doing cover")
   # Need to make this dynamic
   r <-
-    rast(paste0(file_prefix, "_r", res[1], ".tif")) |>
-    cover(rast(paste0(file_prefix, "_r", res[2], ".tif"))) |>
-    cover(rast(paste0(file_prefix, "_r", res[3], ".tif"))) |>
-    cover(rast(paste0(file_prefix, "_r", res[4], ".tif"))) |>
-    cover(rast(paste0(file_prefix, "_r", res[5], ".tif")))
+    terra::rast(paste0(file_prefix, "_r", res[1], ".tif")) |>
+    terra::cover(terra::rast(paste0(file_prefix, "_r", res[2], ".tif"))) |>
+    terra::cover(terra::rast(paste0(file_prefix, "_r", res[3], ".tif"))) |>
+    terra::cover(terra::rast(paste0(file_prefix, "_r", res[4], ".tif"))) |>
+    terra::cover(terra::rast(paste0(file_prefix, "_r", res[5], ".tif")))
   return(r)
 }

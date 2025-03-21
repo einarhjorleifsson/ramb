@@ -2,28 +2,33 @@
 % Please edit documentation in R/whackies.R
 \name{rb_whacky_speed}
 \alias{rb_whacky_speed}
-\title{rb_whacky_speed}
+\title{Yet another speed filter}
 \usage{
-rb_whacky_speed(lon, lat, time, criteria = 20)
+rb_whacky_speed(lon, lat, time, kn_max = 25)
 }
 \arguments{
-\item{lon}{longitude}
+\item{lon}{longitude in decimal degrees}
 
-\item{lat}{latitude}
+\item{lat}{latitude in decimal degrees}
 
 \item{time}{date-time in POSIXct}
 
-\item{criteria}{speed in nautical miles per hour}
+\item{kn_max}{speed threshold in knots}
 }
 \value{
-A boolean vector
+a boolean vector, TRUE if point classified as whacky
 }
 \description{
-Marks derived speed (unit knots) above a certain criterion as whacky (TRUE,
-rest will be FALSE).
+This function work like a pacman, chopping sequentially off the 
+first encountered whack.
 }
 \details{
-To use this on multiple vessels or trips, use a grouped data frame with 
-tidyverse code 
-like ...
+To use this on multiple trips, use a grouped data frame with 
+tidyverse code like 
+data |>  group_by(id) |> mutate(speed = track_speed(lon, lat, time))
+
+The function uses traipse::track_speed, which by convention the first 
+value is set to NA missing value, because the difference applies to 
+each sequential pair of locations. Here, these missing values are
+replaced by zero.
 }

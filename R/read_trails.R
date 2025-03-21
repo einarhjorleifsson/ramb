@@ -5,7 +5,7 @@
 #' @return a query
 #'
 rb_mobile_vid <- function(con) {
-  tbl_mar(con, "ops$einarhj.mobile_vid") |> 
+  mar::tbl_mar(con, "ops$einarhj.mobile_vid") |> 
     dplyr::mutate(t1 = to_date(t1, "YYYY:MM:DD"),
                   t2 = to_date(t2, "YYYY:MM:DD")) 
 }
@@ -15,6 +15,7 @@ rb_mobile_vid <- function(con) {
 #' @name rb_stk_trail
 #'
 #' @param con oracle connection
+#' @param vid vessel id
 #'
 #'
 #' @return a query
@@ -70,6 +71,7 @@ rb_trail <- function(con, vid) {
 #' @param con oracle connection
 #' @param VID vessel
 #' @param YEARS years
+#' @param use_PAM xxx
 #'
 #' @return a tibble
 #'
@@ -139,8 +141,8 @@ rb_read_trails <- function(con, VID, YEARS, use_PAM = FALSE) {
                      lbs,
                      pam) |> 
     dplyr::arrange(vid, time) |> 
-    dplyr::filter(between(lon, -60, 60),
-                  between(lat,  50, 80))
+    dplyr::filter(dplyr::between(lon, -60, 60),
+                  dplyr::between(lat,  50, 80))
   
   if(nrow(ais > 0)) {
     ais <- 

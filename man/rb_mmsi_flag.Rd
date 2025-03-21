@@ -11,6 +11,9 @@ rb_mmsi_flag(mmsi, lookup)
 
 \item{lookup}{A tibble}
 }
+\value{
+A vector
+}
 \description{
 Return flag state from MMSI
 }

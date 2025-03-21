@@ -8,6 +8,8 @@ rb_stk_trail(con, vid)
 }
 \arguments{
 \item{con}{oracle connection}
+
+\item{vid}{vessel id}
 }
 \value{
 a query

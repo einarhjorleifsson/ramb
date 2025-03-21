@@ -12,6 +12,8 @@ rb_read_trails(con, VID, YEARS, use_PAM = FALSE)
 \item{VID}{vessel}
 
 \item{YEARS}{years}
+
+\item{use_PAM}{xxx}
 }
 \value{
 a tibble

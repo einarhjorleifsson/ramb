@@ -12,41 +12,65 @@
 #' @export
 #'
 rb_interpolate <- function(x, y) {
-  approx(x, y, x, method = "linear", rule = 1, f = 0, ties = mean)$y
+  stats::approx(x, y, x, method = "linear", rule = 1, f = 0, ties = mean)$y
 }
-# fix this in ramb - expect that the tibble is sf
 
 
-#' rb_whacky_speed
-#'
-#' Marks derived speed (unit knots) above a certain criterion as whacky (TRUE,
-#' rest will be FALSE).
+#' Yet another speed filter
 #' 
-#' To use this on multiple vessels or trips, use a grouped data frame with 
-#' tidyverse code 
-#' like ...
-#'
-#' @param lon longitude
-#' @param lat latitude
+#' This function work like a pacman, chopping sequentially off the 
+#' first encountered whack.
+#' 
+#' To use this on multiple trips, use a grouped data frame with 
+#' tidyverse code like 
+#' data |>  group_by(id) |> mutate(speed = track_speed(lon, lat, time))
+#' 
+#' The function uses traipse::track_speed, which by convention the first 
+#' value is set to NA missing value, because the difference applies to 
+#' each sequential pair of locations. Here, these missing values are
+#' replaced by zero.
+#' 
+#' @param lon longitude in decimal degrees
+#' @param lat latitude in decimal degrees
 #' @param time date-time in POSIXct
-#' @param criteria speed in nautical miles per hour
+#' @param kn_max speed threshold in knots
 #'
-#' @return A boolean vector
+#' @return a boolean vector, TRUE if point classified as whacky
 #' @export
 #'
-rb_whacky_speed <- function(lon, lat, time, criteria = 20) {
-  n <- length(lon)
-  if(n >= 2) {
-    x1 <- rb_speed(lon, lat, time)
-    # first point has undefined speed
-    x1[1] <- x1[2]
-    x2 <- dplyr::lead(x1)
-    x2[length(x2)] <- x2[length(x2) - 1]
-    x <- ifelse(x1 > criteria & x2 > criteria, TRUE, FALSE)
-  } else {
-    x <- rep(NA, n)
+rb_whacky_speed <- function(lon, lat, time, kn_max = 25) {
+  
+  if(length(lon) != length(lat) | length(lon) != length(time)) {
+    stop("Length of coordinates and time must be the same")
   }
+  
+  ms_max <- rb_kn2ms(kn_max)
+  .rid_original <- 1:length(lon)
+  
+  d <- 
+    tibble::tibble(time = time,
+                   x = lon, 
+                   y = lat) |> 
+    dplyr::mutate(.rid = 1:dplyr::n(),
+                  speed = traipse::track_speed(x, y, time),
+                  speed = tidyr::replace_na(speed, 0))
+  
+  while(any(d$speed > ms_max, na.rm = TRUE)) {
+    a_whack <-
+      d |> 
+      dplyr::filter(speed > ms_max) |> 
+      dplyr::slice(1) |> 
+      dplyr::pull(.rid)
+    d <- 
+      d |> 
+      dplyr::filter(.rid != a_whack) |>  
+      dplyr::mutate(speed = traipse::track_speed(x, y, time),
+                    speed = tidyr::replace_na(speed, 0))
+  }
+  
+  x <- ifelse(.rid_original %in% d$.rid, FALSE, TRUE)
   return(x)
+  
 }
 
 
@@ -60,7 +84,7 @@ rb_whacky_speed <- function(lon, lat, time, criteria = 20) {
 #' @export
 #'
 rb_whacky_speed_trip <- function(d, filter = TRUE, max_speed = 20) {
-  tr <- as(d |> mutate(.idtrip = 1), "Spatial")
+  tr <- methods::as(d |> dplyr::mutate(.idtrip = 1), "Spatial")
   tr <- suppressWarnings( trip::trip(tr, c("time", ".idtrip")) )
   d$.whacky <- !trip::speedfilter(tr, max.speed = ramb::rb_kn2ms(max_speed) / 1000 * 60 * 60)
   if(filter) {
