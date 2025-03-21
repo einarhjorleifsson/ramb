@@ -32,3 +32,6 @@ another tibble. Specifically designed to be used with ais/vms data (points)
 and fishing logbook records where start and end time of fishing activity is
 recorded.
 }
+\details{
+Superseeded by just using between within a dplyr-join
+}

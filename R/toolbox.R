@@ -1,4 +1,6 @@
 #' Event id
+#' 
+#' 
 #'
 #' @param x A vector, normally character or integer
 #'
@@ -20,6 +22,8 @@ rb_event <- function(x) {
 #' another tibble. Specifically designed to be used with ais/vms data (points) 
 #' and fishing logbook records where start and end time of fishing activity is
 #' recorded.
+#' 
+#' Superseeded by just using between within a dplyr-join
 #'
 #' @param point A tibble containing variables vid (vessel id) and time
 #' @param interval A tibble containing variables vid, id.lgs (the fishing 
@@ -32,7 +36,6 @@ rb_event <- function(x) {
 #'
 #' @return The point tibble with additional variable id.lgs (fishing activity
 #' id).
-#' @export
 #'
 rb_interval_id <- function(point, interval, vid, time, start, end, id) {
   
@@ -65,71 +68,6 @@ rb_interval_id <- function(point, interval, vid, time, start, end, id) {
     return()
   
 }
-
-#' @export
-rb_interval_id2 <- function(point, interval, vid, time, start, end, id) {
-  
-  point.dt <-
-    point %>%
-    #dplyr::mutate(rowid = 1:dplyr::n()) %>% 
-    dplyr::rename(vid = {{vid}},
-                  time = {{time}}) %>% 
-    #dplyr::arrange(t) %>% 
-    dplyr::mutate(dummy = time) %>% 
-    data.table::data.table()
-  interval.dt <-
-    interval %>%
-    dplyr::select(vid = {{vid}},
-                  t1 = {{start}},
-                  t2 = {{end}},
-                  .id = {{id}}) %>% 
-    #dplyr::arrange(start, end) %>%
-    data.table::data.table()
-  
-  data.table::setkey(point.dt, vid, time, dummy)
-  data.table::setkey(interval.dt, vid, t1, t2)
-  
-  data.table::foverlaps(point.dt, interval.dt, nomatch = NA) %>% 
-    tibble::as_tibble() %>%  
-    dplyr::select(-c(t1, t2, dummy)) %>% 
-    return()
-  
-}
-# stk <- 
-#   expand_grid(vid = c(1000, 1001, 1002),
-#               time = seq(ymd_hms("2022-09-22 00:00:00"), 
-#                          ymd_hms("2022-09-22 23:59:59"), 
-#                          by = "min"))
-# lgs <- 
-#   tibble(vid = c(1000, 1000, 1001),
-#          visir = c(-1, -2, -3),
-#          start_setting = c(ymd_hms("2022-09-22 10:00:00"), ymd_hms("2022-09-22 15:00:00"), ymd_hms("2022-09-22 10:00:00")),
-#          start_haul = c(ymd_hms("2022-09-22 11:00:00"), ymd_hms("2022-09-22 16:00:00"), ymd_hms("2022-09-22 11:30:00")),
-#          end_haul = c(ymd_hms("2022-09-22 14:00:00"), ymd_hms("2022-09-22 18:30:00"), ymd_hms("2022-09-22 12:00:00")))
-# stk %>% 
-#   rb_interval_id2(lgs, vid, time, start_setting, end_haul, visir) %>% 
-#   ggplot(aes(time, factor(vid), fill = factor(.id))) +
-#   geom_tile()
-
-
-#' rb_whacky_points
-#'
-#' @param d A tibble containing lon and lat
-#' @param tolerance The tolerance atomic value for marking a whacky point (TRUE), units in nautical miles
-#'
-#' @return A tibble with a boolean variable whacky
-#' 
-#' @author Einar Hjörleifsson, \email{einar.hjorleifsson@gmail.com}
-#' 
-#' @export
-#'
-rb_whacky_points <- function(d, tolerance = 10) {
-  d %>% 
-    dplyr::mutate(.dis99 = geo::arcdist(lat, lon, dplyr::lead(lat), dplyr::lead(lon), scale = "nmi"),
-                  whacky = dplyr::if_else(.dis99 > tolerance, TRUE, FALSE, TRUE)) %>% 
-    dplyr::select(-.dis99)
-}
-
 
 #' rb_ms2kn
 #'
@@ -191,22 +129,6 @@ rb_summary <- function(d) {
                      n.harb = dplyr::n_distinct(hid, na.rm = TRUE))
 }
 
-#' Create trip
-#'
-#' @param x A vector
-#'
-#' @return An integer vector of the same length as input, providing unique trip number
-#' @export
-#'
-rb_trip <- function(x) {
-  tibble::tibble(x = x) %>% 
-    dplyr::mutate(tid = dplyr::if_else(x != dplyr::lag(x), 1L, 0L, 1L),
-                  tid = ifelse(x, -tid, tid)) %>% 
-    dplyr::group_by(x) %>% 
-    dplyr::mutate(tid = cumsum(tid)) %>% 
-    dplyr::ungroup(x) %>% 
-    dplyr::pull(tid)
-}
 
 #' Pad harbour id
 #' 

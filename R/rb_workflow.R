@@ -92,7 +92,7 @@ rb_cap_effort <- function(lb) {
     dplyr::group_by(vid) %>%
     dplyr::mutate(overlap = dplyr::if_else(t2 > dplyr::lead(t1), TRUE, FALSE, NA),
                   t22 = dplyr::if_else(overlap,
-                                       dplyr::lead(t1) - tidyverse::minutes(1), # need to subtract 1 minute but get the format right
+                                       dplyr::lead(t1) - lubridate::minutes(1), # need to subtract 1 minute but get the format right
                                        t2,
                                        as.POSIXct(NA)),
                   t22 = lubridate::ymd_hms(format(as.POSIXct(t22, origin="1970-01-01", tz="UTC"))),
