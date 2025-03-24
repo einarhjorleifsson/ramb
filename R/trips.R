@@ -2,7 +2,7 @@
 #'
 #' The function 
 #'
-#' @param x A vector
+#' @param x A boolean vector
 #'
 #' @return An integer vector of the same length as input, providing unique trip number
 #' @export
@@ -17,54 +17,54 @@ rb_trip <- function(x) {
     dplyr::pull(tid)
 }
 
-#' define_trips_pol
+#' define_trips_jepol
 #'
 #' Use the columns "SI_HARB" to determine when a vessel is on a trip. A trip is defined
 #' from when it leaves the harbour till it returns
 #'
-#' @param x gps dataset
+#' @param vessel_id a vector containing vessel id
+#' @param time a vector containing timestamp
+#' @param harbour a vector indicating if vessel in harbour or not
 #' @param min_dur the minimum trip length (hours)
 #' @param max_dur the maximum trip length (hours)
 #' @param split_trips If the trip is longer than the maximum hours, it will try to split
 #' the trip into two or more trips, if there is long enough intervals between pings
-#' @param preserve_all Should all pings inside harbour be preserved also?
+#' 
+#' @import data.table
 #'
 #' @return a gps datset
 
-define_trips_pol <- function(x, min_dur = 0.5, max_dur = 72, 
-                             split_trips = T, preserve_all = F){
-  #add required packages
-  require(data.table, sf)
-  '%!in%' <- function(x,y)!('%in%'(x,y))
-  progress <- function (x, max = 100) {
-    percent <- x / max * 100
-    cat(sprintf('\r[%-50s] %d%%',
-                paste(rep('=', percent / 2), collapse = ''),
-                floor(percent)))
-    if (x == max)
-      cat('\n')
-  }
+rb_trip_jepol <- function(vessel_id, time, si_harbour, 
+                          min_dur = 0.5, max_dur = 72, split_trips = TRUE,
+                          quite = TRUE) {
+  org <-
+    tibble::tibble(vessel_id = vessel_id,
+                   time_stamp = time,
+                   SI_HARB = si_harbour) |> 
+    dplyr::mutate(.rid = 1:dplyr::n())
   
-  setDT(x)[, recid := 1:.N]
+  x <- org
+  
+  '%!in%' <- function(x,y)!('%in%'(x,y))
+  
+  data.table::setDT(x)[, recid := 1:.N]
   if("SI_HARB" %!in% names(x) | any(is.na(x$SI_HARB)))
     stop("No harbour column in dataset, please add it (add_harbour)")
   
   
-  out <- data.table()
+  out <- data.table::data.table()
   for(i in unique(x$vessel_id)){
-    progress(match(i, unique(x$vessel_id)),length(unique(x$vessel_id)))
+    #progress(match(i, unique(x$vessel_id)),length(unique(x$vessel_id)))
     
     gps <- x[vessel_id == i]
     
     
     dss <- gps
-    setorder(dss, time_stamp)
+    data.table::setorder(dss, time_stamp)
     dss[, INTV:=-as.numeric(difftime(data.table::shift(time_stamp, fill = NA, type = "lag"), time_stamp, units = "mins"))]
     
-    table(dss$SI_HARB)
-    
     dss[, id := 1:.N]
-    dss[, geometry := NULL]
+    
     ### Add harbour id and depart / return to dss
     
     dss[, SI_HARB2 := approx((1:.N)[!is.na(SI_HARB)],na.omit(SI_HARB),1:.N)$y]
@@ -91,9 +91,9 @@ define_trips_pol <- function(x, min_dur = 0.5, max_dur = 72,
       dss[.N, HARB_EVENT := 2]
     
     #Make data.table with timings of trip
-    trip <- data.table(vessel_id = i,
-                       depart = dss[HARB_EVENT == 1]$time_stamp,
-                       return = dss[HARB_EVENT == 2]$time_stamp
+    trip <- data.table::data.table(vessel_id = i,
+                                   depart = dss[HARB_EVENT == 1]$time_stamp,
+                                   return = dss[HARB_EVENT == 2]$time_stamp
     )
     
     trip[, trip_id2 := paste0(i, "_", 1:.N)]
@@ -114,13 +114,13 @@ define_trips_pol <- function(x, min_dur = 0.5, max_dur = 72,
           next
         }
         
-        newtrips <- data.table(vessel_id = i,
+        newtrips <- data.table::data.table(vessel_id = i,
                                depart = c(tls$depart, dss[id == cutp2]$time_stamp),
                                return = c(dss[id == cutp2-1]$time_stamp, tls$return),
                                trip_id2 = paste(tls$trip_id2, 1:2, sep = "_"))
         newtrips[, duration_hours := as.numeric(base::difftime(return, depart, units = "hours"))]
-        trip <- rbindlist(list(trip[trip_id2 != tls$trip_id2], newtrips))
-        setorder(trip, depart)
+        trip <- data.table::rbindlist(list(trip[trip_id2 != tls$trip_id2], newtrips))
+        data.table::setorder(trip, depart)
       }
     
     trip <- trip[duration_hours != 0]
@@ -133,25 +133,32 @@ define_trips_pol <- function(x, min_dur = 0.5, max_dur = 72,
     }
     
     
-    setkey(trip, vessel_id, depart, return)
+    data.table::setkey(trip, vessel_id, depart, return)
     gps[ ,time_stamp2 := time_stamp]
-    setkey(gps, vessel_id, time_stamp, time_stamp2)
+    data.table::setkey(gps, vessel_id, time_stamp, time_stamp2)
     
-    midi <- foverlaps(gps, trip, type="any", nomatch=NULL) 
+    midi <- data.table::foverlaps(gps, trip, type="any", nomatch=NULL) 
     gps[, time_stamp2 := NULL]
     
     midi[!is.na(trip_id2), trip_id := trip_id2]
     midi[, `:=`(depart = NULL, return = NULL, duration_hours = NULL, time_stamp2 = NULL, trip_id2 = NULL)]
-    out <- rbindlist(list(out, midi), fill = T)
+    out <- data.table::rbindlist(list(out, midi), fill = T)
     
-    if(preserve_all)
-      out <- rbindlist(list(out, gps[recid %!in% out$recid]), fill = T)
+    out <- data.table::rbindlist(list(out, gps[recid %!in% out$recid]), fill = T)
     
   }
   
-  setorder(out, vessel_id, time_stamp)
+  data.table::setorder(out, vessel_id, time_stamp)
   out[, recid := NULL]
-  return(out)
+  
+ res <- 
+    org |> 
+    dplyr::select(.rid) |> 
+    dplyr::left_join(out,
+                     by = dplyr::join_by(.rid)) |> 
+    dplyr::pull(trip_id)
+ 
+ return(res)
   
 }
 
