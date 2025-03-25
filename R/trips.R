@@ -32,7 +32,10 @@ rb_trip <- function(x) {
 #' 
 #' @import data.table
 #'
-#' @return a gps datset
+#' @return sequential numbers identifying trips, unique within each vessel
+#' 
+#' @export
+
 
 rb_trip_jepol <- function(vessel_id, time, in_harbour, 
                           min_dur = 0.5, max_dur = 72, split_trips = TRUE) {
