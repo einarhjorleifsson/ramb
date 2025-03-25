@@ -10,6 +10,7 @@ Description: Some stuff on vessels tracks.
 License: GPL (>= 3)
 Encoding: UTF-8
 LazyData: true
+LazyDataCompression: xz
 Depends: 
     R (>= 3.5.0)
 RoxygenNote: 7.3.2

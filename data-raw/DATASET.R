@@ -8,6 +8,24 @@ library(mar)
 con <- connect_mar()
 # source("TOPSECRET.R")
 
+# Jeppe's data -----------------------------------------------------------------
+dansk <- 
+  "https://raw.githubusercontent.com/ices-eg/WKSSFGEO/main/data-examples/example_data_AIS.csv" |> 
+  readr::read_csv() |> 
+  dplyr::distinct(vessel_id, time_stamp, .keep_all = TRUE) |> 
+  dplyr::arrange(vessel_id, time_stamp) |> 
+  dplyr::mutate(.rowid = 1:dplyr::n(),
+                .before = vessel_id)
+usethis::use_data(dansk, overwrite = FALSE)
+
+dansk_harbours <- 
+  readRDS("~/stasi/ices/WKSSFGEO/data/harbours.rds") |> 
+  dplyr::mutate(SI_HARB = 1:dplyr::n())
+usethis::use_data(dansk_harbours, overwrite = FALSE)
+
+
+
+
 # The creel data ---------------------------------------------------------------
 prj <- '+proj=utm +zone=30 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0'
 creel <-

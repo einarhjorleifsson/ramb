@@ -24,7 +24,7 @@ rb_trip <- function(x) {
 #'
 #' @param vessel_id a vector containing vessel id
 #' @param time a vector containing timestamp
-#' @param harbour a vector indicating if vessel in harbour or not
+#' @param in_harbour a binary vector indicating if vessel in harbour (1) or not (0)
 #' @param min_dur the minimum trip length (hours)
 #' @param max_dur the maximum trip length (hours)
 #' @param split_trips If the trip is longer than the maximum hours, it will try to split
@@ -34,13 +34,12 @@ rb_trip <- function(x) {
 #'
 #' @return a gps datset
 
-rb_trip_jepol <- function(vessel_id, time, si_harbour, 
-                          min_dur = 0.5, max_dur = 72, split_trips = TRUE,
-                          quite = TRUE) {
+rb_trip_jepol <- function(vessel_id, time, in_harbour, 
+                          min_dur = 0.5, max_dur = 72, split_trips = TRUE) {
   org <-
     tibble::tibble(vessel_id = vessel_id,
                    time_stamp = time,
-                   SI_HARB = si_harbour) |> 
+                   SI_HARB = in_harbour) |> 
     dplyr::mutate(.rid = 1:dplyr::n())
   
   x <- org
@@ -67,7 +66,7 @@ rb_trip_jepol <- function(vessel_id, time, si_harbour,
     
     ### Add harbour id and depart / return to dss
     
-    dss[, SI_HARB2 := approx((1:.N)[!is.na(SI_HARB)],na.omit(SI_HARB),1:.N)$y]
+    dss[, SI_HARB2 := stats::approx((1:.N)[!is.na(SI_HARB)],stats::na.omit(SI_HARB),1:.N)$y]
     
     
     dss[is.na(SI_HARB), SI_HARB := pos2[dss[is.na(SI_HARB)], on = .(id = id), SI_HARB]]

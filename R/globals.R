@@ -11,6 +11,10 @@ utils::globalVariables(
     "t1", "t2", "t22", "threshold.lower", "threshold.upper", "tid", "time",
     "tommur", "values", "vessel", "vid", "visir", "vit", "x", "y",
     "dt", "overlap", "model", "data", "data2", "mixEM", "median",
-    "year", "MID", "flag", "mmsi", "link", ".dis99"
+    "year", "MID", "flag", "mmsi", "link", ".dis99",
+    "HARB_EVENT", "INTV", "SI_HARB", "SI_HARB2", "depart",
+    "duration_hours", "recid", "time_stamp", "time_stamp2",
+    "trip_id", "trip_id2",
+    "."
   )
 )

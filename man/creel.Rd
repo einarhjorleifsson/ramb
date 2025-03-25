@@ -14,7 +14,8 @@ A data frame with 2226 rows and 8 variables:
   \item{y}{Northing}
   \item{lon}{Longitude}
   \item{lat}{Latitude}
-  \item{behaviour}{Vessel activity}}
+  \item{behaviour}{Vessel activity}
+  }
 }
 \source{
 Mendo, Tania; Smout, Sophie; Photopoulou, Theoni; James, Mark (2019), Data

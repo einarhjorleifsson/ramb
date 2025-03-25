@@ -7,11 +7,10 @@
 rb_trip_jepol(
   vessel_id,
   time,
-  si_harbour,
+  in_harbour,
   min_dur = 0.5,
   max_dur = 72,
-  split_trips = TRUE,
-  quite = TRUE
+  split_trips = TRUE
 )
 }
 \arguments{
@@ -19,14 +18,14 @@ rb_trip_jepol(
 
 \item{time}{a vector containing timestamp}
 
+\item{in_harbour}{a binary vector indicating if vessel in harbour (1) or not (0)}
+
 \item{min_dur}{the minimum trip length (hours)}
 
 \item{max_dur}{the maximum trip length (hours)}
 
 \item{split_trips}{If the trip is longer than the maximum hours, it will try to split
 the trip into two or more trips, if there is long enough intervals between pings}
-
-\item{harbour}{a vector indicating if vessel in harbour or not}
 }
 \value{
 a gps datset

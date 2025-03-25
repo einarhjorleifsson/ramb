@@ -14,13 +14,49 @@
 #'   \item{y}{Northing}
 #'   \item{lon}{Longitude}
 #'   \item{lat}{Latitude}
-#'   \item{behaviour}{Vessel activity}}
+#'   \item{behaviour}{Vessel activity}
+#'   }
 #'
 #' @source Mendo, Tania; Smout, Sophie; Photopoulou, Theoni; James, Mark (2019), Data
 #' from: Identifying fishing grounds from vessel tracks: model-based inference
 #' for small scale fisheries (\url{https://doi.org/10.5061/dryad.k80bp46})
 #'
 "creel"
+
+#' Vessel tracks and behaviour of some danish fishing vessels
+#'
+#' Example data of 14 vessels using 4 different gears with a median 
+#' time interval of 10 sec.
+#'
+#' @format A data frame with 395558 rows and 9 variables:
+#' \describe{
+#'   \item{.rowid}{sequential numbers}
+#'   \item{vessel_id}{vessel identification}
+#'   \item{time_stamp}{time of position}
+#'   \item{lon}{longitude}
+#'   \item{lat}{latitude}
+#'   \item{speed}{instantaneous speed in knots}
+#'   \item{course}{true course?}
+#'   \item{gear}{gear type deployed}
+#'   \item{behaviour}{Vessel activity}
+#'   }
+#'
+#' @source WKSSFGEO (\url{https://raw.githubusercontent.com/ices-eg/WKSSFGEO/main/data-examples/example_data_AIS.csv})
+#'
+"dansk"
+
+#' Some harbour polygons used in association with the dansk-dataset
+#'
+#'
+#' @format A data frame with 942 rows and 2 variables:
+#' \describe{
+#'   \item{SI_HARB}{sequential numbers denoting unique harbour id}
+#'   \item{geometry}{harbour polygons}
+#'   }
+#'
+#' @source WKSSFGEO
+#'
+"dansk_harbours"
 
 #' Bottom trawl survey
 #'

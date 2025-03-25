@@ -6,7 +6,8 @@
 #' @export
 #'
 tidy_normalmixEM <- function(o) {
-  if(class(o) != "mixEM") stop("The object is not of class 'mixEM'")
+  
+  if(!inherits(o, "mixEM")) stop("The object is not of class 'mixEM'")
   if(o$ft != "normalmixEM") stop("The object is not of class 'normalmixEM'")
   n.modes <- length(o$mu)
   est <-
