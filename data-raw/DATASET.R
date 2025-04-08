@@ -49,6 +49,35 @@ creel <-
   select(id, rowid, time, x, y, lon, lat, behaviour)
 usethis::use_data(creel, overwrite = TRUE)
 
+# Whacky 1 ---------------------------------------------------------------------
+whacks <- c(5, 10, 11, 15, 16, 17, 27:31)
+whacks1 <-
+  tibble(time = seq(ymd_hms("2022-10-15 00:00:00"),
+                    ymd_hms("2022-10-15 00:45:00"),
+                    by = "60 sec")) |> 
+  mutate(vid = 1,      # vessel id
+         tid = 1,      # trip id
+         .rid = 1:n(), # unique number
+         lat = seq(62, 62.2, length.out = max(.rid)),
+         lon = -25,
+         lon = ifelse(.rid %in% whacks, -24.5, lon),
+         whacks = ifelse(.rid %in% whacks, TRUE, FALSE),
+         lat = ifelse(.rid == 40, 62.04, lat),
+         lon = ifelse(.rid == 40, -25.04, lon),
+         whacks = ifelse(.rid == 40, TRUE, whacks),
+         speed = traipse::track_speed(lon, lat, time)) |> 
+  select(vid, tid, .rid, lon, lat, time, speed, whacks) |> 
+  sf::st_as_sf(coords = c("lon", "lat"),
+               crs = 4326,
+               remove = FALSE) |> 
+  sf::st_transform(crs = 3057) %>%
+  bind_cols(sf::st_coordinates(.) |> as_tibble() |> janitor::clean_names()) |> 
+  st_drop_geometry() |> 
+  select(.rid, vid, tid, lon, lat, time, whacks)
+usethis::use_data(whacks1)
+
+
+
 # Trawl survey -----------------------------------------------------------------
 
 #library(EMbC)
@@ -216,4 +245,6 @@ trail %>%
   write_csv("/home/ftp/pub/data/csv/is_survey-tracks.csv")
 system("chmod a+rX /net/www/export/home/ftp/pub/data/csv/is_survey-tracks.csv")
 trail <- read_csv("ftp://ftp.hafro.is/pub/data/csv/is_survey-tracks.csv")
+
+
 

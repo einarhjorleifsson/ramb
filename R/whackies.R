@@ -1,14 +1,17 @@
 #' Yet another speed filter
 #' 
-#' This function work like a pacman, chopping sequentially off the 
-#' first encountered whack.
+#' This function chops sequentially off the first encountered whack and then
+#' starts again from the beginning.
 #' 
-#' To use this on multiple trips, use a grouped data frame with 
+#' THIS FUNCTION DOES NOT WORK IF THE FIRST DATAPOINT IN THE SEQUENCE IS A
+#' WHACKY POINT
+#' 
+#' To use this on multiple trips or vessels, use a grouped data frame with 
 #' tidyverse code like 
-#' data |>  group_by(id) |> mutate(speed = track_speed(lon, lat, time))
+#' data |>  group_by(id) |> mutate(whack = rb_whacky_speed(lon, lat, time))
 #' 
-#' The function uses traipse::track_speed, which by convention the first 
-#' value is set to NA missing value, because the difference applies to 
+#' The function uses traipse::track_speed, where by convention the first 
+#' value is set to NA (missing value), because the difference applies to 
 #' each sequential pair of locations. Here, these missing values are
 #' replaced by zero.
 #' 
@@ -43,6 +46,7 @@ rb_whacky_speed <- function(lon, lat, time, kn_max = 25) {
       dplyr::filter(speed > ms_max) |> 
       dplyr::slice(1) |> 
       dplyr::pull(.rid)
+    if(a_whack == 2) a_whack <- 1
     d <- 
       d |> 
       dplyr::filter(.rid != a_whack) |>  
@@ -51,9 +55,70 @@ rb_whacky_speed <- function(lon, lat, time, kn_max = 25) {
   }
   
   x <- ifelse(.rid_original %in% d$.rid, FALSE, TRUE)
+  
+  p <- round(sum(x) / length(x) * 100, digits = 1)
+  if(p > 5) {
+    message(paste0(p, "% of the data are classified as whacky points"))
+  }
   return(x)
   
 }
+
+
+
+#' Yet another distance filter
+#' 
+#' To use this on multiple trips, use a grouped data frame with 
+#' tidyverse code like 
+#' data |>  group_by(id) |> mutate(whack = rb_whacky_distance(lon, lat))
+#' 
+#' The function uses traipse::track_distance, which by convention the first 
+#' value is set to NA missing value, because the difference applies to 
+#' each sequential pair of locations. Here, these missing values are
+#' replaced by zero.
+#' 
+#' The function is overly liberal in that 
+#' @param lon longitude in decimal degrees
+#' @param lat latitude in decimal degrees
+#' @param miles_max maximum threshold in miles
+#'
+#' @return a boolean vector, TRUE if point classified as whacky
+#'
+rb_whacky_distance <- function(lon, lat, miles_max = 6) {
+  
+  if(length(lon) != length(lat)) {
+    stop("Length of coordinates and time must be the same")
+  }
+  
+  meters_max <- miles_max * 1852
+  
+  .rid_original <- 1:length(lon)
+  
+  d <- 
+    tibble::tibble(x = lon, 
+                   y = lat) |> 
+    dplyr::mutate(.rid = 1:dplyr::n(),
+                  distance = traipse::track_distance(x, y),
+                  distance = tidyr::replace_na(distance, 0))
+  
+  while(any(d$distance > meters_max, na.rm = TRUE)) {
+    a_whack <-
+      d |> 
+      dplyr::filter(distance > meters_max) |> 
+      dplyr::slice(1) |> 
+      dplyr::pull(.rid)
+    d <- 
+      d |> 
+      dplyr::filter(.rid != a_whack) |>  
+      dplyr::mutate(distance = traipse::track_distance(x, y),
+                    distance = tidyr::replace_na(distance, 0))
+  }
+  
+  x <- ifelse(.rid_original %in% d$.rid, FALSE, TRUE)
+  return(x)
+  
+}
+
 
 
 # https://academic.oup.com/icesjms/article/81/2/390/7516127
@@ -130,7 +195,7 @@ rb_whacky_speed_trip <- function(d, filter = TRUE, max_speed = 20) {
       dplyr::filter(!.whacky) |> 
       dplyr::select(-.whacky)
   }
-  # some extra precaution - would be of interest why not capured above
+  # some extra precaution - would be of interest why not captured above
   if(filter) {
     d <-
       d |> 

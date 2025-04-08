@@ -35,7 +35,7 @@ ramb::creel %>%
 #> number of iterations= 18 
 #> number of iterations= 25 
 #> number of iterations= 49 
-#> number of iterations= 23 
+#> number of iterations= 21 
 #> number of iterations= 73 
 #> Rows: 2,221
 #> Columns: 14
@@ -89,7 +89,7 @@ ramb::creel %>%
 ramb::creel %>% 
   ramb::rb_hidden_markov_step() %>% 
   dplyr::glimpse()
-#> number of iterations= 15 
+#> number of iterations= 16 
 #> number of iterations= 19 
 #> number of iterations= 50 
 #> number of iterations= 20 
@@ -113,7 +113,7 @@ ramb::creel %>%
 ramb::creel %>% 
   ramb::rb_hidden_markov_step_and_turn() %>% 
   dplyr::glimpse()
-#> number of iterations= 16 
+#> number of iterations= 15 
 #> number of iterations= 19 
 #> number of iterations= 50 
 #> number of iterations= 20 

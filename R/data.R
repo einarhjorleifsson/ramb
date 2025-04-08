@@ -69,3 +69,20 @@
 #' Icelandic spring bottom trawl survey.
 #'
 "trawlsurveytows"
+
+#' Fictional vessel tracks - set 1
+#'
+#' Some simple dataset to test speed filters
+#' 
+#' @format A data frame with 46 rows and 7 variables:
+#' \describe{
+#'   \item{.rid}{row number}
+#'   \item{vid}{unique vessel identifier}
+#'   \item{tid}{unique trip identifier}
+#'   \item{lon}{Longitude}
+#'   \item{whacks}{Boolean, indication if vessel on track or not}
+#'   }
+#'
+#'
+"whacks1"
+
