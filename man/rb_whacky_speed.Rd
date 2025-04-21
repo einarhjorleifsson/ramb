@@ -19,16 +19,19 @@ rb_whacky_speed(lon, lat, time, kn_max = 25)
 a boolean vector, TRUE if point classified as whacky
 }
 \description{
-This function work like a pacman, chopping sequentially off the 
-first encountered whack.
+This function chops sequentially off the first encountered whack and then
+starts again from the beginning.
 }
 \details{
-To use this on multiple trips, use a grouped data frame with 
-tidyverse code like 
-data |>  group_by(id) |> mutate(speed = track_speed(lon, lat, time))
+THIS FUNCTION DOES NOT WORK IF THE FIRST DATAPOINT IN THE SEQUENCE IS A
+WHACKY POINT
 
-The function uses traipse::track_speed, which by convention the first 
-value is set to NA missing value, because the difference applies to 
+To use this on multiple trips or vessels, use a grouped data frame with 
+tidyverse code like 
+data |>  group_by(id) |> mutate(whack = rb_whacky_speed(lon, lat, time))
+
+The function uses traipse::track_speed, where by convention the first 
+value is set to NA (missing value), because the difference applies to 
 each sequential pair of locations. Here, these missing values are
 replaced by zero.
 }

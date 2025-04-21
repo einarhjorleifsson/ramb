@@ -57,9 +57,9 @@ rb_whacky_speed <- function(lon, lat, time, kn_max = 25) {
   x <- ifelse(.rid_original %in% d$.rid, FALSE, TRUE)
   
   p <- round(sum(x) / length(x) * 100, digits = 1)
-  if(p > 5) {
-    message(paste0(p, "% of the data are classified as whacky points"))
-  }
+  #if(p > 5) {
+  #  message(paste0(p, "% of the data are classified as whacky points"))
+  #}
   return(x)
   
 }

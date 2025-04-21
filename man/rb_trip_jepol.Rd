@@ -28,7 +28,7 @@ rb_trip_jepol(
 the trip into two or more trips, if there is long enough intervals between pings}
 }
 \value{
-a gps datset
+sequential numbers identifying trips, unique within each vessel
 }
 \description{
 Use the columns "SI_HARB" to determine when a vessel is on a trip. A trip is defined
