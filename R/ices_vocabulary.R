@@ -28,7 +28,8 @@ rb_get_ices_metier5 <- function(trim = TRUE, valid = TRUE) {
       res |> 
       dplyr::select(met5 = Key,
                     description = Description,
-                    deprecated = Deprecated)
+                    deprecated = Deprecated) |> 
+      dplyr::as_tibble()
     if(valid) {
       res <-
         res |> 
@@ -55,6 +56,7 @@ rb_get_ices_metier6 <- function(trim = TRUE, valid = TRUE) {
       dplyr::select(met6 = Key,
                     description = Description,
                     deprecated = Deprecated) |> 
+      dplyr::as_tibble() |> 
       dplyr::mutate(description = stringr::str_remove(description, ", see the code reg. mesh size and selectivity device"))
     if(valid) {
       res <-
