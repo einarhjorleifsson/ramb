@@ -84,10 +84,10 @@ rb_get_ices_metier5_benthis_lookup <- function(trim = TRUE, correct = TRUE) {
   if(trim) {
     res <- 
       res |>  
-      dplyr::mutate(met5 = rb_met5_from6(Metier_level6)) |> 
-      dplyr::select(met5, benthis = Benthis_metiers) |> 
+      dplyr::mutate(metier5 = rb_met5_from6(Metier_level6)) |> 
+      dplyr::select(metier5, benthis_metier = Benthis_metiers) |> 
       tibble::as_tibble() |> 
-      dplyr::filter(benthis != "") |> 
+      dplyr::filter(benthis_metier != "") |> 
       dplyr::distinct()
     if(correct) {
     }

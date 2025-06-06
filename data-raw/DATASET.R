@@ -123,7 +123,7 @@ trawlsurveytows <-
                names_pattern = "(.)(.)") %>% 
   arrange(id.lgs) %>% 
   sf::st_as_sf(coords = c("x", "y"),
-           crs = 4326) %>% 
+               crs = 4326) %>% 
   group_by(id.lgs) %>% 
   summarise(do_union = FALSE) %>% 
   sf::st_cast("LINESTRING")
@@ -198,7 +198,7 @@ trail <-
 trail <- 
   trail %>% 
   left_join(vid.mid.link %>% 
-            select(mid, vid))
+              select(mid, vid))
 d <- 
   trail %>% 
   ramb:::rb_interval_id2(cruises, vid, time, T11, T12, cruise_id) %>% 
@@ -240,11 +240,34 @@ trail <-
   # should not really need to do this
   distinct(vid, time, .keep_all = TRUE) %>% 
   select(-rectime)
-                        
+
 trail %>%   
   write_csv("/home/ftp/pub/data/csv/is_survey-tracks.csv")
 system("chmod a+rX /net/www/export/home/ftp/pub/data/csv/is_survey-tracks.csv")
 trail <- read_csv("ftp://ftp.hafro.is/pub/data/csv/is_survey-tracks.csv")
 
 
+# Benthis parameters -----------------------------------------------------------
+benthis_parameters <- 
+  icesVMS::get_benthis_parameters() |> 
+  dplyr::as_tibble() |> 
+  dplyr::select(benthis_metier = benthisMet,
+                a = firstFactor,
+                b = secondFactor,
+                model = gearModel,
+                variable = gearCoefficient,
+                subsurface_percentage = subsurfaceProp,
+                dplyr::everything()) |> 
+  janitor::clean_names()
+usethis::use_data(benthis_parameters, overwrite = TRUE)
 
+# Benthis - metier5 lookup -----------------------------------------------------
+metier5_benthis_lookup <- 
+  "https://raw.githubusercontent.com/ices-eg/RCGs/master/Metiers/Reference_lists/RDB_ISSG_Metier_list.csv" |> 
+  read.csv() |> 
+  dplyr::mutate(metier5 = ramb::rb_met5_from6(Metier_level6)) |> 
+  dplyr::select(metier5, benthis_metier = Benthis_metiers) |> 
+  tibble::as_tibble() |> 
+  dplyr::filter(benthis_metier != "") |>
+  dplyr::distinct()
+metier5_benthis_lookup |> usethis::use_data()

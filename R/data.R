@@ -86,3 +86,37 @@
 #'
 "whacks1"
 
+
+
+#' Benthis parameters
+#' 
+#' Gear “footprints” of 14 distinct towed gear groups (eight otter trawl groups, 
+#' three beam trawl groups, two demersal seine groups, and one dredge group).
+#' The footprint is defined as the relative contribution from individual larger 
+#' gear components, such as trawl doors, sweeps, and groundgear, to the total 
+#' area and severity of the gear's impact.
+#' 
+#' For each gear group, a vessel size–gear size relationship parameters can 
+#' used to estimate gear width and sediment penetration from 
+#' vessel size (length or power). 
+#' 
+#' https://doi.org/10.1093/icesjms/fsv099
+#' 
+#' @format A data frame with 46 rows and 7 variables:
+#' \describe{
+#'   \item{benthis_metier}{Metier as defined in the Benthis project}
+#'   \item{a}{First model parameter}
+#'   \item{avLoa}{Second model parameter}
+#'   \item{model}{Model type, linear or power}
+#'   \item{variable}{Dependent variable, overall vessel length or vessel kilowatts}
+#'   \item{subsurface_percentage}{Subsurface impact}
+#'   \item{id}{...}
+#'   \item{av_kw}{...}
+#'   \item{av_loa}{...}
+#'   \item{av_fspeed}{...}
+#'   \item{gear_width}{...}
+#'   \item{contact_model}{...}
+#'   }
+#'
+#' @source https://doi.org/10.1093/icesjms/fsv099
+"benthis_parameters"
