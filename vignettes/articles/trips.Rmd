@@ -12,128 +12,42 @@ knitr::opts_chunk$set(
 )
 ```
 
-## Comparison on trip calculation
+## Defining trips based on points in or not in harbour
 
 ```{r}
-library(WKSSFGEO)
-library(data.table)
+library(ramb)
+library(sf)
 library(tidyverse)
+# example data -----------------------------------------------------------------
+d <-
+  dansk |> 
+  arrange(vessel_id, time_stamp) |> 
+  # find points in harbour
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326,
+           remove = FALSE) |> 
+  # in harbour = 1, at sea = 0
+  mutate(in_harbour = rb_points_in_polygons(geometry, dansk_harbours))
+# Jeppe ------------------------------------------------------------------------
+jeppe <-
+  d |> 
+  mutate(trip_id = ramb:::rb_trip_jepol(vessel_id, time_stamp, in_harbour))
+# Einar ------------------------------------------------------------------------
+einar <-
+  d |> 
+  group_by(vessel_id) |> 
+  mutate(trip_id = rb_trip(in_harbour)) |> 
+  ungroup()
+
+jeppe |> 
+  st_drop_geometry() |>
+  count(trip_id, name = "jeppe") |> 
+  full_join(einar |> 
+              st_drop_geometry() |> 
+              mutate(trip_id = paste0(vessel_id, "_", trip_id)) |> 
+              count(trip_id, name = "einar")) |> 
+  #filter(jeppe != einar) |> 
+  mutate(dt = abs(jeppe - einar)) |> 
+  count(dt)
 ```
 
-
-Jeppe:
-
-```{r}
-system.time(d.jp <-
-              WKSSFGEO::track01 %>% 
-              setDT() %>% 
-              unique(by = c("vessel_id", "time_stamp")) %>% # Remove duplicates
-              mutate(vessel_id = str_sub(vessel_id, 4) %>% as.integer(),
-                     .rid = 1:n()) %>% 
-              add_harbours(WKSSFGEO::harbours) %>% 
-              define_trips_pol(min_dur = 0.0001, max_dur = 50e6, 
-                               split_trips = FALSE, preserve_all = TRUE))
-```
-
-Einar:
-
-```{r}
-system.time(d.eh <- 
-              WKSSFGEO::track01 %>% 
-              distinct(vessel_id, time_stamp, .keep_all = TRUE) %>% 
-              mutate(vessel_id = str_sub(vessel_id, 4) %>% as.integer(),
-                     .rid = 1:n()) %>% 
-              sf::st_as_sf(coords = c("lon", "lat"),
-                           crs = 4326,
-                           remove = FALSE) %>% 
-              sf::st_join(WKSSFGEO::harbours %>% mutate(hid = 1:n()) %>% select(hid)) %>% 
-              sf::st_drop_geometry() %>% 
-              group_by(vessel_id) %>% 
-              mutate(inh = !is.na(hid),
-                     tid = ramb::rb_trip(inh)) %>% 
-              ungroup())
-
-
-# Pad harbour id, adding harbour id left to the first ping of a trip and harbour id entered
-#  to the last ping of the trip.
-
-d.eh %>% 
-  group_by(vessel_id) %>% 
-  mutate(hid = ramb::rb_pad_harbour(tid, hid)) %>% 
-  filter(tid > 0) %>% 
-  group_by(vessel_id, tid) %>% 
-  slice_tail(n = 1)
-```
-
-Number of records:
-
-```{r}
-tibble(original = nrow(d),
-       jp = nrow(d.jp),
-       eh = nrow(d.eh))
-```
-
-Any vessel difference?:
-
-```{r}
-full_join(d.eh %>% count(vessel_id, name = "n.eh"),
-          d.jp %>% count(vessel_id, name = "n.jp"))
-```
-
-So vessels 5 and 8 not returned in the jp-workflow.
-
-```{r}
-d.eh %>% 
-  filter(vessel_id %in% c(5, 8)) %>% 
-  count(vessel_id, inh)
-```
-
-Reason seemms the jp-flow does not return records if all pings are in harbour. This may be intentional - should possibly be mentioned in the help file that this takes place.
-
-Number of pings per trip:
-
-```{r}
-full_join(d.eh %>% mutate(tid = ifelse(tid < 0, NA, tid)) %>% count(vessel_id, tid, name = "n.eh"),
-          d.jp %>% separate(trip_id, c("dummy", "tid"), convert = TRUE) %>% count(vessel_id, tid, name = "n.jp")) %>% 
-  mutate(diff = n.eh - n.jp) %>% 
-  knitr::kable()
-```
-
-So difference is in all cases except vessel 7, trip 8 one less ping in the eh-algorithm compared with the jp-algoritm. 
-
-```{r}
-tmp <-
-  d.eh %>%
-  select(.rid, vessel_id, time_stamp, hid.eh = hid, inh, tid.eh = tid) %>%
-  full_join(d.jp %>% as_tibble() %>% select(.rid, hid.jp = SI_HARB, tid.jp = trip_id) %>% mutate(in.jp = TRUE)) %>%
-  mutate(in.jp = replace_na(in.jp, TRUE)) %>%
-  separate(tid.jp, c("dummy", "tid.jp"), convert = TRUE) %>%
-  select(-dummy)
-```
-
-The reason for the difference of one is that the jp-algorithm includes the first harbour ping at the end of a trip as being part of the trip. Case in point:
-
-```{r}
-tmp %>% 
-  filter(vessel_id == 1, tid.jp == 1) %>% 
-  tail()
-```
-
-What about vessel 7, trip 8? 
-
-```{r}
-tmp %>% 
-  filter(vessel_id == 7, tid.jp == 8) %>% 
-  data.table()
-```
-
-Seems like the last record for this trip did not terminate in a harbour, as illustrated here (actually it does not even start in a harbour):
-
-```{r}
-d.eh %>% 
-  filter(vessel_id == 7, .rid > 137770) %>% 
-  sf::st_as_sf(coords = c("lon", "lat"),
-               crs = 4326) %>% 
-  mutate(tid = as.character(tid)) %>% 
-  mapview::mapview(zcol = "tid")
-```

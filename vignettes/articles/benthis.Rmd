@@ -1,0 +1,80 @@
+---
+title: "Predicting gear width"
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  message = FALSE, 
+  warning = FALSE,
+  collapse = TRUE,
+  error = TRUE,
+  comment = "#>"
+)
+```
+
+## Preamble
+
+The ICES VMS datacall request metrics on gear width of towed gear. Routinely the gear width is obtained from 'the Benthis' model. In this model gear width is a function of gear type and vessel length or power (kW), the model being either linear or a power function. Here a code snipped is provided that may be of use for predicting gear width.
+
+## Data preparation
+
+Here will use the eflalo dataset from {vmstools}
+
+```{r}
+library(ramb)
+library(tidyverse)
+library(vmstools)  # to get access to example data
+data("eflalo")
+lb <- 
+  eflalo |> 
+  as_tibble() |> 
+  mutate(metier5 = rb_met5_from6(LE_MET_level6)) |> 
+  select(length = VE_LEN, kw = VE_KW, metier5, metier6 = LE_MET_level6) |> 
+  distinct() |> 
+  mutate(.rid = 1:n(),
+         .before = length)
+```
+
+## Coding within a flow
+
+A simple pipe flow:
+
+```{r}
+lb1 <- 
+  lb |> 
+  left_join(metier5_benthis_lookup,
+          by = join_by(metier5)) |> 
+  left_join(benthis_parameters |> select(benthis_metier:variable),
+            by = join_by(benthis_metier)) |> 
+  mutate(width = 
+           case_when(
+             model == "power" & variable == "avg_kw" ~    a * kw^b,
+             model == "power" & variable == "avg_oal" ~   a * length^b,
+             model == "linear" & variable == "avg_oal" ~  a * length + b,
+             .default = NA))
+```
+
+## Using a function
+
+Using the function in {ramb}
+
+```{r}
+
+lb2 <- 
+  lb |> 
+  mutate(width = rb_benthis_width(metier5, length, kw))
+identical(lb1$width, lb2$width)
+```
+
+## Comparision with ICES VMS datacall flow
+
+Just a double check:
+
+```{r}
+source("~/stasi/ices/ICES-VMS-and-Logbook-Data-Call/0_global_functions.R")
+lb3 <- lb
+lb3$width <- add_gearwidth(lb3, "metier6", "length", "kw")
+identical(lb2$width / 1000, lb3$width)
+near(lb2$width / 1000, lb3$width) |> table(useNA = "ifany")
+```
+
