@@ -92,6 +92,34 @@ rb_get_ices_metier6 <- function(trim = TRUE, valid = TRUE) {
   return(res)
 }
 
+#' Get ICES gear table
+#'
+#' @param trim Boolean (default TRUE), return only key variables
+#' @param valid Boolean (default TRUE), returns only metiers not depreciated.
+#' Only actuelt if trim is TRUE.
+#'
+#' @return A tibble containing target list and description
+#' @export
+rb_get_ices_gears <- function(trim = TRUE, valid = TRUE) {
+  res <- icesVocab::getCodeList("GearType")
+  if(trim == TRUE) {
+    res <- 
+      res |> 
+      dplyr::select(target = Key,
+                    description = Description,
+                    deprecated = Deprecated) |> 
+      dplyr::as_tibble()
+    if(valid) {
+      res <-
+        res |> 
+        dplyr::filter(deprecated == FALSE) |> 
+        dplyr::select(-deprecated)
+    }
+  }
+  return(res)
+}
+
+
 #' Get ICES target table
 #'
 #' @param trim Boolean (default TRUE), return only key variables
