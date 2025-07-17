@@ -11,6 +11,8 @@ A data frame with 46 rows and 7 variables:
   \item{vid}{unique vessel identifier}
   \item{tid}{unique trip identifier}
   \item{lon}{Longitude}
+  \item{lat}{latitude}
+  \item{time}{time}
   \item{whacks}{Boolean, indication if vessel on track or not}
   }
 }

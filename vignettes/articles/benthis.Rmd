@@ -1,5 +1,8 @@
 ---
 title: "Predicting gear width"
+editor_options: 
+  markdown: 
+    wrap: 72
 ---
 
 ```{r, include = FALSE}
@@ -14,16 +17,48 @@ knitr::opts_chunk$set(
 
 ## Preamble
 
-The ICES VMS datacall request metrics on gear width of towed gear. Routinely the gear width is obtained from 'the Benthis' model. In this model gear width is a function of gear type and vessel length or power (kW), the model being either linear or a power function. Here a code snipped is provided that may be of use for predicting gear width.
+The ICES VMS datacall request metrics on gear width of towed gear.
+
+Routinely the gear width is obtained from 'the Benthis' model. In this
+model gear width is a function of gear type and vessel length or power
+(kW), the model being either linear or a power function.
+
+```{r}
+library(ramb)
+library(tidyverse)
+library(vmstools)  # to get access to example data
+```
+
+## The BENTHIS model
+
+Gear “footprints” of 14 distinct towed gear groups (eight otter trawl
+groups, three beam trawl groups, two demersal seine groups, and one
+dredge group). The footprint is defined as the relative contribution
+from individual larger gear components, such as trawl doors, sweeps, and
+groundgear, to the total area and severity of the gear's impact.
+
+```{r}
+benthis_parameters |> 
+  select(benthis_metier, a, b, model, variable) |> 
+  knitr::kable(caption = "The BENTHIS parameters, models and independent variable")
+```
+
+```{r, echo = FALSE, fig.cap="Relationship between total gear width (door spread) and vessel size by BENTHIS métier for OT. The shaded (grey) areas define Monte Carlo boot-strapped 95% confidence intervals."}
+knitr::include_graphics("https://oup.silverchair-cdn.com/oup/backfile/Content_public/Journal/icesjms/73/suppl_1/10.1093_icesjms_fsv099/4/fsv09906.gif?Expires=1752310780&Signature=auMSapZoKzCwQaFHQVU~EtAvaKsM-SWF~whhyXa~mCzRnMHN~kfvwM9T29SUEcitxYbhNmTEc~q6oK2TBRHciANlmGd517IUW~30z3GcyzowgP28oYZvaWOUU8RSXC5jqT~5vaPrt0pSihQ~UQegh53Uul7deroNjBj3h4nqw2vi0wI-aPMTP~EJvlP20ikhvI5fqxFZU1z2QlXRqA8V3BgQ1RHf71zsxVjwkFXwPZwhFx5QEr-S71H9hkoMp4z~GhIQp7Lnjnvvto8L3AfGaVY9p~q~~Ngj7Lzecy~748nvtI4BKzqqx2KoaR6x49jn48uWYxtiUFXVSlQD4y0Itg__&Key-Pair-Id=APKAIE5G5CRDK6RD3PGA")
+```
+
+For each gear group, a vessel size–gear size relationship parameters can
+used to estimate gear width and sediment penetration from vessel size
+(length or power).
+
+Here a code snipped is provided that may be of use for predicting gear
+width.
 
 ## Data preparation
 
 Here will use the eflalo dataset from {vmstools}
 
 ```{r}
-library(ramb)
-library(tidyverse)
-library(vmstools)  # to get access to example data
 data("eflalo")
 lb <- 
   eflalo |> 
@@ -77,4 +112,3 @@ lb3$width <- add_gearwidth(lb3, "metier6", "length", "kw")
 identical(lb2$width / 1000, lb3$width)
 near(lb2$width / 1000, lb3$width) |> table(useNA = "ifany")
 ```
-

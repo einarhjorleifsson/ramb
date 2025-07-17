@@ -15,6 +15,10 @@ utils::globalVariables(
     "HARB_EVENT", "INTV", "SI_HARB", "SI_HARB2", "depart",
     "duration_hours", "recid", "time_stamp", "time_stamp2",
     "trip_id", "trip_id2",
-    "."
+    ".",
+    "metiers5", "metier5_benthis_lookup", "benthis_parameters",
+    "variable", "width", "Key", "Description", "Deprecated",
+    "deprecated", "Metier_level6", "metier5", "Benthis_metiers",
+    "benthis_metier", "description", "to_date", "pos2", "distance"
   )
 )

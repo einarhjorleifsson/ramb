@@ -80,6 +80,8 @@
 #'   \item{vid}{unique vessel identifier}
 #'   \item{tid}{unique trip identifier}
 #'   \item{lon}{Longitude}
+#'   \item{lat}{latitude}
+#'   \item{time}{time}
 #'   \item{whacks}{Boolean, indication if vessel on track or not}
 #'   }
 #'
@@ -102,11 +104,11 @@
 #' 
 #' https://doi.org/10.1093/icesjms/fsv099
 #' 
-#' @format A data frame with 46 rows and 7 variables:
+#' @format A data frame with 14 observations (rows) and 12 variables (columns):
 #' \describe{
 #'   \item{benthis_metier}{Metier as defined in the Benthis project}
 #'   \item{a}{First model parameter}
-#'   \item{avLoa}{Second model parameter}
+#'   \item{b}{Second model parameter}
 #'   \item{model}{Model type, linear or power}
 #'   \item{variable}{Dependent variable, overall vessel length or vessel kilowatts}
 #'   \item{subsurface_percentage}{Subsurface impact}
@@ -120,3 +122,15 @@
 #'
 #' @source https://doi.org/10.1093/icesjms/fsv099
 "benthis_parameters"
+
+
+#' Benthis metier lookup
+#' 
+#' @format A data frame with 41 observations (rows) and 2 variables (columns):
+#' \describe{
+#'   \item{metier5}{Metier as defined by ICES}
+#'   \item{benthis_metier}{Metier as defined in the benthis project}
+#'   }
+#'
+#' @source https://doi.org/10.1093/icesjms/fsv099
+"metier5_benthis_lookup"

@@ -5,11 +5,11 @@
 \alias{benthis_parameters}
 \title{Benthis parameters}
 \format{
-A data frame with 46 rows and 7 variables:
+A data frame with 14 observations (rows) and 12 variables (columns):
 \describe{
   \item{benthis_metier}{Metier as defined in the Benthis project}
   \item{a}{First model parameter}
-  \item{avLoa}{Second model parameter}
+  \item{b}{Second model parameter}
   \item{model}{Model type, linear or power}
   \item{variable}{Dependent variable, overall vessel length or vessel kilowatts}
   \item{subsurface_percentage}{Subsurface impact}

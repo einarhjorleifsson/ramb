@@ -11,6 +11,9 @@ rb_get_ices_metier5_benthis_lookup(trim = TRUE, correct = TRUE)
 
 \item{correct}{Boolean (default TRUE), not active}
 }
+\value{
+A vector
+}
 \description{
 Extracts key variables from https://raw.githubusercontent.com/ices-eg/RCGs/master/Metiers/Reference_lists/RDB_ISSG_Metier_list.csv
 }

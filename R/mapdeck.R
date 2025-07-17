@@ -18,7 +18,7 @@ rb_mapdeck <-
            highlight_colour = "black", stroke_colour = "cyan") {
     
     col2hex <- function (cname) {
-      colMat <- col2rgb(cname)
+      colMat <- grDevices::col2rgb(cname)
       grDevices::rgb(red = colMat[1, ]/255, green = colMat[2, ]/255, blue = colMat[3, 
       ]/255)
     }
