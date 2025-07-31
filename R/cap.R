@@ -1,3 +1,21 @@
+#' Cap value to IQR range
+#' 
+#' Replace extreme values by less extreme using interquartile range multiplier 
+#'
+#' @param x A numeric vector
+#' @param multiplier Default is 1.5
+#'
+#' @return A vector of same length as x
+#' @export
+#' 
+rb_cap_iqr <- function(x, multiplier = 1.5) {
+  
+  x <- log10(x)
+  upper <- min(max(x), quantile(x, 0.75, na.rm = TRUE) + (IQR(x, na.rm = TRUE) * multiplier))
+  upper <- 10^upper
+  return(upper)
+}
+
 #' Winsorize
 #' 
 #' Replace extreme values by less extreme ones. Default is just to cap the higher
@@ -31,7 +49,7 @@ rb_cap_winsorize <- function(x, limit = stats::quantile(x, probs = c(0.99), na.r
   
 }
 
-#' Cap value to higest sequential 1.5 log step
+#' Cap value to highest sequential 1.5 log step
 #' 
 #' Replaces extreme values by less extreme ones.
 #'

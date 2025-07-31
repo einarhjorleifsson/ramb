@@ -2,7 +2,7 @@
 % Please edit documentation in R/cap.R
 \name{rb_cap_miller}
 \alias{rb_cap_miller}
-\title{Cap value to higest sequential 1.5 log step}
+\title{Cap value to highest sequential 1.5 log step}
 \usage{
 rb_cap_miller(x, step_limit = 1.5)
 }
