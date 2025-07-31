@@ -4,14 +4,14 @@
 #' values, but if arguement p is of length 2, lower values can also be substituted.
 #'
 #' @param x A numeric vector
-#' @param limit Normally a single value (default 0.98), values higher than this will be replaced by this value.
+#' @param limit Normally a single value (default 0.99), values higher than this will be replaced by this value.
 #' Default is the 98th percentile of the distribution of x.
 #' 
 #'
 #' @return A vector of same length as x
 #' @export
 #'
-rb_cap_winsorize <- function(x, limit = quantile(x, probs = c(0.98), na.rm = FALSE)) {
+rb_cap_winsorize <- function(x, limit = stats::quantile(x, probs = c(0.99), na.rm = FALSE)) {
   
   if(length(limit) > 2) {
     message("Cap vector can only be of length 2 (upper and lower values)")
@@ -43,26 +43,35 @@ rb_cap_winsorize <- function(x, limit = quantile(x, probs = c(0.98), na.rm = FAL
 #' @export
 #'
 rb_cap_miller <- function(x, step_limit = 1.5) {
+  
   w <- x |> unique() |> sort()
   w <- w[w > 0]
+  
+  # A: If non-zero values
   if (length(w) > 0) {
     log_w <- log10(w)
     difw <- diff(log_w)
+    # If any step difference greater than set by user, find the maximum value
     if (any(difw > step_limit)) {
       valids <- which(difw <= step_limit)
-      
       if (length(valids) > 0) {
-        res <- w[max(valids) + 1]
+        # Add one to counter because diff returns a vector of length one less
+        #  than the original data
+        cap <- w[max(valids) + 1]
       } else {
-        res <- max(w, na.rm = TRUE)
+        cap <- max(w, na.rm = TRUE)
       }
     }
   }
-  x[x > res]  <- res
+    
+  # B: If only zero values
+  if(length(w) == 0) {
+    cap <- 0
+  }
+  
+  # Hail Mary - should really deal with this above
+  if(!exists("cap")) cap <- max(w, na.rm = TRUE)
+
+  x[x >= cap]  <- cap
   return(x)
 }
-
-  
-  
-    
-    
