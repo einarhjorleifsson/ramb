@@ -4,12 +4,12 @@
 \alias{rb_cap_miller}
 \title{Cap value to higest sequential 1.5 log step}
 \usage{
-rb_cap_miller(x, val = 1.5)
+rb_cap_miller(x, step_limit = 1.5)
 }
 \arguments{
 \item{x}{A numeric vector}
 
-\item{val}{A single value (default 1.5), log10 step values between consequitve
+\item{step_limit}{A single value (default 1.5), log10 step values between consecutive
 ordered values of x will be capped by the maximum step value.}
 }
 \value{
