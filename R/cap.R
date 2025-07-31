@@ -10,10 +10,11 @@
 #' 
 rb_cap_iqr <- function(x, multiplier = 1.5) {
   
-  x <- log10(x)
-  upper <- min(max(x), quantile(x, 0.75, na.rm = TRUE) + (IQR(x, na.rm = TRUE) * multiplier))
-  upper <- 10^upper
-  return(upper)
+  y <- log(x)
+  upper <- min(max(y, na.rm = TRUE), quantile(y, 0.75, na.rm = TRUE) + (IQR(y, na.rm = TRUE) * multiplier))
+  upper <- exp(upper)
+  x[x > upper] <- upper
+  return(x)
 }
 
 #' Winsorize
