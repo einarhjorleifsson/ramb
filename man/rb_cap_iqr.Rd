@@ -2,7 +2,7 @@
 % Please edit documentation in R/cap.R
 \name{rb_cap_iqr}
 \alias{rb_cap_iqr}
-\title{Cap value to IQR range}
+\title{Cap value to the upper multiplier of the IQR range}
 \usage{
 rb_cap_iqr(x, multiplier = 1.5)
 }

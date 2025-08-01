@@ -4,13 +4,12 @@
 \alias{rb_cap_winsorize}
 \title{Winsorize}
 \usage{
-rb_cap_winsorize(x, limit = stats::quantile(x, probs = c(0.99), na.rm = FALSE))
+rb_cap_winsorize(x, probs = 0.99)
 }
 \arguments{
 \item{x}{A numeric vector}
 
-\item{limit}{Normally a single value (default 0.99), values higher than this will be replaced by this value.
-Default is the 98th percentile of the distribution of x.}
+\item{probs}{A single value of probabilities with values in [0,1], default 0.99.}
 }
 \value{
 A vector of same length as x
