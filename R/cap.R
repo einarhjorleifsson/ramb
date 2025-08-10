@@ -59,7 +59,7 @@ rb_cap_winsorize <- function(x, probs = 0.99) {
     message("Value should be between 0 and 1")
   }
 
-  limit <- rb_probs_value(x, probs)
+  limit <- rb_winsor(x, probs)
   x[x > limit] <- limit
   
   return(x)
