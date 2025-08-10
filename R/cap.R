@@ -23,7 +23,7 @@ rb_iqr <- function(x, multiplier = 1.5) {
 #' @export
 #' 
 rb_cap_iqr <- function(x, multiplier = 1.5) {
-  upper <- rb_iqr(x, muliplier)
+  upper <- rb_iqr(x, multiplier)
   x[x > upper] <- upper
   return(x)
 }
