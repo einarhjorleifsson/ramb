@@ -55,7 +55,7 @@ rb_cap_winsorize <- function(x, probs = 0.99) {
   if(length(probs) > 1) {
     message("Cap vector can only be of length 1 (upper value)")
   }
-  if(props < 0 | probs > 1) {
+  if(probs < 0 | probs > 1) {
     message("Value should be between 0 and 1")
   }
 
