@@ -101,3 +101,17 @@ rb_d2ir_vmstools <- function(lon, lat) {
   
   return(rectID)
 }
+
+#' Binning data
+#' 
+#' Returns the midpoint of value given a binwidth (dx)
+#'
+#' @param x A numerical vector, e.g. longitude or latitude
+#' @param dx A value, think of this a binwidth
+#'
+#' @return A vector with same length as x
+#' @export
+#'
+rb_grade <- function(x, dx) {
+  x %/% dx * dx + dx/2
+}
