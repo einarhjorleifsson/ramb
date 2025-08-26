@@ -19,6 +19,7 @@ Imports:
     dplyr,
     EMbC,
     geo,
+    icesVocab,
     lubridate,
     magrittr,
     mapdeck,
