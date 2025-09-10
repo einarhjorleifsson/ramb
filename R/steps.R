@@ -10,7 +10,7 @@
 #'
 #'
 rb_st <- function(time, units = "secs")  {
-  difftime(time, dplyr::lag(time), units = units) %>% 
+  difftime(time, dplyr::lag(time), units = units) |> 
     as.numeric()
 }
 

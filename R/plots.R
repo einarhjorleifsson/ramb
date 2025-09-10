@@ -14,7 +14,7 @@ rb_md_trip <- function(data, tid, radius = 10, col = "speed", trip = TRUE) {
   
   if(any(!class(data) %in% "sf")) {
     data <- 
-      data %>% 
+      data |> 
       sf::st_as_sf(coords = c("lon", "lat"),
                    crs = 4326,
                    remove = FALSE)
@@ -24,10 +24,10 @@ rb_md_trip <- function(data, tid, radius = 10, col = "speed", trip = TRUE) {
   
   if(trip) {
     m <- 
-      m %>% 
-      mapdeck::add_path(data = data %>% 
-                          dplyr::group_by( {{tid}} ) %>% 
-                          dplyr::summarise(do_union = FALSE) %>%
+      m |> 
+      mapdeck::add_path(data = data |> 
+                          dplyr::group_by( {{tid}} ) |> 
+                          dplyr::summarise(do_union = FALSE) |>
                           sf::st_cast("LINESTRING"),
                         layer_id = "track",
                         stroke_width = 1000,
@@ -42,7 +42,7 @@ rb_md_trip <- function(data, tid, radius = 10, col = "speed", trip = TRUE) {
   }
   
   m <- 
-    m %>% 
+    m |> 
     mapdeck::add_scatterplot(data = data,
                              fill_colour = "speed",
                              radius = radius,

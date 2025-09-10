@@ -40,32 +40,32 @@ rb_event <- function(x) {
 rb_interval_id <- function(point, interval, vid, time, start, end, id) {
   
   point.dt <-
-    point %>%
+    point |>
     dplyr::select(vid = {{vid}},
-                  t = {{time}}) %>% 
-    #dplyr::arrange(t) %>% 
-    dplyr::mutate(dummy = t) %>% 
+                  t = {{time}}) |> 
+    #dplyr::arrange(t) |> 
+    dplyr::mutate(dummy = t) |> 
     data.table::data.table()
   interval.dt <-
-    interval %>%
+    interval |>
     dplyr::select(vid = {{vid}},
                   t1 = {{start}},
                   t2 = {{end}},
-                  id = {{id}}) %>% 
-    #dplyr::arrange(start, end) %>%
+                  id = {{id}}) |> 
+    #dplyr::arrange(start, end) |>
     data.table::data.table()
   
   data.table::setkey(point.dt, vid, t, dummy)
   data.table::setkey(interval.dt, vid, t1, t2)
   
   x <- 
-    data.table::foverlaps(point.dt, interval.dt, nomatch = NA) %>% 
-    tibble::as_tibble() %>% 
+    data.table::foverlaps(point.dt, interval.dt, nomatch = NA) |> 
+    tibble::as_tibble() |> 
     dplyr::pull( id )
   
-  point %>% 
-    dplyr::mutate(.id = x) %>% 
-    return()
+  # point |> 
+  #   dplyr::mutate(.id = x) |> 
+  #   return()
   
 }
 
@@ -112,7 +112,7 @@ rb_kn2ms <- function(x) {
 #' @export
 #'
 rb_summary <- function(d) {
-  d %>% 
+  d |> 
     dplyr::summarise(pings = dplyr::n(),
                      t.min = min(time),
                      t.max = max(time),
@@ -143,10 +143,10 @@ rb_summary <- function(d) {
 #'
 rb_pad_harbour <- function(tid, hid) {
   tibble::tibble(.tid = tid,
-                 .hid = hid) %>% 
+                 .hid = hid) |> 
     dplyr::mutate(.hid = dplyr::case_when(.tid !=  dplyr::lag(.tid) & .tid > 0 ~  dplyr::lag(.hid),
                                           .tid != dplyr::lead(.tid) & .tid > 0 ~ dplyr::lead(.hid),
-                                          TRUE ~ .hid)) %>% 
+                                          TRUE ~ .hid)) |> 
     dplyr::pull(.hid)
 }
 
@@ -164,16 +164,16 @@ rb_pad_harbour <- function(tid, hid) {
 #'
 rb_peek <- function(d, what, criteria) {
   
-  d %>% 
-    dplyr::filter( {{what}} > criteria) %>% 
+  d |> 
+    dplyr::filter( {{what}} > criteria) |> 
     dplyr::pull(.rid) ->
     rid
   d <-
-    d %>% 
+    d |> 
     dplyr::mutate(whacky = ifelse(.rid %in% rid, "whacky", ""))
   # need to vectorize:
   rids <- NULL
   for(i in 1:length(rid)) rids <- c(rids, rid[i] + c(-2, -1, 0, 1, 2))
-  d %>% dplyr::filter(.rid %in% rids)
+  d |> dplyr::filter(.rid %in% rids)
   
 }

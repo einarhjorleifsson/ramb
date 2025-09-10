@@ -5,7 +5,7 @@
 #' @return a query
 #'
 rb_mobile_vid <- function(con) {
-  mar::tbl_mar(con, "ops$einarhj.mobile_vid") |> 
+  omar::tbl_mar(con, "ops$einarhj.mobile_vid") |> 
     dplyr::mutate(t1 = to_date(t1, "YYYY:MM:DD"),
                   t2 = to_date(t2, "YYYY:MM:DD")) 
 }
@@ -22,7 +22,7 @@ rb_mobile_vid <- function(con) {
 #'
 rb_stk_trail <- function(con, vid) {
   
-  omar::tbl_mar(con, "stk.trail") %>%
+  omar::tbl_mar(con, "stk.trail") |>
     dplyr::mutate(lon = poslon * 180 / pi,
                   lat = poslat * 180 / pi,
                   heading = heading * 180 / pi,
@@ -85,14 +85,14 @@ rb_read_trails <- function(con, VID, YEARS, use_PAM = FALSE) {
     dplyr::filter(vid %in% VID) |> 
     dplyr::select(mid, vid) |> 
     dplyr::left_join(omar::stk_trail(con),
-                     by = "mid") %>%
+                     by = "mid") |>
     dplyr::filter(
       time >= to_date(D1, "YYYY:MM:DD"),
-      time <= to_date(D2, "YYYY:MM:DD")) %>% 
-    dplyr::collect(n = Inf) %>%
-    dplyr::select(vid, time, lon, lat, speed, heading) %>%
-    dplyr::mutate(source = "stk") %>% 
-    dplyr::arrange(time) %>% 
+      time <= to_date(D2, "YYYY:MM:DD")) |> 
+    dplyr::collect(n = Inf) |>
+    dplyr::select(vid, time, lon, lat, speed, heading) |>
+    dplyr::mutate(source = "stk") |> 
+    dplyr::arrange(time) |> 
     dplyr::distinct(time, .keep_all = TRUE)
   
   if(use_PAM) {
@@ -113,7 +113,7 @@ rb_read_trails <- function(con, VID, YEARS, use_PAM = FALSE) {
       dplyr::left_join(omar::pame_trail(con),
                        by = "mmsi") |> 
       dplyr::filter(time >= to_date(D1, "YYYY:MM:DD"),
-                    time <= to_date(D2, "YYYY:MM:DD")) %>% 
+                    time <= to_date(D2, "YYYY:MM:DD")) |> 
       dplyr::select(-c(mmsi, imo, vessel, flag)) |> 
       dplyr::collect(n = Inf) |> 
       # what happens if nrow == 0?
@@ -128,11 +128,11 @@ rb_read_trails <- function(con, VID, YEARS, use_PAM = FALSE) {
     dplyr::filter(vid %in% VID) |> 
     dplyr::filter(time >= to_date(D1, "YYYY:MM:DD"),
                   time <= to_date(D2, "YYYY:MM:DD")) |> 
-    dplyr::collect(n = Inf) %>% 
+    dplyr::collect(n = Inf) |> 
     dplyr::mutate(lon = NA_real_,
                   lat = NA_real_,
                   source = "lgs") |> 
-    dplyr::arrange(time) %>% 
+    dplyr::arrange(time) |> 
     dplyr::distinct(time, .keep_all = TRUE) |> 
     dplyr::mutate(source = "lbs")
   
@@ -147,7 +147,7 @@ rb_read_trails <- function(con, VID, YEARS, use_PAM = FALSE) {
   if(nrow(ais > 0)) {
     ais <- 
       ais |> 
-      dplyr::mutate(.rid = 1:dplyr::n()) %>% 
+      dplyr::mutate(.rid = 1:dplyr::n()) |> 
       dplyr::select(.rid, dplyr::everything())
   }
   

@@ -1,7 +1,7 @@
 Package: ramb
 Type: Package
 Title: Rambling
-Version: 2025.08.26
+Version: 2025.09.10
 Authors@R: c(
   person("Einar", "Hjörleifsson", role = c("aut", "cre"), email = "einar.hjorleifsson@gmail.com")
   )
@@ -13,22 +13,14 @@ LazyData: true
 LazyDataCompression: xz
 Depends: 
     R (>= 3.5.0)
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 Imports: 
     data.table,
     dplyr,
-    EMbC,
-    geo,
     icesVocab,
     lubridate,
-    magrittr,
     mapdeck,
-    mar,
     methods,
-    mixtools,
-    moveHMM,
-    omar,
-    plotmm,
     purrr, 
     readr,
     scales,
@@ -37,8 +29,7 @@ Imports:
     terra,
     tibble,
     tidyr,
-    traipse,
-    trip
+    traipse
 Suggests: 
     ggnewscale,
     rayshader,
