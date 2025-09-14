@@ -19,7 +19,7 @@
 #'   FT_LDAT = c("01/01/2023", "01/01/2023"),
 #'   FT_LTIME = c("00:30:00", "12:00:00")
 #' )
-#' dc_check_eflalo_accross_year(eflalo)
+#' dc_check_eflalo_crosses_year(eflalo)
 #'
 #' # Example with a trip crossing year
 #' eflalo2 <- data.frame(
@@ -28,7 +28,7 @@
 #'   FT_LDAT = "01/01/2025",
 #'   FT_LTIME = "00:30:00"
 #' )
-#' dc_check_eflalo_accross_year(eflalo2)
+#' dc_check_eflalo_crosses_year(eflalo2)
 #'
 #' # Example using UTC and ISO format
 #' eflalo3 <- data.frame(
@@ -37,10 +37,10 @@
 #'   FT_LDAT = "2025-01-01",
 #'   FT_LTIME = "00:00:01"
 #' )
-#' dc_check_eflalo_accross_year(eflalo3)
+#' dc_check_eflalo_crosses_year(eflalo3)
 #'
 #' @export
-dc_check_eflalo_accross_year <- function(eflalo) {
+dc_check_eflalo_crosses_year <- function(eflalo) {
   # Input checks
   if (!is.data.frame(eflalo)) stop("'eflalo' must be a data.frame.")
   required_cols <- c("FT_DDAT", "FT_DTIME", "FT_LDAT", "FT_LTIME")
