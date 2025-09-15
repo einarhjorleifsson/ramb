@@ -7,78 +7,131 @@
 dc_split_among_pings(
   tacsat,
   eflalo,
-  variable = "all",
-  level = c("day", "ICESrectangle", "trip"),
-  by = NULL
+  level = c("trip", "ICESrectangle", "day"),
+  by = NULL,
+  variable = "all"
 )
 }
 \arguments{
-\item{tacsat}{Data frame of VMS pings. Must include at least: SI_STATE, SI_DATE, SI_TIME, FT_REF, VE_REF, LE_RECT, (and optionally a weighting column).}
+\item{tacsat}{Data frame of VMS pings (see Required columns).}
 
-\item{eflalo}{Data frame of logbook trips. Must include at least: FT_REF, VE_REF, FT_DDAT, FT_DTIME, FT_LDAT, FT_LTIME, LE_KG, LE_EURO, LE_RECT.}
+\item{eflalo}{Data frame of logbook trips (see Required columns).}
+
+\item{level}{Character vector; hierarchical grouping for splitting, must be one of:
+c("trip"), c("trip", "ICESrectangle"), or c("trip", "ICESrectangle", "day").}
+
+\item{by}{Optional; name of a `tacsat` column to use as weight for splitting (e.g., "INTV"). If NULL (default), splits equally.}
 
 \item{variable}{Which variable(s) to split: "all" (default), "value", or "kgs".}
-
-\item{level}{Character vector of grouping levels. Can include any of c("day", "ICESrectangle", "trip"). Default: all.}
-
-\item{by}{Optional. Name of a tacsat column to use as a weight for splitting (e.g., "INTV" for time interval). If NULL, splits equally.}
 }
 \value{
-Data frame of fishing pings with assigned catch/value columns (Assigned_KG, Assigned_EURO).
+Tibble/data.frame of fishing pings with assigned catch/value columns (`KG`, `EURO`).
 }
 \description{
-This function mimics the main logic of vmstools::splitAmongPings, but is written purely with dplyr verbs.
-It links VMS ping data (tacsat) to logbook trip data (eflalo) and distributes the reported catch and/or value
-across the relevant VMS pings, optionally weighted by a given column (e.g., time interval).
+This function distributes logbook-reported catch and/or value among relevant VMS pings (fishing pings) using `dplyr`.
+It mimics the logic of `vmstools::splitAmongPings` but is implemented with `dplyr` and `lubridate`.
 }
 \details{
-The function supports splitting at different hierarchical levels: by trip, rectangle, and/or day.
-The default is to split by all available levels. Only fishing pings (`SI_STATE == 1`) are assigned catch/value.
+It links VMS ping data (`tacsat`) with logbook trip data (`eflalo`) and distributes reported catch/value across the relevant VMS pings, optionally weighted by a specified column (e.g., time interval).
 
+Splitting is always hierarchical and must be one of the following (from coarsest to finest):
+  - `level = c("trip")`
+  - `level = c("trip", "ICESrectangle")`
+  - `level = c("trip", "ICESrectangle", "day")`
+Only these three forms are allowed.
+Only fishing pings (`SI_STATE == 1`) receive catch/value.
 
-- The function performs a left join between tacsat and eflalo on the grouping columns derived from `level`.
-- For each group (e.g., unique day, rectangle, trip), catch and/or value are distributed among pings, either equally or weighted by the `by` column.
-- Only pings with SI_STATE == 1 (fishing) will be assigned catch/value.
-- No "conserve" logic is implemented: only pings that can be matched to logbook trips receive catch/value.
-- The function expects date columns in "dd/mm/yyyy" format and time columns as "HH:MM".
-- Only dplyr, lubridate, and base R are used.
+## Required columns
+
+**tacsat** (VMS pings):  
+- `SI_STATE` (integer: 1 = fishing, 0 = not fishing; only 1 or 0 allowed)  
+- `SI_DATIM` (datetime; POSIXct)  
+- `VE_REF`, `FT_REF` (character; vessel/trip identifiers)  
+- `LE_RECT` (character; ICES rectangle)  
+- (optional: weighting column, e.g., `INTV`)
+
+**eflalo** (logbook trips):  
+- `FT_REF`, `VE_REF` (character; must match tacsat)  
+- `LE_CDAT` (date; trip date, format: "dd/mm/yyyy" or POSIXct)  
+- `LE_RECT` (character; ICES rectangle)  
+- `LE_KG` (numeric; catch in kg)  
+- `LE_EURO` (numeric; value in euro)
+
+## Returned value
+
+Returns a tibble/data.frame of pings (rows from `tacsat`), with columns:
+- All columns from input `tacsat` (except for temporary columns and grouping variables)
+- `KG`: assigned catch (kg) per ping (numeric; 0 if not assigned)
+- `EURO`: assigned value (€) per ping (numeric; 0 if not assigned)
+
+## Details
+
+- Performs a left join between `tacsat` and `eflalo` on grouping columns based on `level` (hierarchical).
+- For each group (e.g., trip, rectangle, day), splits catch/value among fishing pings, either equally or weighted by the `by` column.
+- Only pings with `SI_STATE == 1` will be assigned catch/value.
+- `SI_STATE` must only contain values 0 or 1; an error is thrown otherwise.
+- No "conserve" logic: only matched pings receive catch/value.
+- Date columns must be "dd/mm/yyyy" or POSIXct; time columns not used directly.
+- Only `dplyr`, `lubridate`, and base R are used.
 }
 \examples{
-# Minimal example with two rectangles and two days:
-eflalo <- tibble::tibble(
-  VE_REF   = "V001",
-  FT_REF   = 101,
-  FT_DDAT  = c("01/09/2025", "02/09/2025"),
-  FT_DTIME = c("06:00", "06:00"),
-  FT_LDAT  = c("01/09/2025", "02/09/2025"),
-  FT_LTIME = c("20:00", "20:00"),
-  LE_CDAT  = c("01/09/2025", "02/09/2025"),
-  LE_RECT  = c("32F1", "32F2"),
-  LE_KG    = c(300, 500),
-  LE_EURO  = c(600, 1000)
+library(dplyr); library(lubridate)
+eflalo <- tibble(
+  VE_COU = rep("ISL", 4),
+  VE_REF = rep("V001", 4),
+  FT_REF = rep("1", 4),
+  LE_CDAT = c("01/01/2025", "01/01/2025", "02/01/2025", "02/01/2025"),
+  LE_RECT = c("32F1", "32F2", "32F3", "32F2"),
+  LE_KG = c(100, 500, 1200, 300),
+  LE_EURO = c(100, 500, 1200, 300)
 )
-tacsat <- tibble::tibble(
-  VE_REF   = rep("V001", 8),
-  FT_REF   = rep(101, 8),
-  SI_DATE  = c("01/09/2025","01/09/2025","01/09/2025","01/09/2025",
-               "02/09/2025","02/09/2025","02/09/2025","02/09/2025"),
-  SI_TIME  = c("08:00","12:00","16:00","20:00",
-               "08:00","12:00","16:00","20:00"),
-  LE_RECT  = c("32F1","32F1","32F2","32F2",
-               "32F2","32F2","32F1","32F1"),
-  SI_STATE = rep(1, 8),
-  INTV     = c(2, 4, 4, 2, 2, 4, 4, 2)
-)
-result <- dc_split_among_pings(
+tacsat <- tibble(
+  SI_DATIM = seq(ymd_hms("2025-01-01 06:00:00"), ymd_hms("2025-01-02 18:00:00"), by = "1 hour")
+) \%>\%
+  mutate(
+    VE_COU = "ISL",
+    VE_REF = "V001",
+    FT_REF = "1",
+    LE_RECT = case_when(
+      between(SI_DATIM, ymd_hms("2025-01-01 09:00:00 UTC"), ymd_hms("2025-01-01 13:00:00 UTC")) ~ "32F1",
+      between(SI_DATIM, ymd_hms("2025-01-01 18:00:00 UTC"), ymd_hms("2025-01-01 21:00:00 UTC")) ~ "32F2",
+      between(SI_DATIM, ymd_hms("2025-01-02 02:00:00 UTC"), ymd_hms("2025-01-02 03:00:00 UTC")) ~ "32F3",
+      between(SI_DATIM, ymd_hms("2025-01-02 13:00:00 UTC"), ymd_hms("2025-01-02 14:00:00 UTC")) ~ "32F2",
+      TRUE ~ "9999"
+    ),
+    SI_STATE = 1L,
+    INTV = 1
+  ) \%>\%
+  mutate(.rowid = 1:n(), .before = SI_DATIM)
+# Test hierarchical forms
+result1 <- dc_split_among_pings(
   tacsat = tacsat,
   eflalo = eflalo,
   variable = "all",
-  level = c("day", "ICESrectangle", "trip"),
+  level = c("trip", "ICESrectangle", "day"),
   by = "INTV"
 )
-# View with print(head(result))
+result2 <- dc_split_among_pings(
+  tacsat = tacsat,
+  eflalo = eflalo,
+  variable = "all",
+  level = c("trip", "ICESrectangle"),
+  by = "INTV"
+)
+result3 <- dc_split_among_pings(
+  tacsat = tacsat,
+  eflalo = eflalo,
+  variable = "all",
+  level = c("trip"),
+  by = "INTV"
+)
+# All SI_STATE must be 0 or 1:
+stopifnot(all(result1$SI_STATE \%in\% c(0,1)))
+stopifnot(all(result2$SI_STATE \%in\% c(0,1)))
+stopifnot(all(result3$SI_STATE \%in\% c(0,1)))
+# head(result1); head(result2); head(result3)
 
 }
 \author{
-Einar Hjörleifsson, Copilot
+Einar Hjörleifsson
 }
