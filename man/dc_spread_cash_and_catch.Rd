@@ -12,27 +12,16 @@ dc_spread_cash_and_catch(trails, events, remove_diagnostic = TRUE)
   \item{\code{.pid}:} {integer, unique trail identifier}
   \item{\code{VE_COU}:} {character, vessel country}
   \item{\code{VE_REF}:} {character, vessel reference}
-  \item{\code{SI_DATIM}:} {POSIXct/datetime, timestamp}
+  \item{\code{time}:} {POSIXct/datetime, UTC timestamp, derived from SI_DATE and SI_TIME}
   \item{\code{FT_REF}:} {character, fishing trip reference}
-  \item{\code{LE_RECT}:} {character, ICES rectangle}
-  \item{\code{SI_STATE}:} {integer, state (must be 0 or 1)}
-}}
-
-\item{events}{A data frame containing landing event records. **Required columns:**
-\itemize{
-  \item{\code{.eid}:} {integer, unique event identifier}
-  \item{\code{VE_COU}:} {character, vessel country}
-  \item{\code{VE_REF}:} {character, vessel reference}
-  \item{\code{FT_REF}:} {character, fishing trip reference}
-  \item{\code{LE_CDAT}:} {Date, event date}
-  \item{\code{LE_RECT}:} {character, ICES rectangle}
-  \item{\code{LE_KG}:} {numeric, landed weight in kg}
-  \item{\code{LE_EURO}:} {numeric, landed value in euro}
+  \item{\code{ir}:} {character, ICES rectangle, derive from SI_LONG and SI_LAT}
+  \item{\code{state}:} {integer, state (must be 0 or 1)}
 }}
 }
 \value{
 A data frame similar to \code{trails}, with updated \code{LE_KG}, \code{LE_EURO},
-  and a column \code{.how} indicating the allocation step.
+  and a column \code{.how} indicating at which step the spread took place. Additional variables 
+  may be returned if arguement remove_diagnostic is set to FALSE.
 }
 \description{
 This function allocates landing event weights (`LE_KG`) and values (`LE_EURO`)
@@ -40,15 +29,12 @@ from the `events` data frame to the corresponding fishing trails in the `trails`
 data frame using a hierarchical matching and allocation strategy.
 }
 \details{
-The function allocates event landings to trails using three hierarchical steps:
+The function spreads event cash and catches to trails using three hierarchical steps:
 \enumerate{
-  \item Joins by trip, rectangle, day, and state.
-  \item Joins remaining unmatched records by trip, rectangle, year, and state.
-  \item Joins remaining unmatched records by trip, year, and state, allocating only the remaining events.
+  \item Joins by year, trip, state, rectangle and day.
+  \item Joins remaining unmatched records by year, trip, state and rectangle.
+  \item Joins remaining unmatched records by year, trip, and state
 }
-}
-\examples{
-\dontrun{
-out <- allocate_landings(trails, events)
-}
+
+If any trip cash or catches are remaining the above are raised by trip based raising factor.
 }
