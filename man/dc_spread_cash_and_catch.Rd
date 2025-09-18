@@ -2,39 +2,96 @@
 % Please edit documentation in R/dc_spread_cash_and_catch.R
 \name{dc_spread_cash_and_catch}
 \alias{dc_spread_cash_and_catch}
-\title{Allocate Landings from Events to Trails}
+\title{Spread Catch and Value from Events to Trails Using Hierarchical Allocation}
 \usage{
-dc_spread_cash_and_catch(trails, events, remove_diagnostic = TRUE)
+dc_spread_cash_and_catch(
+  trails,
+  events,
+  remove_diagnostic = TRUE,
+  ignore_Einstein = TRUE,
+  go_nuclear = "absolutely not"
+)
 }
 \arguments{
-\item{trails}{A data frame containing fishing trail records. **Required columns:**
-\itemize{
-  \item{\code{.pid}:} {integer, unique trail identifier}
-  \item{\code{VE_COU}:} {character, vessel country}
-  \item{\code{VE_REF}:} {character, vessel reference}
-  \item{\code{time}:} {POSIXct/datetime, UTC timestamp, derived from SI_DATE and SI_TIME}
-  \item{\code{FT_REF}:} {character, fishing trip reference}
-  \item{\code{ir}:} {character, ICES rectangle, derive from SI_LONG and SI_LAT}
-  \item{\code{state}:} {integer, state (must be 0 or 1)}
+\item{trails}{A data frame of fishing trail records. Must contain:
+\describe{
+  \item{.pid}{integer, unique trail identifier}
+  \item{VE_COU}{character, vessel country}
+  \item{VE_REF}{character, vessel reference}
+  \item{time}{POSIXct, UTC timestamp}
+  \item{FT_REF}{character, fishing trip reference}
+  \item{ir}{character, ICES rectangle}
+  \item{state}{integer, should be 0 or 1}
 }}
+
+\item{events}{A data frame of landing event records. Must contain:
+\describe{
+  \item{.eid}{integer, unique event identifier}
+  \item{VE_COU}{character, vessel country}
+  \item{VE_REF}{character, vessel reference}
+  \item{FT_REF}{character, fishing trip reference}
+  \item{date}{Date, event date}
+  \item{LE_RECT}{character, ICES rectangle}
+  \item{LE_KG}{numeric, landed weight in kg}
+  \item{LE_EURO}{numeric, landed value in euro}
+}}
+
+\item{remove_diagnostic}{Logical. If TRUE (default), diagnostic columns are removed from output.}
+
+\item{ignore_Einstein}{Logical (default TRUE). Whether to ignore unallocated events ("Einstein step" not implemented).}
+
+\item{go_nuclear}{Character (default "absolutely not"). Any other value triggers alternative allocation (not implemented).}
 }
 \value{
-A data frame similar to \code{trails}, with updated \code{LE_KG}, \code{LE_EURO},
-  and a column \code{.how} indicating at which step the spread took place. Additional variables 
-  may be returned if arguement remove_diagnostic is set to FALSE.
+A data frame matching the number of rows in `trails`, with added columns:
+  \describe{
+    \item{LE_KG}{numeric, allocated landed weight in kg}
+    \item{LE_EURO}{numeric, allocated landed value in euro}
+    \item{.how}{character, allocation step: "trip_rectangle_day", "trip_rectangle", or "trip"}
+  }
+Additional columns are included if `remove_diagnostic = FALSE`.
 }
 \description{
-This function allocates landing event weights (`LE_KG`) and values (`LE_EURO`)
-from the `events` data frame to the corresponding fishing trails in the `trails`
-data frame using a hierarchical matching and allocation strategy.
+Allocates event weights (`LE_KG`) and values (`LE_EURO`) from the `events` data frame
+to corresponding fishing trails in the `trails` data frame using a three-step hierarchical
+matching and allocation procedure (by day, ICES rectangle, and trip). This ensures
+that catches and values are distributed as precisely as possible, with unmatched allocations
+handled at progressively broader levels.
 }
 \details{
-The function spreads event cash and catches to trails using three hierarchical steps:
+The function spreads catch and value information through three hierarchical steps.
+At each step, allocations are only made to pings not already allocated at a finer level.
+Only `state == 1` pings are eligible for allocation.
+}
+\note{
+`ignore_Einstein`: Further discussion is required for implementing allocation of remaining catch.
+
+`go_nuclear`: Further discussion is required for implementing allocation of trips in the events 
+data not in the trails data.
+}
+\section{Hierarchical Allocation Procedure}{
+
 \enumerate{
-  \item Joins by year, trip, state, rectangle and day.
-  \item Joins remaining unmatched records by year, trip, state and rectangle.
-  \item Joins remaining unmatched records by year, trip, and state
+  \item \strong{Date Level}:
+    \itemize{
+      \item Events with defined ICES rectangle and date are spread among matching pings (`state == 1`).
+      \item Unmatched pings proceed to the next level.
+    }
+  \item \strong{ICES Rectangle Level}:
+    \itemize{
+      \item Remaining events with defined ICES rectangle (but missing catch date) are spread among remaining pings, if available.
+      \item Unmatched pings proceed to the next level.
+    }
+  \item \strong{Trip Level}:
+    \itemize{
+      \item Remaining events with only a trip id are spread among any remaining pings.
+      \item Pings already allocated are not reallocated.
+    }
 }
 
-If any trip cash or catches are remaining the above are raised by trip based raising factor.
+\strong{Note:} Additional allocation steps ("Einstein" and "go nuclear") are not yet implemented.
+}
+
+\author{
+Einar Hjörleifsson
 }
