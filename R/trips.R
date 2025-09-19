@@ -95,11 +95,11 @@ rb_trip_jepol <- function(vessel_id, time, in_harbour,
     #Make data.table with timings of trip
     trip <- data.table::data.table(vessel_id = i,
                                    depart = dss[HARB_EVENT == 1]$time_stamp,
-                                   return = dss[HARB_EVENT == 2]$time_stamp
+                                   arrival = dss[HARB_EVENT == 2]$time_stamp
     )
     
     trip[, trip_id2 := paste0(i, "_", 1:.N)]
-    trip[, duration_hours := as.numeric(difftime(return, depart, units = "hours"))]
+    trip[, duration_hours := as.numeric(difftime(arrival, depart, units = "hours"))]
     
     
     #Only use trips longer than min_dur
@@ -109,7 +109,7 @@ rb_trip_jepol <- function(vessel_id, time, in_harbour,
     if(split_trips == T)
       while (any(trip$duration_hours > max_dur)) {
         tls <- trip[duration_hours > max_dur][1,]
-        cutp2 <- dss[time_stamp > tls$depart & time_stamp < tls$return][base::which.max(INTV[2:.N])]$id
+        cutp2 <- dss[time_stamp > tls$depart & time_stamp < tls$arrival][base::which.max(INTV[2:.N])]$id
         
         if(dss[id == cutp2]$INTV < 3){
           trip[trip_id2 == tls$trip_id2, duration_hours := max_dur]
@@ -118,9 +118,9 @@ rb_trip_jepol <- function(vessel_id, time, in_harbour,
         
         newtrips <- data.table::data.table(vessel_id = i,
                                depart = c(tls$depart, dss[id == cutp2]$time_stamp),
-                               return = c(dss[id == cutp2-1]$time_stamp, tls$return),
+                               arrival = c(dss[id == cutp2-1]$time_stamp, tls$arrival),
                                trip_id2 = paste(tls$trip_id2, 1:2, sep = "_"))
-        newtrips[, duration_hours := as.numeric(base::difftime(return, depart, units = "hours"))]
+        newtrips[, duration_hours := as.numeric(base::difftime(arrival, depart, units = "hours"))]
         trip <- data.table::rbindlist(list(trip[trip_id2 != tls$trip_id2], newtrips))
         data.table::setorder(trip, depart)
       }
@@ -135,7 +135,7 @@ rb_trip_jepol <- function(vessel_id, time, in_harbour,
     }
     
     
-    data.table::setkey(trip, vessel_id, depart, return)
+    data.table::setkey(trip, vessel_id, depart, arrival)
     gps[ ,time_stamp2 := time_stamp]
     data.table::setkey(gps, vessel_id, time_stamp, time_stamp2)
     
@@ -143,7 +143,7 @@ rb_trip_jepol <- function(vessel_id, time, in_harbour,
     gps[, time_stamp2 := NULL]
     
     midi[!is.na(trip_id2), trip_id := trip_id2]
-    midi[, `:=`(depart = NULL, return = NULL, duration_hours = NULL, time_stamp2 = NULL, trip_id2 = NULL)]
+    midi[, `:=`(depart = NULL, arrival = NULL, duration_hours = NULL, time_stamp2 = NULL, trip_id2 = NULL)]
     out <- data.table::rbindlist(list(out, midi), fill = T)
     
     out <- data.table::rbindlist(list(out, gps[recid %!in% out$recid]), fill = T)

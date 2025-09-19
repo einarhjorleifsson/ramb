@@ -7,7 +7,7 @@
 #' 
 rb_iqr <- function(x, multiplier = 1.5) {
   y <- log(x)
-  upper <- min(max(y, na.rm = TRUE), quantile(y, 0.75, na.rm = TRUE) + (IQR(y, na.rm = TRUE) * multiplier))
+  upper <- min(max(y, na.rm = TRUE), stats::quantile(y, 0.75, na.rm = TRUE) + (IQR(y, na.rm = TRUE) * multiplier))
   upper <- exp(upper)
   return(upper)
 }

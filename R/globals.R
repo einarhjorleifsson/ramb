@@ -19,6 +19,11 @@ utils::globalVariables(
     "metiers5", "metier5_benthis_lookup", "benthis_parameters",
     "variable", "width", "Key", "Description", "Deprecated",
     "deprecated", "Metier_level6", "metier5", "Benthis_metiers",
-    "benthis_metier", "description", "to_date", "pos2", "distance"
+    "benthis_metier", "description", "to_date", "pos2", "distance",
+    
+    ".eid", ".how", ".pid", ".step", ".wt", "FT_REF", "IQR",
+    "LE_EURO", "LE_KG", "LE_RECT", "T1", "T2",
+    "VE_COU", "VE_REF", "ir", "state", "arrival"
   )
 )
+  

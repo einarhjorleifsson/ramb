@@ -14,7 +14,7 @@ Invisibly returns the eflalo data.frame (with possible new columns).
 }
 \description{
 Given an eflalo data.frame (with date/time columns for departure and landing), warns if any trips start in one year and end in another.
-Adds combined POSIXct timestamp columns if not already present, using `rb_create_timestamp`.
+Adds combined POSIXct timestamp columns if not already present, using `dc_create_timestamp`.
 Uses `rb_check_crosses_year` to detect cross-year trips.
 }
 \details{

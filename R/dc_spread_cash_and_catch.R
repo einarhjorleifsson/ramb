@@ -89,7 +89,7 @@ dc_spread_cash_and_catch <- function(trails, events, remove_diagnostic = TRUE,
   
   
   # Check for columns
-    missing_trails <- setdiff(required_trails, colnames(trails))
+  missing_trails <- setdiff(required_trails, colnames(trails))
   if (length(missing_trails) > 0)
     stop("Missing required columns in trails: ", paste(missing_trails, collapse = ", "))
   missing_events <- setdiff(required_events, colnames(events))
@@ -117,40 +117,41 @@ dc_spread_cash_and_catch <- function(trails, events, remove_diagnostic = TRUE,
   if (!is.numeric(events$LE_EURO)) stop("LE_EURO in events must be numeric")
   
   # Prepare extra columns ----
-  trails <- trails |> mutate(date = as_date(time))
+  trails <- trails |> dplyr::mutate(date = lubridate::as_date(time))
   events <- 
     events |>
-    # fix upstream
-    rename(date = date) |> 
     dplyr::mutate(state = 1L)
-
+  
   # Mapping step ----
   # Determine at which allocation step each event should be joined
   # Create step_plan to assign events to allocation steps based on available keys
   step_plan <- 
     events |> 
-    select(.eid, VE_COU, VE_REF, FT_REF, date, LE_RECT) |> 
-    left_join(trails |> 
-                filter(state == 1) |> 
-                select(VE_COU, VE_REF, FT_REF, date, LE_RECT = ir) |> 
-                distinct() |> 
-                mutate(vms = "yes"),
-              by = join_by(VE_COU, VE_REF, FT_REF),
-              relationship = "many-to-many") |> 
-    mutate(.step = case_when(date.x == date.y & LE_RECT.x == LE_RECT.y & vms == "yes" ~ 1L,
-                             is.na(date.x) & LE_RECT.x == LE_RECT.y & vms == "yes" ~ 2L,
-                             vms == "yes" ~ 3L,
-                             .default = 9999L)) |> 
-    arrange(.step) |> 
-    select(.eid, .step) |> 
-    distinct(.eid, .keep_all = TRUE)
+    dplyr::select(.eid, VE_COU, VE_REF, FT_REF, date, LE_RECT) |> 
+    dplyr::left_join(
+      trails |> 
+        dplyr::filter(state == 1) |> 
+        dplyr::select(VE_COU, VE_REF, FT_REF, date, LE_RECT = ir) |> 
+        dplyr::distinct() |> 
+        dplyr::mutate(vms = "yes"),
+      by = dplyr::join_by(VE_COU, VE_REF, FT_REF),
+      relationship = "many-to-many") |> 
+    dplyr::mutate(
+      .step = dplyr::case_when(
+        date.x == date.y & LE_RECT.x == LE_RECT.y & vms == "yes" ~ 1L,
+        is.na(date.x) & LE_RECT.x == LE_RECT.y & vms == "yes" ~ 2L,
+        vms == "yes" ~ 3L,
+        .default = 9999L)) |> 
+    dplyr::arrange(.step) |> 
+    dplyr::select(.eid, .step) |> 
+    dplyr::distinct(.eid, .keep_all = TRUE)
   
   events <- 
     events |> 
-    left_join(step_plan,
-              by = join_by(.eid))
+    dplyr::left_join(step_plan,
+                     by = dplyr::join_by(.eid))
   
-
+  
   # Keep track of .pid that are not mapped after each step
   PID_left <- trails$.pid
   
@@ -158,12 +159,12 @@ dc_spread_cash_and_catch <- function(trails, events, remove_diagnostic = TRUE,
   # Allocate events to trails at the most specific (date & rectangle) level
   events1 <- 
     events |> 
-    filter(.step == 1) |> 
-    group_by(VE_COU, VE_REF, FT_REF, date, LE_RECT, state) |> 
-    summarise(LE_KG = sum(LE_KG, na.rm = TRUE),
-              LE_EURO = sum(LE_EURO, na.rm = TRUE),
-              .groups = "drop")
-
+    dplyr::filter(.step == 1) |> 
+    dplyr::group_by(VE_COU, VE_REF, FT_REF, date, LE_RECT, state) |> 
+    dplyr::summarise(LE_KG = sum(LE_KG, na.rm = TRUE),
+                     LE_EURO = sum(LE_EURO, na.rm = TRUE),
+                     .groups = "drop")
+  
   trails1 <- trails |>
     dplyr::inner_join(events1,
                       by = c("VE_COU", "VE_REF", "FT_REF", "ir" = "LE_RECT", "date", "state")) |>
@@ -177,17 +178,17 @@ dc_spread_cash_and_catch <- function(trails, events, remove_diagnostic = TRUE,
     dplyr::ungroup()
   
   PID_left <- PID_left[!PID_left %in% trails1$.pid]
-   
+  
   # Step 2: Join by trip + rectangle -------------------------------------------
   # Allocate remaining events to trails at the rectangle level
-
+  
   trails_left <- 
     trails |> 
-    filter(.pid %in% PID_left)
-
+    dplyr::filter(.pid %in% PID_left)
+  
   events2 <- 
     events |> 
-    filter(.step == 2L) |> 
+    dplyr::filter(.step == 2L) |> 
     # avoid many-to-many among other things
     dplyr::group_by(VE_COU, VE_REF, FT_REF, LE_RECT, state) |> 
     dplyr::summarise(LE_KG = sum(LE_KG, na.rm = TRUE),
@@ -209,16 +210,16 @@ dc_spread_cash_and_catch <- function(trails, events, remove_diagnostic = TRUE,
     dplyr::ungroup()
   
   PID_left <- PID_left[!PID_left %in% trails2$.pid]
-
+  
   # Step 3: Join by trip -------------------------------------------------------
   # Allocate remaining events to trails at the trip level
   
   trails_left <- 
     trails |> 
-    filter(.pid %in% PID_left)
+    dplyr::filter(.pid %in% PID_left)
   events3 <- 
     events |> 
-    filter(.step == 3L) |> 
+    dplyr::filter(.step == 3L) |> 
     dplyr::group_by(VE_COU, VE_REF, FT_REF, state) |> 
     dplyr::summarise(LE_KG = sum(LE_KG, na.rm = TRUE),
                      LE_EURO = sum(LE_EURO, na.rm = TRUE),
@@ -235,12 +236,12 @@ dc_spread_cash_and_catch <- function(trails, events, remove_diagnostic = TRUE,
       .how = ifelse(state == 1, "3 trip", NA)
     ) |>
     dplyr::ungroup()
-
+  
   # Combine allocation results from all steps into a single output data frame ----
   out <- 
-    dplyr::bind_rows(trails1 |> mutate(.how = as.character(.how)), 
-                     trails2 |> mutate(.how = as.character(.how)), 
-                     trails3 |> mutate(.how = as.character(.how))) |> 
+    dplyr::bind_rows(trails1 |> dplyr::mutate(.how = as.character(.how)), 
+                     trails2 |> dplyr::mutate(.how = as.character(.how)), 
+                     trails3 |> dplyr::mutate(.how = as.character(.how))) |> 
     dplyr::arrange(.pid)
   
   # Optionally handle "Einstein" step for unallocated events (not implemented)
@@ -267,7 +268,7 @@ dc_spread_cash_and_catch <- function(trails, events, remove_diagnostic = TRUE,
   
   # Output checks --------------------------------------------------------------
   # Validate that output matches input in row count and total LE_KG allocation
-    if (nrow(trails) != nrow(out)) {
+  if (nrow(trails) != nrow(out)) {
     stop("Number of rows in output does not match input trails - File an issue")
   }
   
