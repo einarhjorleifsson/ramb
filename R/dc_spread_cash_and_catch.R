@@ -49,8 +49,8 @@
 #'     \item{LE_EURO}{numeric, landed value in euro}
 #'   }
 #' @param remove_diagnostic Logical. If TRUE (default), diagnostic columns are removed from output.
-#' @param ignore_Einstein Logical (default TRUE). Whether to ignore unallocated events ("Einstein step" not implemented).
-#' @param go_nuclear Character (default "absolutely not"). Any other value triggers alternative allocation (not implemented).
+#' @param ignore_Einstein Logical (default TRUE). Whether to ignore unallocated events (not implemented yet).
+#' @param go_nuclear Character (default "absolutely not"). Any other value triggers a bomb (not implemented).
 #'
 #' @details
 #' The function spreads catch and value information through three hierarchical steps.

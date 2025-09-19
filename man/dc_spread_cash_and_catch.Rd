@@ -38,9 +38,9 @@ dc_spread_cash_and_catch(
 
 \item{remove_diagnostic}{Logical. If TRUE (default), diagnostic columns are removed from output.}
 
-\item{ignore_Einstein}{Logical (default TRUE). Whether to ignore unallocated events ("Einstein step" not implemented).}
+\item{ignore_Einstein}{Logical (default TRUE). Whether to ignore unallocated events (not implemented yet).}
 
-\item{go_nuclear}{Character (default "absolutely not"). Any other value triggers alternative allocation (not implemented).}
+\item{go_nuclear}{Character (default "absolutely not"). Any other value triggers a bomb (not implemented).}
 }
 \value{
 A data frame matching the number of rows in `trails`, with added columns:

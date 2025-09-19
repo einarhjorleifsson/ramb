@@ -6,7 +6,7 @@ ramb.Rproj
 docs
 Basic functionality
 vignettes/articles/*.txt
-
+data-raw/misc
 zgarbage/
 TOPSECRET.R
 supplement
