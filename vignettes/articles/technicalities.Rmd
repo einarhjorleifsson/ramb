@@ -1,0 +1,60 @@
+---
+title: "Technicalities"
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  message = FALSE, 
+  warning = FALSE,
+  collapse = TRUE,
+  error = TRUE,
+  comment = "#>"
+)
+```
+
+## rb_midpoint: a note on the implementation
+
+The original implementation (in rb_grade) used:
+
+```r
+x %/% dx * dx + dx / 2
+```
+
+This is concise and correct for most inputs, but fails silently when `dx` is a
+value that cannot be represented exactly in IEEE 754 floating-point — for
+example `0.1`. In those cases `0.3 / 0.1` evaluates to `2.9999...` rather than
+`3`, so `%/%` floors to `2` instead of `3`, placing the value in the wrong bin:
+
+```r
+0.3 %/% 0.1 * 0.1 + 0.05  # returns 0.25, expected 0.35
+```
+
+The fix is to round the ratio before flooring, which corrects the floating-point
+noise before it affects the result:
+
+```r
+floor(round(x / dx, digits = 10)) * dx + dx / 2
+```
+
+The precision of 10 decimal places is conservative: it is tight enough to
+correct the representation error in `0.3 / 0.1` (~1e-15) while being far too
+coarse to accidentally collapse genuinely distinct values.
+
+### DuckDB / duckdbfs
+
+`rb_midpoint()` includes a dbplyr SQL translation, so it works transparently in
+`mutate()` on DuckDB-backed tables — including those opened with
+`duckdbfs::open_dataset()`:
+
+```r
+library(dplyr)
+library(duckdbfs)
+
+open_dataset("catch.parquet") |>
+  mutate(lon_bin = rb_midpoint(lon, dx = 0.5),
+         lat_bin = rb_midpoint(lat, dx = 0.5))
+```
+
+The generated SQL uses `FLOOR(ROUND(x / dx, 10)) * dx + dx / 2`, which handles
+floating-point bin widths (e.g. `0.1`) correctly in DuckDB.
+
