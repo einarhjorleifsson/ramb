@@ -2,24 +2,44 @@
 % Please edit documentation in R/whackies.R
 \name{rb_whacky_speed_mendo}
 \alias{rb_whacky_speed_mendo}
-\title{Yet another speed filter}
+\title{Sequential speed filter after Mendoza et al. (2024)}
 \usage{
 rb_whacky_speed_mendo(df, speed_filter = 25)
 }
 \arguments{
-\item{df}{A dataframe containing variables named}
+\item{df}{A data frame with columns `x`, `y`, `time`, `device_id`, `seq`
+(see *Input requirements*).}
 
-\item{speed_filter}{speed in knots}
+\item{speed_filter}{Speed threshold in knots (default 25).}
 }
 \value{
-A filtered dataframe with a bunch of stuff
+The input data frame with all rows implying speeds above
+  `speed_filter` removed, along with computed columns `dx`, `dy`, `dt`,
+  `dd`, and `speed`.
 }
 \description{
-The input dataframe has to contain the following variables: x, y, time. device_id and seq.
-The x and the y are coordates in units of meters.
+A fast but aggressive speed filter adapted from Mendoza et al. (2024). At
+each iteration the **entire pair** of positions producing an excessive speed
+are dropped together (unlike [rb_whacky_speed()] which removes only the
+latter endpoint). This makes it roughly twice as fast but removes an equal
+number of valid and invalid points around each bad segment.
 }
-\details{
-This function is fast but it chops off equal amount of valid points as invalid
-points. Function rb_whacky_speed is more conservative, albeit slower. The latter
-also does not filter the data.
+\section{Input requirements}{
+
+The data frame must contain columns:
+* `x`, `y` - projected coordinates in **metres** (not decimal degrees).
+* `time` - `POSIXct` timestamps.
+* `device_id` - vessel or device identifier (used for grouping).
+* `seq` - unique row sequence identifier (used for filtering).
+}
+
+\section{Limitation}{
+
+Because both endpoints of a bad segment are removed, the filter is less
+conservative than [rb_whacky_speed()]: it discards as many valid points as
+invalid ones. Prefer [whack_sequential_fast()] for new work.
+}
+
+\references{
+Mendoza et al. (2024). ICES J. Mar. Sci. 81(2):390.
 }

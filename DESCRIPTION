@@ -13,10 +13,11 @@ LazyData: true
 LazyDataCompression: xz
 Depends: 
     R (>= 3.5.0)
-RoxygenNote: 7.3.3
 Imports: 
     data.table,
+    dbplyr,
     dplyr,
+    glue,
     icesVocab,
     lubridate,
     mapdeck,
@@ -34,3 +35,4 @@ Suggests:
     ggnewscale,
     rayshader,
     rmarkdown
+Config/roxygen2/version: 8.1.0

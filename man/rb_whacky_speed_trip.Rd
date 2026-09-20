@@ -2,20 +2,45 @@
 % Please edit documentation in R/whackies.R
 \name{rb_whacky_speed_trip}
 \alias{rb_whacky_speed_trip}
-\title{Title}
+\title{Trip-level speed filter using the `trip` package}
 \usage{
 rb_whacky_speed_trip(d, filter = TRUE, max_speed = 20)
 }
 \arguments{
-\item{d}{An sf-dataframe contain lon, lat and time}
+\item{d}{A (sf) data frame for a single trip with columns `lon`, `lat`,
+`time`.}
 
-\item{filter}{Drop whacky points}
+\item{filter}{Logical. If `TRUE` (default), whacky points are removed and
+`.whacky` column is dropped from the return value. If `FALSE`, `.whacky`
+is retained as a logical column and no rows are dropped.}
 
-\item{max_speed}{Criteria for drops, units in knots}
+\item{max_speed}{Speed threshold in knots (default 20).}
 }
 \value{
-a dataframe with addition variable ".whacky"
+If `filter = TRUE`: the input data frame with whacky rows removed
+  and no `.whacky` column. If `filter = FALSE`: the input data frame with an
+  added logical column `.whacky` (`TRUE` = whacky).
 }
 \description{
-Title
+Wraps [trip::speedfilter()] to flag or remove whacky AIS positions within a
+single trip. Optionally runs [rb_whacky_speed()] as a second pass to catch
+any residual whacky points that the `trip` package missed.
+}
+\section{Input}{
+
+`d` must be an sf data frame (or a data frame coercible to `Spatial` via
+[methods::as()]) with columns `lon`, `lat`, and `time`. Only a **single
+trip** should be passed — grouping is handled externally.
+}
+
+\section{Two-pass design}{
+
+1. [trip::speedfilter()] applied at `max_speed` knots.
+2. If `filter = TRUE`, [rb_whacky_speed()] is applied to the residual as a
+   safety net.
+}
+
+\seealso{
+[whack_fwdbwd()], [whack_sequential_fast()] for alternatives that
+  do not depend on the `trip` package.
 }

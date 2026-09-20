@@ -2,36 +2,54 @@
 % Please edit documentation in R/whackies.R
 \name{rb_whacky_speed}
 \alias{rb_whacky_speed}
-\title{Yet another speed filter}
+\title{Sequential speed filter for whacky positions (original ramb implementation)}
 \usage{
 rb_whacky_speed(lon, lat, time, kn_max = 25)
 }
 \arguments{
-\item{lon}{longitude in decimal degrees}
+\item{lon}{Numeric vector of longitudes in decimal degrees.}
 
-\item{lat}{latitude in decimal degrees}
+\item{lat}{Numeric vector of latitudes in decimal degrees.}
 
-\item{time}{date-time in POSIXct}
+\item{time}{`POSIXct` vector of observation timestamps.}
 
-\item{kn_max}{speed threshold in knots}
+\item{kn_max}{Speed threshold in knots (default 25).}
 }
 \value{
-a boolean vector, TRUE if point classified as whacky
+A logical vector the same length as `lon`. `TRUE` = position
+  classified as whacky; `FALSE` = retained.
 }
 \description{
-This function chops sequentially off the first encountered whack and then
-starts again from the beginning.
+Iteratively removes the first position that exceeds the speed threshold,
+recomputes speeds, and repeats until all speeds are within tolerance.
 }
-\details{
-THIS FUNCTION DOES NOT WORK IF THE FIRST DATAPOINT IN THE SEQUENCE IS A
-WHACKY POINT
+\section{Algorithm}{
 
-To use this on multiple trips or vessels, use a grouped data frame with 
-tidyverse code like 
-data |>  group_by(id) |> mutate(whack = rb_whacky_speed(lon, lat, time))
+Uses [traipse::track_speed()] to compute along-track speeds. The leading
+`NA` speed (convention of `traipse`) is replaced by zero so the first point
+is never flagged on speed alone. At each iteration the **first** position
+whose incoming speed exceeds `ms_max` is removed; if that position is index
+2 (ambiguous between the pair), index 1 is removed instead.
+}
 
-The function uses traipse::track_speed, where by convention the first 
-value is set to NA (missing value), because the difference applies to 
-each sequential pair of locations. Here, these missing values are
-replaced by zero.
+\section{Known limitation}{
+
+**Does not correctly flag the first data point** if it is the source of the
+error (the incoming speed for the first point is always set to 0). Prefer
+[whack_sequential_fast()] for new code — it is ~7× faster and does not have
+this edge case.
+}
+
+\examples{
+\dontrun{
+library(dplyr)
+data |>
+  group_by(id) |>
+  mutate(whack = rb_whacky_speed(lon, lat, time))
+}
+
+}
+\seealso{
+[whack_sequential_fast()] for a faster drop-in replacement that
+  handles the first-point edge case.
 }

@@ -2,30 +2,50 @@
 % Please edit documentation in R/whackies.R
 \name{rb_whacky_distance}
 \alias{rb_whacky_distance}
-\title{Yet another distance filter}
+\title{Sequential distance filter for whacky positions}
 \usage{
 rb_whacky_distance(lon, lat, miles_max = 6)
 }
 \arguments{
-\item{lon}{longitude in decimal degrees}
+\item{lon}{Numeric vector of longitudes in decimal degrees.}
 
-\item{lat}{latitude in decimal degrees}
+\item{lat}{Numeric vector of latitudes in decimal degrees.}
 
-\item{miles_max}{maximum threshold in miles}
+\item{miles_max}{Maximum allowed step distance in nautical miles (default 6).
+Internally converted to metres as `miles_max * 1852`.}
 }
 \value{
-a boolean vector, TRUE if point classified as whacky
+A logical vector the same length as `lon`. `TRUE` = position
+  classified as whacky; `FALSE` = retained.
 }
 \description{
-To use this on multiple trips, use a grouped data frame with 
-tidyverse code like 
-data |>  group_by(id) |> mutate(whack = rb_whacky_distance(lon, lat))
+Iteratively removes positions whose step distance to the previous retained
+point exceeds `miles_max` nautical miles, recomputing distances after each
+removal. Useful as a complement to speed-based filters when timestamps are
+unreliable.
 }
-\details{
-The function uses traipse::track_distance, which by convention the first 
-value is set to NA missing value, because the difference applies to 
-each sequential pair of locations. Here, these missing values are
-replaced by zero.
+\section{Algorithm}{
 
-The function is overly liberal in that
+Uses [traipse::track_distance()] to compute step distances. The leading `NA`
+(first point has no predecessor) is replaced by zero. At each iteration the
+first position exceeding `meters_max` is removed and distances are
+recomputed. The loop exits when no step distance remains above the threshold.
+}
+
+\section{Limitation}{
+
+The filter is intentionally liberal: a genuinely long transit leg may be
+removed if its step distance exceeds the threshold even though the implied
+speed is reasonable. Use speed-based filters ([whack_fwdbwd()],
+[whack_sequential_fast()]) when timestamps are available.
+}
+
+\examples{
+\dontrun{
+library(dplyr)
+data |>
+  group_by(id) |>
+  mutate(whack = rb_whacky_distance(lon, lat))
+}
+
 }
