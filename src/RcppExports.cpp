@@ -10,6 +10,22 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
+// interpolate_track_cpp
+List interpolate_track_cpp(IntegerVector trk_code, NumericVector trk_time, NumericMatrix trk_vals, IntegerVector grp_start, IntegerVector x_code, NumericVector x_time);
+RcppExport SEXP _ramb_interpolate_track_cpp(SEXP trk_codeSEXP, SEXP trk_timeSEXP, SEXP trk_valsSEXP, SEXP grp_startSEXP, SEXP x_codeSEXP, SEXP x_timeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type trk_code(trk_codeSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type trk_time(trk_timeSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type trk_vals(trk_valsSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type grp_start(grp_startSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type x_code(x_codeSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type x_time(x_timeSEXP);
+    rcpp_result_gen = Rcpp::wrap(interpolate_track_cpp(trk_code, trk_time, trk_vals, grp_start, x_code, x_time));
+    return rcpp_result_gen;
+END_RCPP
+}
 // whack_forward_cpp
 LogicalVector whack_forward_cpp(NumericVector lon, NumericVector lat, NumericVector time, double ms_max, double max_gap_sec);
 RcppExport SEXP _ramb_whack_forward_cpp(SEXP lonSEXP, SEXP latSEXP, SEXP timeSEXP, SEXP ms_maxSEXP, SEXP max_gap_secSEXP) {
@@ -27,6 +43,7 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
+    {"_ramb_interpolate_track_cpp", (DL_FUNC) &_ramb_interpolate_track_cpp, 6},
     {"_ramb_whack_forward_cpp", (DL_FUNC) &_ramb_whack_forward_cpp, 5},
     {NULL, NULL, 0}
 };
