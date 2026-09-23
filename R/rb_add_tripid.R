@@ -17,7 +17,7 @@
 #' @export
 #'
 #' @examples
-#' # rb_add_trips_id(ve, le, vessel_id = vid, trip_id = tid, time = time, departure = T1, arrival = T2)
+#' # rb_add_tripid(ve, le, vessel_id = vid, trip_id = tid, time = time, departure = T1, arrival = T2)
 rb_add_tripid <- function(ve, le, vessel_id = vid, trip_id = tid, time = time, departure = T1, arrival = T2) {
   
   # Turn column names into strings for checking
@@ -32,13 +32,20 @@ rb_add_tripid <- function(ve, le, vessel_id = vid, trip_id = tid, time = time, d
   if(length(vms_missing) > 0) {
     warning("Missing the following columns in VMS data: ", paste(vms_missing, collapse = ", "))
   }
-  
+
   # Check for required columns in logbook data
   logbook_missing <- setdiff(c(vessel_id_chr, trip_id_chr, departure_chr, arrival_chr), names(le))
   if(length(logbook_missing) > 0) {
     warning("Missing the following columns in logbook data: ", paste(logbook_missing, collapse = ", "))
   }
-  
+
+  # A missing join/id column means the join below cannot run at all - return
+  # the VMS data unmodified rather than letting dplyr::left_join error out
+  # after the warning above has already told the caller why.
+  if(length(vms_missing) > 0 || length(logbook_missing) > 0) {
+    return(ve)
+  }
+
   out <- ve |>
     dplyr::left_join(le |> dplyr::distinct( {{ vessel_id }}, {{ trip_id }}, .keep_all = TRUE),
                      by = dplyr::join_by( {{ vessel_id }}, dplyr::between( {{time}}, {{ departure }}, {{ arrival }} ))) |>

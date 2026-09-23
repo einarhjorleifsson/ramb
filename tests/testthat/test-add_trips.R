@@ -16,7 +16,7 @@ test_that("rb_add_trips assigns trip ids correctly with robust defaults and warn
   
   # Run function (should not throw warnings for missing columns)
   expect_warning(
-    out <- suppressWarnings(rb_add_trips(ve, le)),
+    out <- suppressWarnings(rb_add_tripid(ve, le)),
     regexp = NA # No warning expected for missing columns here
   )
   
@@ -31,22 +31,30 @@ test_that("rb_add_trips assigns trip ids correctly with robust defaults and warn
   # Test warning on missing columns
   ve_bad <- ve[, -1, drop=FALSE] # drop 'vid'
   expect_warning(
-    rb_add_trips(ve_bad, le),
+    rb_add_tripid(ve_bad, le),
     "Missing the following columns in VMS data"
   )
   
   le_bad <- le[, -1, drop=FALSE] # drop 'vid'
   expect_warning(
-    rb_add_trips(ve, le_bad),
+    rb_add_tripid(ve, le_bad),
     "Missing the following columns in logbook data"
   )
   
-  # Test warning if no trip ids matched
+  # Test warning if no trip ids matched. rb_add_tripid() also unconditionally
+  # warns about the dropped departure/arrival columns on every successful
+  # call; muffle that one so this test isolates the warning it's checking.
   ve_nomatch <- tibble::tibble(
     vid = "C", time = as.POSIXct("2022-01-01 10:00:00")
   )
   expect_warning(
-    rb_add_trips(ve_nomatch, le),
+    withCallingHandlers(
+      rb_add_tripid(ve_nomatch, le),
+      warning = function(w) {
+        if (grepl("^Departure and arrival columns", conditionMessage(w)))
+          invokeRestart("muffleWarning")
+      }
+    ),
     "No trip IDs were matched to the VMS data"
   )
 })

@@ -39,5 +39,5 @@ Adds a trip id column to a VMS dataset by matching each VMS record to logbook en
 Similar to \code{vmstools::mergeEflalo2Tacsat}, but here not dependent on specific variable names in the data frames.
 }
 \examples{
-# rb_add_trips_id(ve, le, vessel_id = vid, trip_id = tid, time = time, departure = T1, arrival = T2)
+# rb_add_tripid(ve, le, vessel_id = vid, trip_id = tid, time = time, departure = T1, arrival = T2)
 }

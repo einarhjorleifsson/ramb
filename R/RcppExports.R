@@ -2,6 +2,6 @@
 # Generator token: 10BE3573-1514-4C36-9D1C-5A225CD40393
 
 whack_forward_cpp <- function(lon, lat, time, ms_max, max_gap_sec) {
-    .Call('_ramb_whack_forward_cpp', PACKAGE = 'ramb', lon, lat, time, ms_max, max_gap_sec)
+    .Call(`_ramb_whack_forward_cpp`, lon, lat, time, ms_max, max_gap_sec)
 }
 

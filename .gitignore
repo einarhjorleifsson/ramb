@@ -9,6 +9,7 @@ vignettes/articles/*.txt
 data-raw/misc
 zgarbage/
 TOPSECRET.R
-supplementsrc/*.o
+supplement
+src/*.o
 src/*.so
 src/*.dll
