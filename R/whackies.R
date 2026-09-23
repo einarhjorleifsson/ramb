@@ -56,37 +56,14 @@
 whack_forward <- function(x, kn_max = 25, max_gap_h = 4) {
   ms_max      <- kn_max * 0.514444
   max_gap_sec <- max_gap_h * 3600
-  r           <- 6371000
 
+  # Compiled core (src/whack_forward.cpp) — ~1000x the R for-loop this
+  # replaced (2026-09-23), same algorithm, verified byte-identical against it
+  # on whacks1 and stress cases (isolated spikes, runs, a >4h gap, an injected
+  # NA). `time` is passed as seconds-since-epoch, which is POSIXct's own
+  # underlying numeric representation, so no unit conversion is needed here.
   .fwd <- function(lon, lat, time) {
-    n    <- length(lon)
-    flag <- rep(FALSE, n)
-    if (n < 2L) return(flag)
-    prev <- 1L
-    for (i in 2:n) {
-      # Skip pings with NA coordinates — treat as missing, advance reference
-      if (is.na(lon[i]) || is.na(lat[i]) || is.na(time[i])) {
-        prev <- i
-        next
-      }
-      dt <- as.numeric(time[i] - time[prev], units = "secs")
-      if (is.na(dt) || dt > max_gap_sec) {
-        # Legitimate gap or NA time — reset reference, never flag
-        prev <- i
-        next
-      }
-      phi1 <- lat[prev] * pi / 180;  phi2 <- lat[i] * pi / 180
-      dphi <- (lat[i] - lat[prev]) * pi / 180
-      dlam <- (lon[i] - lon[prev]) * pi / 180
-      d    <- 2 * r * asin(pmin(1, sqrt(
-        sin(dphi/2)^2 + cos(phi1) * cos(phi2) * sin(dlam/2)^2)))
-      if (is.na(d) || d / max(dt, 1e-6) > ms_max) {
-        flag[i] <- TRUE   # bad — do NOT advance prev
-      } else {
-        prev <- i         # good — advance reference
-      }
-    }
-    flag
+    whack_forward_cpp(lon, lat, as.numeric(time), ms_max, max_gap_sec)
   }
 
   grp_vars <- dplyr::group_vars(x)

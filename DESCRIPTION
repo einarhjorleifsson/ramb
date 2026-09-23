@@ -13,7 +13,7 @@ LazyData: true
 LazyDataCompression: xz
 Depends: 
     R (>= 3.5.0)
-Imports: 
+Imports:
     data.table,
     dbplyr,
     dplyr,
@@ -22,7 +22,8 @@ Imports:
     lubridate,
     mapdeck,
     methods,
-    purrr, 
+    purrr,
+    Rcpp,
     readr,
     scales,
     sf,
@@ -31,8 +32,12 @@ Imports:
     tibble,
     tidyr,
     traipse
-Suggests: 
+LinkingTo:
+    Rcpp
+Suggests:
     ggnewscale,
     rayshader,
-    rmarkdown
+    rmarkdown,
+    testthat (>= 3.0.0)
 Config/roxygen2/version: 8.1.0
+Config/testthat/edition: 3
