@@ -10,3 +10,6 @@ data-raw/misc
 zgarbage/
 TOPSECRET.R
 supplement
+src/*.o
+src/*.so
+src/*.dll
