@@ -600,3 +600,170 @@ rb_whacky_speed_trip <- function(d, filter = TRUE, max_speed = 20) {
 
   return(d)
 }
+
+
+#' Speed-distance-angle filter for whacky positions (compiled)
+#'
+#' Flags implausible positions with the speed-distance-angle algorithm of
+#' `argosfilter::sdafilter()` (Freitas et al. 2008), re-implemented as one compiled pass
+#' over all vessels. Nothing is removed: every row is returned, with a label.
+#'
+#' @section Algorithm:
+#' Per vessel, on the track sorted by time:
+#' 1. **vmask** - the root-mean-square speed from each ping to its two neighbours on either
+#'    side. Local maxima of that speed above `kn_max` are flagged and taken out of the
+#'    working track; this repeats until no remaining ping exceeds `kn_max`.
+#' 2. A vmask flag stands only if the ping is more than `vmask_min_dist` metres from its
+#'    predecessor (default 0: every flag stands; `argosfilter` uses 5000).
+#' 3. **Spikes** - a ping is flagged when the two legs at it enclose an angle of at most
+#'    `ang[k]` degrees and either both legs are longer than `distlim[k]` metres or, where
+#'    `speedlim_kn[k] > 0`, both legs are faster than that. Repeats on the thinned track
+#'    until none is left. The speed form is the time-aware one: the same leg is long or
+#'    short depending on the time it took.
+#'
+#' The package defaults tuned for Argos seal tracks (15/25 degrees, 2.5/5 km, 5 km) leave
+#' tens of thousands of speed spikes in vessel AIS. The defaults here follow the tuning in
+#' fishycode `curate/checks/sda_tune.R`: a speed test, `vmask_min_dist = 0`.
+#'
+#' @param x A data frame with `vid`, `lon`, `lat` and `time` (`POSIXct`).
+#' @param kn_max Speed threshold in knots (default 25).
+#' @param ang Angle limits in degrees (default 25).
+#' @param distlim Distance limits in metres, one per `ang`; used where `speedlim_kn` is 0.
+#' @param speedlim_kn Speed limits in knots, one per `ang` (default `kn_max`); 0 = use `distlim`.
+#' @param vmask_min_dist See above (default 0).
+#'
+#' @return `x`, sorted by `vid`, `time` (ties by `lon`, `lat`), with `whack_sda`: `NA` = not flagged,
+#'   `"vmask"` or `"spike"` = the step that flagged it.
+#'
+#' @references Freitas, C., Lydersen, C., Fedak, M.A. and Kovacs, K.M. (2008). A simple
+#'   new algorithm to filter marine mammal Argos locations. Marine Mammal Science 24:315-325.
+#'
+#' @seealso [whack_clean()], the full recipe; [whack_forward()], [whack_fwdbwd()].
+#' @export
+whack_sda <- function(x, kn_max = 25, ang = 25, distlim = rep(0, length(ang)),
+                      speedlim_kn = rep(kn_max, length(ang)), vmask_min_dist = 0) {
+  grp_vars <- dplyr::group_vars(x)
+  # lon and lat break ties in time, so the result does not depend on the row order of the input
+  # (parquet reads come back in a different order from run to run)
+  x <- dplyr::arrange(dplyr::ungroup(x), vid, time, lon, lat)
+  code <- match(x$vid, unique(x$vid))
+  r <- whack_sda_cpp(x$lat, x$lon, as.numeric(x$time), code, kn_max * 0.514444,
+                     as.numeric(ang), as.numeric(distlim), as.numeric(speedlim_kn) * 0.514444,
+                     vmask_min_dist)
+  x$whack_sda <- c(NA_character_, "vmask", "spike")[r + 1L]
+  if (length(grp_vars) > 0) x <- dplyr::group_by(x, dplyr::across(dplyr::all_of(grp_vars)))
+  x
+}
+
+
+#' Label whacky positions: vmask, leg-speed spike, forward scan
+#'
+#' The recommended filter for vessel positions. It labels, it does not remove: every
+#' ping is returned, so the track can be rebuilt with or without the flagged ones and the
+#' reason for each flag is kept.
+#'
+#' Two stages, because neither is enough on its own:
+#' 1. [whack_sda()] - judges each ping from **both sides** (rms speed to four neighbours,
+#'    then both legs at the ping), so it can flag a bad ping that the forward scan would
+#'    adopt as its anchor, e.g. the first ping after a long gap.
+#' 2. [whack_forward()] on what stage 1 left - compares with the last **kept** ping, so it
+#'    resolves runs and interleaved streams that stage 1 cannot judge from the neighbours.
+#'
+#' Measured on 543.6 M AIS pings (2007-2026): 2.89 M flagged against 3.08 M for the
+#' former `whack_fwdbwd()` + `whack_forward()`, with 6 speed spikes left in the unflagged
+#' tracks against 49. See the fishyweb page on whacky positions for the timing.
+#'
+#' @section Data frame and DuckDB:
+#' * **data.frame** - the whole table is sorted by `vid`, `time` and processed in one
+#'   compiled call.
+#' * **lazy DuckDB table** (`tbl_lazy`) - the algorithm is sequential per vessel (a ping's
+#'   fate depends on the pings kept before it), which SQL window functions cannot express,
+#'   so the table is processed in **batches of whole vessels** (a vessel's result depends on
+#'   no other vessel, so batching is exact). Each batch is collected with only
+#'   `vid`, `time`, `lon`, `lat`, labelled in compiled code, and only the **flagged** rows
+#'   (about 0.5 percent) are written back to a temporary table on the same connection. The
+#'   result is a lazy table: `x` left-joined to those labels, so the next verbs, a filter
+#'   or a `write_dataset()`, run in DuckDB and the full table is never held in R. Row order
+#'   of the lazy result is not guaranteed.
+#'
+#' @param x A data frame or a lazy DuckDB table with `vid`, `lon`, `lat` and `time`.
+#' @param kn_max Speed threshold in knots (default 25).
+#' @param max_gap_h Passed to [whack_forward()] (default 4).
+#' @param batch_pings Lazy tables only: approximate pings per batch of whole vessels
+#'   (default 5 million, which keeps R below a few GB).
+#' @param ... Passed to [whack_sda()].
+#'
+#' @return `x` with `whack` (logical) and `whack_stage` (`NA`, `"vmask"`, `"spike"` or
+#'   `"forward"`). A data frame comes back sorted by `vid` and `time`; a lazy table stays lazy.
+#'
+#' @examples
+#' \dontrun{
+#' # data frame
+#' d <- pings |> whack_clean()
+#' track <- dplyr::filter(d, !whack)
+#'
+#' # DuckDB / parquet: stays lazy, labelled rows are never pulled into R
+#' pings <- duckdbfs::open_dataset("ping_tagged")
+#' pings |> whack_clean() |> dplyr::filter(!whack) |> duckdbfs::write_dataset("ping_clean")
+#' }
+#' @export
+whack_clean <- function(x, kn_max = 25, max_gap_h = 4, batch_pings = 5e6, ...) {
+  if (inherits(x, "tbl_lazy")) return(.whack_clean_lazy(x, kn_max, max_gap_h, batch_pings, ...))
+  .whack_clean_df(x, kn_max, max_gap_h, ...)
+}
+
+.whack_clean_df <- function(x, kn_max, max_gap_h, ...) {
+  grp_vars <- dplyr::group_vars(x)
+  out <- whack_sda(x, kn_max = kn_max, ...)
+  s1 <- !is.na(out$whack_sda)
+  fwd <- whack_forward(out[!s1, ], kn_max = kn_max, max_gap_h = max_gap_h)
+  # whack_forward() re-sorts by vid, time; out[!s1, ] already is, so the order is the same
+  stage <- out$whack_sda
+  stage[!s1] <- ifelse(fwd$whack2, "forward", NA_character_)
+  out$whack_sda <- NULL
+  out$whack_stage <- stage
+  out$whack <- !is.na(stage)
+  if (length(grp_vars) > 0) out <- dplyr::group_by(out, dplyr::across(dplyr::all_of(grp_vars)))
+  out
+}
+
+.whack_clean_lazy <- function(x, kn_max, max_gap_h, batch_pings, ...) {
+  con <- dbplyr::remote_con(x)
+  # A deterministic row number per vessel, computed in DuckDB and identically in the batch
+  # (the batch is sorted by time, lon, lat before it is labelled), is the join key back.
+  keyed <- x |>
+    dplyr::group_by(vid) |>
+    dbplyr::window_order(time, lon, lat) |>
+    dplyr::mutate(.whack_rn = dplyr::row_number()) |>
+    dplyr::ungroup()
+  vn <- x |> dplyr::count(vid) |> dplyr::collect() |> dplyr::arrange(dplyr::desc(n))
+  batches <- split(vn$vid, cumsum(as.numeric(vn$n)) %/% batch_pings)
+  tmp <- paste0("whack_labels_", format(as.hexmode(sample.int(.Machine$integer.max, 1)), width = 8))
+  first <- TRUE
+  for (g in batches) {
+    # filter to the batch BEFORE numbering, so DuckDB sorts only this batch, not the table
+    d <- x |>
+      dplyr::filter(vid %in% g) |>
+      dplyr::select(vid, time, lon, lat) |>
+      dplyr::group_by(vid) |>
+      dbplyr::window_order(time, lon, lat) |>
+      dplyr::mutate(.whack_rn = dplyr::row_number()) |>
+      dplyr::ungroup() |>
+      dplyr::collect() |>
+      dplyr::arrange(vid, time, lon, lat)
+    lab <- .whack_clean_df(d, kn_max, max_gap_h, ...)
+    lab <- lab[lab$whack, c("vid", ".whack_rn", "whack_stage")]
+    lab$.whack_rn <- as.numeric(lab$.whack_rn)
+    if (first) {
+      DBI::dbWriteTable(con, tmp, lab, temporary = TRUE, overwrite = TRUE)
+      first <- FALSE
+    } else if (nrow(lab) > 0) {
+      DBI::dbAppendTable(con, tmp, lab)
+    }
+  }
+  if (first) stop("whack_clean(): the table has no vessels.", call. = FALSE)
+  keyed |>
+    dplyr::left_join(dplyr::tbl(con, tmp), by = c("vid", ".whack_rn")) |>
+    dplyr::mutate(whack = !is.na(whack_stage)) |>
+    dplyr::select(-.whack_rn)
+}

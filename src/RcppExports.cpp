@@ -41,10 +41,30 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// whack_sda_cpp
+IntegerVector whack_sda_cpp(NumericVector lat, NumericVector lon, NumericVector time, IntegerVector grp, double vmax, NumericVector ang, NumericVector distlim, NumericVector speedlim, double vmask_min_dist);
+RcppExport SEXP _ramb_whack_sda_cpp(SEXP latSEXP, SEXP lonSEXP, SEXP timeSEXP, SEXP grpSEXP, SEXP vmaxSEXP, SEXP angSEXP, SEXP distlimSEXP, SEXP speedlimSEXP, SEXP vmask_min_distSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type lat(latSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type lon(lonSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type time(timeSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type grp(grpSEXP);
+    Rcpp::traits::input_parameter< double >::type vmax(vmaxSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type ang(angSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type distlim(distlimSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type speedlim(speedlimSEXP);
+    Rcpp::traits::input_parameter< double >::type vmask_min_dist(vmask_min_distSEXP);
+    rcpp_result_gen = Rcpp::wrap(whack_sda_cpp(lat, lon, time, grp, vmax, ang, distlim, speedlim, vmask_min_dist));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_ramb_interpolate_track_cpp", (DL_FUNC) &_ramb_interpolate_track_cpp, 6},
     {"_ramb_whack_forward_cpp", (DL_FUNC) &_ramb_whack_forward_cpp, 5},
+    {"_ramb_whack_sda_cpp", (DL_FUNC) &_ramb_whack_sda_cpp, 9},
     {NULL, NULL, 0}
 };
 

@@ -36,6 +36,9 @@ LinkingTo:
     Rcpp
 Suggests:
     ggnewscale,
+    DBI,
+    duckdb,
+    argosfilter,
     rayshader,
     rmarkdown,
     testthat (>= 3.0.0)

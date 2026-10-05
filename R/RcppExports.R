@@ -9,3 +9,7 @@ whack_forward_cpp <- function(lon, lat, time, ms_max, max_gap_sec) {
     .Call(`_ramb_whack_forward_cpp`, lon, lat, time, ms_max, max_gap_sec)
 }
 
+whack_sda_cpp <- function(lat, lon, time, grp, vmax, ang, distlim, speedlim, vmask_min_dist) {
+    .Call(`_ramb_whack_sda_cpp`, lat, lon, time, grp, vmax, ang, distlim, speedlim, vmask_min_dist)
+}
+
