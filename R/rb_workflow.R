@@ -12,7 +12,7 @@
 #' @return A tibble with both mobile and static tows
 #' @export
 #'
-rb_logbook <- function(con, VIDs, YEARS) {
+rb_read_logbook_mfri <- function(con, VIDs, YEARS) {
   
   mb <- 
     omar::lb_mobile(con)
@@ -111,7 +111,7 @@ rb_cap_effort <- function(lb) {
 #'
 #' @export
 #'
-rb_std_meshsize <- function(lb) {
+rb_standardise_gear_meshsize <- function(lb) {
   lb <- 
     lb |> 
     # "correct" mesh size
@@ -147,7 +147,7 @@ rb_std_meshsize <- function(lb) {
 #' @return a tibble
 #' @export
 #'
-rb_gearwidth_proxy <- function(lb) {
+rb_fill_gear_width <- function(lb) {
   lb <- 
     lb |> 
     dplyr::mutate(gear.width = dplyr::case_when(gid %in% c(6L, 7L, 9L, 14L) ~ as.numeric(sweeps),

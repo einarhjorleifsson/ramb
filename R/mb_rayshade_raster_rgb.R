@@ -6,7 +6,7 @@
 #' @return A rgb terra raster
 #' @export 
 #'
-mb_rayshade_raster_rgb <- function(r, zscale = 1, zrange = NULL) {
+rb_rayshade_raster_rgb <- function(r, zscale = 1, zrange = NULL) {
   
   # determine split ------------------------------------------------------------
   dr <- ceiling(nrow(r) / 4000)
@@ -47,8 +47,8 @@ mb_rayshade_raster_rgb <- function(r, zscale = 1, zrange = NULL) {
       }
       org <-
         org |>
-        mb_rayshade_raster(zscale = zscale) |>
-        mb_rayshade_to_rgb(org)
+        rb_rayshade_raster(zscale = zscale) |>
+        rb_convert_rayshade_to_rgb(org)
       org |>
         terra::writeRaster(filename = paste0(tempdir(), "/out/rs_", i, ".tiff"))
     }

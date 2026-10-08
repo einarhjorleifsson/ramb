@@ -9,7 +9,7 @@
 #' 
 #' @export
 #'
-rb_points_in_polygons <- function(x, y) {
+rb_detect_in_polygons <- function(x, y) {
   
   # the checks
   if(!inherits(sf::st_geometry(x), "sfc_POINT")) { 
@@ -40,9 +40,9 @@ rb_points_in_polygons <- function(x, y) {
 #' @note No serious testing in done
 #' @export
 #'
-rb_st_keep <- function(x, y) {
+rb_keep_in_polygons <- function(x, y) {
   
-  i <- rb_points_in_polygons(x, y)
+  i <- rb_detect_in_polygons(x, y)
   
   # the return
   if(inherits(x, "data.frame")) {
@@ -66,9 +66,9 @@ rb_st_keep <- function(x, y) {
 #' 
 #' @export
 #'
-rb_st_drop <- function(x, y) {
+rb_drop_in_polygons <- function(x, y) {
   
-  i <- rb_points_in_polygons(x, y)
+  i <- rb_detect_in_polygons(x, y)
   i <- !i
   
   # the return

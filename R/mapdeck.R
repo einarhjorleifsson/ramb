@@ -12,7 +12,7 @@
 #' @return a mapdeck map
 #' @export
 #'
-rb_mapdeck <- 
+rb_plot_trail <- 
   function(d, col = "speed", tooltip = "speed", no_lines = TRUE,
            radius = 400,
            highlight_colour = "black", stroke_colour = "cyan") {

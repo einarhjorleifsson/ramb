@@ -6,7 +6,7 @@
 #' @return a terra raster
 #' @export
 #'
-mb_base_raster <- function() {
+rb_create_base_raster <- function() {
 
   #
   #

@@ -35,7 +35,7 @@ TODO: Make some hardwired settings as arguements in the function call
 gg.base <- 
    creel %>% 
   group_by(id) %>% 
-  mutate(change = rb_event(behaviour)) %>% 
+  mutate(change = rb_number_runs(behaviour)) %>% 
   group_by(id, change, behaviour) %>% 
   summarise(t1 = min(time),
             t2 = max(time),

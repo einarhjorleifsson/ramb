@@ -12,7 +12,7 @@ knitr::opts_chunk$set(
 )
 ```
 
-## rb_midpoint: a note on the implementation
+## rb_bin_midpoint: a note on the implementation
 
 The original implementation (in rb_grade) used:
 
@@ -42,7 +42,7 @@ coarse to accidentally collapse genuinely distinct values.
 
 ### DuckDB / duckdbfs
 
-`rb_midpoint()` includes a dbplyr SQL translation, so it works transparently in
+`rb_bin_midpoint()` includes a dbplyr SQL translation, so it works transparently in
 `mutate()` on DuckDB-backed tables — including those opened with
 `duckdbfs::open_dataset()`:
 
@@ -51,8 +51,8 @@ library(dplyr)
 library(duckdbfs)
 
 open_dataset("catch.parquet") |>
-  mutate(lon_bin = rb_midpoint(lon, dx = 0.5),
-         lat_bin = rb_midpoint(lat, dx = 0.5))
+  mutate(lon_bin = rb_bin_midpoint(lon, dx = 0.5),
+         lat_bin = rb_bin_midpoint(lat, dx = 0.5))
 ```
 
 The generated SQL uses `FLOOR(ROUND(x / dx, 10)) * dx + dx / 2`, which handles

@@ -14,10 +14,10 @@
 #' @return numerical vector in nautical miles per hour
 #' @export
 #'
-rb_speed <- function(lon, lat, time) {
+rb_calc_speed <- function(lon, lat, time) {
   n <- length(lon)
   if(n >= 2) {
-    x <- traipse::track_speed(lon, lat, time) |> rb_ms2kn()
+    x <- traipse::track_speed(lon, lat, time) |> .rb_ms2kn()
     x[1] <- x[2]
   } else {
     x <- rep(NA_real_, n)

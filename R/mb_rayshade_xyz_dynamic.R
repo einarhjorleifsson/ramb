@@ -9,7 +9,7 @@
 #' @return A raster
 #' @export
 #'
-mb_rashade_xyz_dynamic <- function(xyz,
+rb_rayshade_xyz_dynamic <- function(xyz,
                                    r0,
                                    ping_cutoff = 10,
                                    file_prefix = "tmp/tmp",
@@ -35,16 +35,16 @@ mb_rashade_xyz_dynamic <- function(xyz,
     print(paste0("resolution ", i, " (", meters[i], " meters) of ", length(meters), " (", meters[length(meters)], " m)"))
     R <-
       xyz |>
-      ramb::mb_rasterize_xyz(r0, fun = "mean", agg = agg[i])
+      ramb::rb_rasterize_xyz(r0, fun = "mean", agg = agg[i])
     Rc <-
       xyz |>
-      ramb::mb_rasterize_xyz(r0, fun = "count", agg = agg[i])
+      ramb::rb_rasterize_xyz(r0, fun = "count", agg = agg[i])
     # if fewer than X measures drop rayshading, use next level up
     v <- values(Rc)
     # check if there are any values to rayshade
     RS <-
       R |>
-      ramb::mb_rayshade_raster_rgb(zscale = res[i])
+      ramb::rb_rayshade_raster_rgb(zscale = res[i])
     if(i < max(res)) RS[v < ping_cutoff] <- NA
     # some fix, something about "in memory" or not
     if(i == 1) {

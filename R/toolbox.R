@@ -7,7 +7,7 @@
 #' @return A numerical vector that labels each discreet event
 #' @export
 #'
-rb_event <- function(x) {
+rb_number_runs <- function(x) {
   x <- dplyr::if_else(x != dplyr::lag(x), 1L, 0L, 1L)
   x <- cumsum(x)
   return(x)
@@ -76,13 +76,11 @@ rb_interval_id <- function(point, interval, vid, time, start, end, id) {
 #' @param x A numerical vector of speed in meters per second
 #'
 #' @return A vector, speed in knots (nautical miles per hour)
-#' @export
+#' @noRd
 #' 
 #' @author Einar Hjörleifsson, \email{einar.hjorleifsson@gmail.com}
 #'
-#' @examples
-#' rb_ms2kn(0:8)
-rb_ms2kn <- function(x) {
+.rb_ms2kn <- function(x) {
   x * 1.94384449
 }
 
@@ -93,25 +91,23 @@ rb_ms2kn <- function(x) {
 #' @param x A numerical vector of speed in knots
 #'
 #' @return A vector, speed in meters per second
-#' @export
+#' @noRd
 #' 
 #' @author Einar Hjörleifsson, \email{einar.hjorleifsson@gmail.com}
 #'
-#' @examples
-#' rb_kn2ms(seq(0, 16, by = 2))
-rb_kn2ms <- function(x) {
+.rb_kn2ms <- function(x) {
   x / 1.94384449
 }
 
 
-#' rb_summary
+#' rb_summarise_track
 #'
 #' @param d ...
 #'
 #' @return A summary tibble, dependent on grouping upstream
 #' @export
 #'
-rb_summary <- function(d) {
+rb_summarise_track <- function(d) {
   d |> 
     dplyr::summarise(pings = dplyr::n(),
                      t.min = min(time),
@@ -176,4 +172,21 @@ rb_peek <- function(d, what, criteria) {
   for(i in 1:length(rid)) rids <- c(rids, rid[i] + c(-2, -1, 0, 1, 2))
   d |> dplyr::filter(.rid %in% rids)
   
+}
+
+#' Convert speed between knots and metres per second
+#'
+#' @param x A numeric vector of speed.
+#' @param from,to Units: `"kn"` (knots) or `"ms"` (metres per second).
+#'
+#' @return A numeric vector, speed in the `to` unit.
+#' @export
+#'
+#' @examples
+#' rb_convert_speed(0:8, from = "ms", to = "kn")
+rb_convert_speed <- function(x, from = c("kn", "ms"), to = c("ms", "kn")) {
+  from <- match.arg(from)
+  to <- match.arg(to)
+  if (from == to) return(x)
+  if (from == "ms") .rb_ms2kn(x) else .rb_kn2ms(x)
 }

@@ -34,9 +34,11 @@ A tibble with all columns from the VMS data and the trip id column appended (if 
 }
 \description{
 Adds a trip id column to a VMS dataset by matching each VMS record to logbook entries where:
-  - vessel IDs match, and
-  - the VMS timestamp falls between logbook departure and arrival times.
+\itemize{
+\item vessel IDs match, and
+\item the VMS timestamp falls between logbook departure and arrival times.
 Similar to \code{vmstools::mergeEflalo2Tacsat}, but here not dependent on specific variable names in the data frames.
+}
 }
 \examples{
 # rb_add_tripid(ve, le, vessel_id = vid, trip_id = tid, time = time, departure = T1, arrival = T2)

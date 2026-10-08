@@ -44,7 +44,7 @@ rb_stk_trail <- function(con, vid) {
 #' @return a tibble
 #' @export
 #'
-rb_trail <- function(con, vid) {
+rb_read_trail_mfri <- function(con, vid) {
   
   if(!missing(vid)) {
     VID <- vid
@@ -118,7 +118,7 @@ rb_read_trails <- function(con, VID, YEARS, use_PAM = FALSE) {
       dplyr::collect(n = Inf) |> 
       # what happens if nrow == 0?
       dplyr::mutate(source = "pam") |> 
-      dplyr::mutate(speed = rb_ms2kn(speed))
+      dplyr::mutate(speed = .rb_ms2kn(speed))
     
   }
   

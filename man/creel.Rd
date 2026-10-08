@@ -7,15 +7,15 @@
 \format{
 A data frame with 2226 rows and 8 variables:
 \describe{
-  \item{id}{vessel identification}
-  \item{rowid}{record number, unique for each vessel}
-  \item{time}{time of position}
-  \item{x}{Easting}
-  \item{y}{Northing}
-  \item{lon}{Longitude}
-  \item{lat}{Latitude}
-  \item{behaviour}{Vessel activity}
-  }
+\item{id}{vessel identification}
+\item{rowid}{record number, unique for each vessel}
+\item{time}{time of position}
+\item{x}{Easting}
+\item{y}{Northing}
+\item{lon}{Longitude}
+\item{lat}{Latitude}
+\item{behaviour}{Vessel activity}
+}
 }
 \source{
 Mendo, Tania; Smout, Sophie; Photopoulou, Theoni; James, Mark (2019), Data

@@ -15,58 +15,60 @@ rb_whack_sda(
 )
 }
 \arguments{
-\item{x}{A data frame with `vid`, `lon`, `lat` and `time` (`POSIXct`).}
+\item{x}{A data frame with \code{vid}, \code{lon}, \code{lat} and \code{time} (\code{POSIXct}).}
 
 \item{kn_max}{Speed threshold in knots (default 25).}
 
 \item{ang}{Angle limits in degrees (default 25).}
 
-\item{distlim}{Distance limits in metres, one per `ang`; used where `speedlim_kn` is 0.}
+\item{distlim}{Distance limits in metres, one per \code{ang}; used where \code{speedlim_kn} is 0.}
 
-\item{speedlim_kn}{Speed limits in knots, one per `ang` (default `kn_max`); 0 = use `distlim`.}
+\item{speedlim_kn}{Speed limits in knots, one per \code{ang} (default \code{kn_max}); 0 = use \code{distlim}.}
 
 \item{vmask_min_dist}{See above (default 0).}
 
 \item{min_dt_s}{Shortest time step, in seconds, used for a speed (default 10). A shorter
-step counts as `min_dt_s`: over a few seconds the error in position and the whole-second
-timestamps dominate the speed. Within `min_dt_s` a ping is therefore flagged only if it
-is more than `kn_max * min_dt_s` away (about 130 m at the defaults).}
+step counts as \code{min_dt_s}: over a few seconds the error in position and the whole-second
+timestamps dominate the speed. Within \code{min_dt_s} a ping is therefore flagged only if it
+is more than \code{kn_max * min_dt_s} away (about 130 m at the defaults).}
 }
 \value{
-`x`, sorted by `vid`, `time` (ties by `lon`, `lat`), with `whack_sda`: `NA` = not flagged,
-  `"vmask"` or `"spike"` = the step that flagged it.
+\code{x}, sorted by \code{vid}, \code{time} (ties by \code{lon}, \code{lat}), with \code{whack_sda}: \code{NA} = not flagged,
+\code{"vmask"} or \code{"spike"} = the step that flagged it.
 }
 \description{
 Flags implausible positions with the speed-distance-angle algorithm of
-`argosfilter::sdafilter()` (Freitas et al. 2008), re-implemented as one compiled pass
+\code{argosfilter::sdafilter()} (Freitas et al. 2008), re-implemented as one compiled pass
 over all vessels. Nothing is removed: every row is returned, with a label.
 }
 \section{Algorithm}{
 
 Per vessel, on the track sorted by time:
-1. **vmask** - the root-mean-square speed from each ping to its two neighbours on either
-   side. Local maxima of that speed above `kn_max` are flagged and taken out of the
-   working track; this repeats until no remaining ping exceeds `kn_max`.
-2. A vmask flag stands only if the ping is more than `vmask_min_dist` metres from its
-   predecessor (default 0: every flag stands; `argosfilter` uses 5000).
-3. **Spikes** - a ping is flagged when the two legs at it enclose an angle of at most
-   `ang[k]` degrees and either both legs are longer than `distlim[k]` metres or, where
-   `speedlim_kn[k] > 0`, both legs are faster than that. Repeats on the thinned track
-   until none is left. The speed form is the time-aware one: the same leg is long or
-   short depending on the time it took.
+\enumerate{
+\item \strong{vmask} - the root-mean-square speed from each ping to its two neighbours on either
+side. Local maxima of that speed above \code{kn_max} are flagged and taken out of the
+working track; this repeats until no remaining ping exceeds \code{kn_max}.
+\item A vmask flag stands only if the ping is more than \code{vmask_min_dist} metres from its
+predecessor (default 0: every flag stands; \code{argosfilter} uses 5000).
+\item \strong{Spikes} - a ping is flagged when the two legs at it enclose an angle of at most
+\code{ang[k]} degrees and either both legs are longer than \code{distlim[k]} metres or, where
+\code{speedlim_kn[k] > 0}, both legs are faster than that. Repeats on the thinned track
+until none is left. The speed form is the time-aware one: the same leg is long or
+short depending on the time it took.
+}
 
-Every speed uses a time step of at least `min_dt_s`; `argosfilter` adds 1 s to every
+Every speed uses a time step of at least \code{min_dt_s}; \code{argosfilter} adds 1 s to every
 step instead.
 
 The package defaults tuned for Argos seal tracks (15/25 degrees, 2.5/5 km, 5 km) leave
 tens of thousands of speed spikes in vessel AIS. The defaults here follow the tuning in
-fishycode `curate/checks/sda_tune.R`: a speed test, `vmask_min_dist = 0`.
+fishycode \code{curate/checks/sda_tune.R}: a speed test, \code{vmask_min_dist = 0}.
 }
 
 \references{
 Freitas, C., Lydersen, C., Fedak, M.A. and Kovacs, K.M. (2008). A simple
-  new algorithm to filter marine mammal Argos locations. Marine Mammal Science 24:315-325.
+new algorithm to filter marine mammal Argos locations. Marine Mammal Science 24:315-325.
 }
 \seealso{
-[rb_whack_clean()], the full recipe; [rb_whack_forward()], [rb_whack_fwdbwd()].
+\code{\link[=rb_whack_clean]{rb_whack_clean()}}, the full recipe; \code{\link[=rb_whack_forward]{rb_whack_forward()}}, \code{\link[=rb_whack_fwdbwd]{rb_whack_fwdbwd()}}.
 }

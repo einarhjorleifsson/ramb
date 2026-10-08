@@ -11,13 +11,13 @@ rb_whacky_speed(lon, lat, time, kn_max = 25)
 
 \item{lat}{Numeric vector of latitudes in decimal degrees.}
 
-\item{time}{`POSIXct` vector of observation timestamps.}
+\item{time}{\code{POSIXct} vector of observation timestamps.}
 
 \item{kn_max}{Speed threshold in knots (default 25).}
 }
 \value{
-A logical vector the same length as `lon`. `TRUE` = position
-  classified as whacky; `FALSE` = retained.
+A logical vector the same length as \code{lon}. \code{TRUE} = position
+classified as whacky; \code{FALSE} = retained.
 }
 \description{
 Iteratively removes the first position that exceeds the speed threshold,
@@ -25,18 +25,18 @@ recomputes speeds, and repeats until all speeds are within tolerance.
 }
 \section{Algorithm}{
 
-Uses [traipse::track_speed()] to compute along-track speeds. The leading
-`NA` speed (convention of `traipse`) is replaced by zero so the first point
-is never flagged on speed alone. At each iteration the **first** position
-whose incoming speed exceeds `ms_max` is removed; if that position is index
+Uses \code{\link[traipse:track_speed]{traipse::track_speed()}} to compute along-track speeds. The leading
+\code{NA} speed (convention of \code{traipse}) is replaced by zero so the first point
+is never flagged on speed alone. At each iteration the \strong{first} position
+whose incoming speed exceeds \code{ms_max} is removed; if that position is index
 2 (ambiguous between the pair), index 1 is removed instead.
 }
 
 \section{Known limitation}{
 
-**Does not correctly flag the first data point** if it is the source of the
+\strong{Does not correctly flag the first data point} if it is the source of the
 error (the incoming speed for the first point is always set to 0). Prefer
-[rb_whack_sequential_fast()] for new code — it is ~7× faster and does not have
+\code{\link[=rb_whack_sequential_fast]{rb_whack_sequential_fast()}} for new code — it is ~7× faster and does not have
 this edge case.
 }
 
@@ -50,6 +50,6 @@ data |>
 
 }
 \seealso{
-[rb_whack_sequential_fast()] for a faster drop-in replacement that
-  handles the first-point edge case.
+\code{\link[=rb_whack_sequential_fast]{rb_whack_sequential_fast()}} for a faster drop-in replacement that
+handles the first-point edge case.
 }

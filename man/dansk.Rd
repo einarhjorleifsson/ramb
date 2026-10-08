@@ -7,16 +7,16 @@
 \format{
 A data frame with 395558 rows and 9 variables:
 \describe{
-  \item{.rowid}{sequential numbers}
-  \item{vessel_id}{vessel identification}
-  \item{time_stamp}{time of position}
-  \item{lon}{longitude}
-  \item{lat}{latitude}
-  \item{speed}{instantaneous speed in knots}
-  \item{course}{true course?}
-  \item{gear}{gear type deployed}
-  \item{behaviour}{Vessel activity}
-  }
+\item{.rowid}{sequential numbers}
+\item{vessel_id}{vessel identification}
+\item{time_stamp}{time of position}
+\item{lon}{longitude}
+\item{lat}{latitude}
+\item{speed}{instantaneous speed in knots}
+\item{course}{true course?}
+\item{gear}{gear type deployed}
+\item{behaviour}{Vessel activity}
+}
 }
 \source{
 WKSSFGEO (\url{https://raw.githubusercontent.com/ices-eg/WKSSFGEO/main/data-examples/example_data_AIS.csv})
@@ -25,7 +25,7 @@ WKSSFGEO (\url{https://raw.githubusercontent.com/ices-eg/WKSSFGEO/main/data-exam
 dansk
 }
 \description{
-Example data of 14 vessels using 4 different gears with a median 
+Example data of 14 vessels using 4 different gears with a median
 time interval of 10 sec.
 }
 \keyword{datasets}

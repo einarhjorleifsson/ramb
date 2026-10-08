@@ -67,7 +67,7 @@ PROCESSING STEPS:
 
 ```{r}
 lb <- 
-  rb_logbook(con, YEARS = YEARS) %>% 
+  rb_read_logbook_mfri(con, YEARS = YEARS) %>% 
   # lump gear
   mutate(gid = case_when(gid %in% c(10L, 12L) ~ 4L,       # purse seines
                          gid %in% c(18L, 39L) ~ 18L,      # traps
@@ -79,8 +79,8 @@ lb <-
   # lump dredges into one single gear
   mutate(gid = ifelse(gid %in% c(15, 37, 38, 40), 15, gid)) |> 
   rb_cap_effort() %>% 
-  rb_std_meshsize() %>% 
-  rb_gearwidth_proxy() %>% 
+  rb_standardise_gear_meshsize() %>% 
+  rb_fill_gear_width() %>% 
   left_join(gears %>% select(gid, gclass),
             by = "gid") |> 
   # get the mobileid
@@ -168,6 +168,6 @@ ais |>
          .cid > 0,
          trip.pings > 10) |> 
   mutate(speed = ifelse(speed > 12, 12, speed)) |> 
-  ramb:::rb_mapdeck()
+  ramb:::rb_plot_trail()
 ```
 

@@ -19,7 +19,7 @@ rb_whack_duplicates(
 \arguments{
 \item{vid}{Vessel id.}
 
-\item{time}{Time of the ping (`POSIXct`, or seconds).}
+\item{time}{Time of the ping (\code{POSIXct}, or seconds).}
 
 \item{lon, lat}{Position, decimal degrees.}
 
@@ -28,40 +28,40 @@ rb_whack_duplicates(
 \item{priority}{Feeds in order of preference, the one to keep first.}
 
 \item{max_dt_s}{Largest time gap, in seconds, for two pings to be copies (default 10,
-the time-step floor of [rb_whack_clean()]).}
+the time-step floor of \code{\link[=rb_whack_clean]{rb_whack_clean()}}).}
 
-\item{kn_max}{Speed, in knots, that sets the largest distance: `kn_max` over
-`max_dt_s` (default 25, as in [rb_whack_clean()]).}
+\item{kn_max}{Speed, in knots, that sets the largest distance: \code{kn_max} over
+\code{max_dt_s} (default 25, as in \code{\link[=rb_whack_clean]{rb_whack_clean()}}).}
 
 \item{n}{Neighbours compared on each side, in time order (default 3).}
 }
 \value{
-A logical vector, `TRUE` for the copy to drop, in the order of the input.
+A logical vector, \code{TRUE} for the copy to drop, in the order of the input.
 }
 \description{
 Flags the second copy of a position report that two feeds both received: the
 same vessel, a few seconds apart, metres apart. When feeds are merged (for
 example a national receiver network and a commercial terrestrial or satellite
 feed), a vessel heard by both is reported twice. The two copies do not share a
-timestamp or a position exactly, so they survive a match on `(vid, time)` or on
+timestamp or a position exactly, so they survive a match on \verb{(vid, time)} or on
 whole rows; they are near-duplicates. In the Icelandic record 2013-2026 they
-were 1.2 % of all pings, with a median gap of 1-4 s and a median distance of
+were 1.2 \% of all pings, with a median gap of 1-4 s and a median distance of
 0.1-0.4 m by feed pair.
 }
 \details{
-Run it before [rb_whack_clean()]. With a short time-step floor a near-duplicate
+Run it before \code{\link[=rb_whack_clean]{rb_whack_clean()}}. With a short time-step floor a near-duplicate
 pair that differs by a few metres looks like an impossible speed and gets
-flagged as whacky; with `min_dt_s = 10` it does not, so it has to be removed
+flagged as whacky; with \code{min_dt_s = 10} it does not, so it has to be removed
 as what it is.
 }
 \section{Rule}{
 
-A ping is a near-duplicate when a ping of the same `vid` from a feed ranked
-higher in `priority` lies within `max_dt_s` seconds and within the distance
-`kn_max` allows in `max_dt_s` (128.6 m at the defaults, so the pair is one the
-speed filter would itself call consistent). Only the `n` nearest pings on each
+A ping is a near-duplicate when a ping of the same \code{vid} from a feed ranked
+higher in \code{priority} lies within \code{max_dt_s} seconds and within the distance
+\code{kn_max} allows in \code{max_dt_s} (128.6 m at the defaults, so the pair is one the
+speed filter would itself call consistent). Only the \code{n} nearest pings on each
 side, in time order, are compared. The top-ranked feed is never flagged. Feeds
-not named in `priority` rank last and equal, so two of them never flag each
+not named in \code{priority} rank last and equal, so two of them never flag each
 other; nor do two pings of the same feed: this is not a filter for exact or
 same-feed duplicates.
 }

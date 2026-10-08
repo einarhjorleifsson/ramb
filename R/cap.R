@@ -20,9 +20,9 @@ rb_iqr <- function(x, multiplier = 1.5) {
 #' @param multiplier Default is 1.5
 #'
 #' @return A vector of same length as x
-#' @export
+#' @noRd
 #' 
-rb_cap_iqr <- function(x, multiplier = 1.5) {
+.rb_cap_iqr <- function(x, multiplier = 1.5) {
   upper <- rb_iqr(x, multiplier)
   x[x > upper] <- upper
   return(x)
@@ -45,12 +45,12 @@ rb_winsor <- function(x, probs = 0.99) {
 #' values, but if arguement p is of length 2, lower values can also be substituted.
 #'
 #' @param x A numeric vector
-#' @param probs A single value of probabilities with values in [0,1], default 0.99.
+#' @param probs A single value of probabilities with values in \[0, 1\], default 0.99.
 #'
 #' @return A vector of same length as x
-#' @export
+#' @noRd
 #'
-rb_cap_winsorize <- function(x, probs = 0.99) {
+.rb_cap_winsorize <- function(x, probs = 0.99) {
   
   if(length(probs) > 1) {
     message("Cap vector can only be of length 1 (upper value)")
@@ -115,12 +115,29 @@ rb_miller <- function(x, step_limit = 1.5) {
 #' ordered values of x will be capped by the maximum step value.
 #'
 #' @return A vector of same length as x
-#' @export
+#' @noRd
 #'
-rb_cap_miller <- function(x, step_limit = 1.5) {
+.rb_cap_miller <- function(x, step_limit = 1.5) {
 
   limit <- rb_miller(x, step_limit)
   
   x[x > limit]  <- limit
   return(x)
+}
+
+#' Cap extreme values
+#'
+#' @param x A numeric vector.
+#' @param method `"iqr"` (upper quartile + `multiplier` x IQR), `"miller"` (highest value before a
+#'   step larger than `step_limit` on the log scale) or `"winsorize"` (the `probs` percentile).
+#' @param ... Passed on: `multiplier` (iqr), `step_limit` (miller), `probs` (winsorize).
+#'
+#' @return A vector of the same length as `x`.
+#' @export
+rb_cap_outliers <- function(x, method = c("iqr", "miller", "winsorize"), ...) {
+  method <- match.arg(method)
+  switch(method,
+         iqr       = .rb_cap_iqr(x, ...),
+         miller    = .rb_cap_miller(x, ...),
+         winsorize = .rb_cap_winsorize(x, ...))
 }

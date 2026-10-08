@@ -16,7 +16,7 @@
 #' @return A vector of duration in seconds
 #' @export
 #'
-rb_track_time <- function (date, weight = c(0, 1), fill = TRUE) {
+rb_calc_track_time <- function (date, weight = c(0, 1), fill = TRUE) {
   
   # tests
   cls <- class(date)

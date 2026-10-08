@@ -1,4 +1,4 @@
-#' rb_md_trip
+#' rb_plot_trip
 #'
 #' @param data A tibble containing variable names lon and lat (crs 4326)
 #' @param tid Trip id variable name, default tid
@@ -10,7 +10,7 @@
 #' 
 #' @export
 #'
-rb_md_trip <- function(data, tid, radius = 10, col = "speed", trip = TRUE) {
+rb_plot_trip <- function(data, tid, radius = 10, col = "speed", trip = TRUE) {
   
   if(any(!class(data) %in% "sf")) {
     data <- 

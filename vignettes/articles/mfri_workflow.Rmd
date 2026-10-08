@@ -99,7 +99,7 @@ lb <-
   vessels %>% 
   # need to carefully review the changes, went from mar to omar in the function call
   #  the old process is in the rb_logbooks_2022
-  rb_logbook(YEARS)
+  rb_read_logbook_mfri(YEARS)
 lb %>% count(gid)
 
  # only vessels that are longlining, and that always fill out t0, t1, t2

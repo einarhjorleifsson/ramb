@@ -6,21 +6,21 @@
 #' @param date Character vector or column containing dates (e.g. "2022-12-31" or "31/12/2022").
 #' @param time Character vector or column containing times (e.g. "23:59:59").
 #' @param tz Time zone to use for the output (default "GMT").
-#' @param format Expected date-time format (default "\%d/\%m/\%Y \%H:\%M:\%S").
+#' @param format Expected date-time format (default `"%d/%m/%Y %H:%M:%S"`).
 #'
 #' @return A POSIXct vector of the same length as `date` and `time`, or NA where conversion fails.
 #'
 #' @examples
-#' dc_create_timestamp("14/09/2025", "15:30:00")
-#' dc_create_timestamp(c("01/01/2020", "31/12/2021"), c("00:00:00", "23:59:59"))
-#' dc_create_timestamp("2025-09-14", "12:01:57", format = "%Y-%m-%d %H:%M:%S")
-#' dc_create_timestamp("14/09/2025", "15:30:00", tz = "Europe/Reykjavik")
-#' try(dc_create_timestamp("2025-09-14", "12:01:57"))
-#' try(dc_create_timestamp(c("14/09/2025", "15/09/2025"), "15:30:00"))
-#' dc_create_timestamp("29/02/2023", "12:00:00")
+#' rb_create_timestamp("14/09/2025", "15:30:00")
+#' rb_create_timestamp(c("01/01/2020", "31/12/2021"), c("00:00:00", "23:59:59"))
+#' rb_create_timestamp("2025-09-14", "12:01:57", format = "%Y-%m-%d %H:%M:%S")
+#' rb_create_timestamp("14/09/2025", "15:30:00", tz = "Europe/Reykjavik")
+#' try(rb_create_timestamp("2025-09-14", "12:01:57"))
+#' try(rb_create_timestamp(c("14/09/2025", "15/09/2025"), "15:30:00"))
+#' rb_create_timestamp("29/02/2023", "12:00:00")
 #'
 #' @export
-dc_create_timestamp <- function(date, time, tz = "GMT", format = "%d/%m/%Y %H:%M:%S") {
+rb_create_timestamp <- function(date, time, tz = "GMT", format = "%d/%m/%Y %H:%M:%S") {
   # Input checks
   if (missing(date) || missing(time)) stop("Both 'date' and 'time' must be provided.", call. = FALSE)
   if (!is.character(date)) stop("'date' must be a character vector.", call. = FALSE)

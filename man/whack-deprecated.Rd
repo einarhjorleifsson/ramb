@@ -23,9 +23,9 @@ whack_sequential_fast(...)
 \item{...}{Passed to the new function.}
 }
 \description{
-`whack_clean()`, `whack_sda()`, `whack_forward()`, `whack_fwdbwd()` and
-`whack_sequential_fast()` were renamed [rb_whack_clean()], [rb_whack_sda()],
-[rb_whack_forward()], [rb_whack_fwdbwd()] and [rb_whack_sequential_fast()] on 2026-10-08,
+\code{whack_clean()}, \code{whack_sda()}, \code{whack_forward()}, \code{whack_fwdbwd()} and
+\code{whack_sequential_fast()} were renamed \code{\link[=rb_whack_clean]{rb_whack_clean()}}, \code{\link[=rb_whack_sda]{rb_whack_sda()}},
+\code{\link[=rb_whack_forward]{rb_whack_forward()}}, \code{\link[=rb_whack_fwdbwd]{rb_whack_fwdbwd()}} and \code{\link[=rb_whack_sequential_fast]{rb_whack_sequential_fast()}} on 2026-10-08,
 in line with the rest of the package. The old names still work, with a warning.
 }
 \keyword{internal}

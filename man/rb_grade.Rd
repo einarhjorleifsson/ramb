@@ -15,7 +15,7 @@ rb_grade(x, dx)
 Numeric vector of the same length as \code{x}, with each element replaced by its bin midpoint.
 }
 \description{
-\code{rb_grade} assigns each value in a numeric vector to the midpoint 
+\code{rb_grade} assigns each value in a numeric vector to the midpoint
 of its bin, given a user-specified bin width.
 }
 \examples{

@@ -7,9 +7,9 @@
 \format{
 A data frame with 41 observations (rows) and 2 variables (columns):
 \describe{
-  \item{metier5}{Metier as defined by ICES}
-  \item{benthis_metier}{Metier as defined in the benthis project}
-  }
+\item{metier5}{Metier as defined by ICES}
+\item{benthis_metier}{Metier as defined in the benthis project}
+}
 }
 \source{
 https://doi.org/10.1093/icesjms/fsv099

@@ -1,2 +1,98 @@
 url: https://heima.hafro.is/~einarhj/ramb
 
+reference:
+- title: "Ping (step 0): flag pings"
+  contents:
+  - rb_whack_clean
+  - rb_whack_sda
+  - rb_whack_forward
+  - rb_whack_fwdbwd
+  - rb_whack_sequential_fast
+  - rb_whack_duplicates
+  - rb_whacky_speed
+  - rb_whacky_speed_mendo
+  - rb_whacky_speed_trip
+- title: "Trip (step 1)"
+  contents:
+  - rb_add_tripid
+  - rb_trip
+  - rb_trip_jepol
+  - rb_pad_harbour
+- title: "Record (step 2)"
+  contents:
+  - rb_interpolate_track
+  - rb_cap_effort
+- title: "Gear (step 3)"
+  contents:
+  - rb_extract_metier
+  - rb_get_gear_vocabulary
+  - rb_predict_gear_width
+  - rb_fill_gear_width
+  - rb_standardise_gear_meshsize
+- title: "Catch (step 6)"
+  contents:
+  - dc_spread_cash_and_catch
+- title: "Tools: track calculations"
+  contents:
+  - rb_calc_speed
+  - rb_calc_distance
+  - rb_calc_step_time
+  - rb_calc_step_acceleration
+  - rb_calc_track_time
+  - rb_number_runs
+  - rb_convert_speed
+  - rb_interpolate
+  - rb_rms_tbl
+  - rb_summarise_track
+- title: "Tools: space and grids"
+  contents:
+  - rb_detect_in_polygons
+  - rb_keep_in_polygons
+  - rb_drop_in_polygons
+  - rb_st_remove
+  - rb_encode_ices_rectangle
+  - rb_bin_midpoint
+  - rb_grade
+- title: "Tools: values, dates, vessels"
+  contents:
+  - rb_cap_outliers
+  - rb_detect_crosses_year
+  - rb_check_trip_crosses_year
+  - rb_create_timestamp
+  - rb_classify_mmsi
+  - rb_lookup_mmsi_country
+  - rb_sum_across
+  - rb_peek
+- title: "Tools: plots and rasters"
+  contents:
+  - rb_plot_trail
+  - rb_plot_trip
+  - rb_create_base_raster
+  - rb_create_bbox
+  - rb_calc_xyz_extent
+  - rb_rasterize_xyz
+  - rb_rayshade_raster
+  - rb_rayshade_raster_rgb
+  - rb_rayshade_xyz_dynamic
+  - rb_convert_rayshade_to_rgb
+- title: "MFRI-only readers"
+  contents:
+  - rb_read_logbook_mfri
+  - rb_read_trail_mfri
+  - rb_read_harbours_mfri
+  - rb_read_survey_stations_mfri
+  - rb_read_survey_tracks_mfri
+- title: "Data"
+  contents:
+  - dansk
+  - dansk_harbours
+  - creel
+  - trawlsurvey
+  - trawlsurveytows
+  - whacks1
+  - benthis_parameters
+  - metier5_benthis_lookup
+- title: "Old names"
+  contents:
+  - ramb-renamed
+  - whack-deprecated

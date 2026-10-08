@@ -7,63 +7,67 @@
 rb_whack_fwdbwd(x, kn_max = 25, min_dt_s = 10)
 }
 \arguments{
-\item{x}{A `data.frame` (or tibble) **or** a `tbl_lazy` lazy DuckDB table.
-Must contain columns `vid` (vessel ID), `lon` (decimal degrees), `lat`
-(decimal degrees), and `time` (`POSIXct` for data frames; `TIMESTAMP` for
+\item{x}{A \code{data.frame} (or tibble) \strong{or} a \code{tbl_lazy} lazy DuckDB table.
+Must contain columns \code{vid} (vessel ID), \code{lon} (decimal degrees), \code{lat}
+(decimal degrees), and \code{time} (\code{POSIXct} for data frames; \code{TIMESTAMP} for
 DuckDB). May be pre-filtered or pre-grouped.}
 
 \item{kn_max}{Speed threshold in knots (default: 25). Points are flagged only when
 both neighbouring implied speeds exceed this value.}
 
 \item{min_dt_s}{Shortest time step, in seconds, used for a speed (default 10). A shorter
-step counts as `min_dt_s`: over a few seconds the error in position and the whole-second
-timestamps dominate the speed. Within `min_dt_s` a ping is therefore flagged only if it
-is more than `kn_max * min_dt_s` away (about 130 m at the defaults).}
+step counts as \code{min_dt_s}: over a few seconds the error in position and the whole-second
+timestamps dominate the speed. Within \code{min_dt_s} a ping is therefore flagged only if it
+is more than \code{kn_max * min_dt_s} away (about 130 m at the defaults).}
 }
 \value{
-The same type as `x` (data.frame or tbl_lazy) with one additional
-  logical column `whack`: `TRUE` = position flagged as implausible,
-  `FALSE` = position retained.  For `data.frame` input, first and last
-  points within each vessel group are always `FALSE` (one-sided: no
-  incoming/outgoing neighbour respectively).
+The same type as \code{x} (data.frame or tbl_lazy) with one additional
+logical column \code{whack}: \code{TRUE} = position flagged as implausible,
+\code{FALSE} = position retained.  For \code{data.frame} input, first and last
+points within each vessel group are always \code{FALSE} (one-sided: no
+incoming/outgoing neighbour respectively).
 }
 \description{
-Flags AIS positions whose implied speed is implausibly high in **both** the
-incoming **and** outgoing direction — i.e. isolated spikes. The function
-dispatches automatically on the class of `x`:
+Flags AIS positions whose implied speed is implausibly high in \strong{both} the
+incoming \strong{and} outgoing direction — i.e. isolated spikes. The function
+dispatches automatically on the class of \code{x}:
 }
 \details{
-* **`data.frame`** — vectorised R; Haversine distances computed per vessel
-  group; O(n) single pass per vessel.
-* **`tbl_lazy`** (lazy DuckDB / dbplyr table) — pure SQL using
-  `LAG`/`LEAD` window functions; no data is pulled into R memory.
+\itemize{
+\item \strong{\code{data.frame}} — vectorised R; Haversine distances computed per vessel
+group; O(n) single pass per vessel.
+\item \strong{\code{tbl_lazy}} (lazy DuckDB / dbplyr table) — pure SQL using
+\code{LAG}/\code{LEAD} window functions; no data is pulled into R memory.
+}
 }
 \section{Algorithm}{
 
-A point \eqn{i} is flagged `whack = TRUE` when
+A point \eqn{i} is flagged \code{whack = TRUE} when
 \deqn{\text{speed}_{i-1 \to i} > \text{kn\_max} \;\AND\; \text{speed}_{i \to i+1} > \text{kn\_max}}
 Distances are computed via the Haversine formula; a time difference shorter
-than `min_dt_s` counts as `min_dt_s`.
+than \code{min_dt_s} counts as \code{min_dt_s}.
 }
 
 \section{Cluster limitation}{
 
-The forward-backward criterion detects **isolated** spikes (one bad point
-surrounded by good ones). It **misses consecutive clusters** of two or more
+The forward-backward criterion detects \strong{isolated} spikes (one bad point
+surrounded by good ones). It \strong{misses consecutive clusters} of two or more
 adjacent bad points because neither endpoint of a bad segment passes both
-checks. Use [rb_whack_sequential_fast()] for cluster-aware flagging (in-memory
+checks. Use \code{\link[=rb_whack_sequential_fast]{rb_whack_sequential_fast()}} for cluster-aware flagging (in-memory
 only).
 }
 
 \section{Grouping}{
 
-* **`data.frame` path** — the table is ungrouped internally, sorted by
-  `(vid, time)`, then re-grouped by `vid` for the calculation. Any grouping
-  present on the input is restored on the output; **original row order is
-  not restored**.
-* **`tbl_lazy` path** — grouping is silently dropped (the SQL `WINDOW`
-  clause always partitions by `vid`). The returned object is an ungrouped
-  lazy table.
+\itemize{
+\item \strong{\code{data.frame} path} — the table is ungrouped internally, sorted by
+\verb{(vid, time)}, then re-grouped by \code{vid} for the calculation. Any grouping
+present on the input is restored on the output; \strong{original row order is
+not restored}.
+\item \strong{\code{tbl_lazy} path} — grouping is silently dropped (the SQL \code{WINDOW}
+clause always partitions by \code{vid}). The returned object is an ungrouped
+lazy table.
+}
 }
 
 \examples{
@@ -90,5 +94,5 @@ ais |>
 
 }
 \seealso{
-[rb_whack_sequential_fast()] for a cluster-aware in-memory variant.
+\code{\link[=rb_whack_sequential_fast]{rb_whack_sequential_fast()}} for a cluster-aware in-memory variant.
 }

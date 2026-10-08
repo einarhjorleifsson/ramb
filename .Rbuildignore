@@ -13,3 +13,4 @@ data-raw
 data-raw/DATASET.R
 TOPSECRET.R
 ^zgarbage$
+^TODO\.md$

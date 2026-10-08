@@ -12,23 +12,23 @@ rb_whacky_distance(lon, lat, miles_max = 6)
 \item{lat}{Numeric vector of latitudes in decimal degrees.}
 
 \item{miles_max}{Maximum allowed step distance in nautical miles (default 6).
-Internally converted to metres as `miles_max * 1852`.}
+Internally converted to metres as \code{miles_max * 1852}.}
 }
 \value{
-A logical vector the same length as `lon`. `TRUE` = position
-  classified as whacky; `FALSE` = retained.
+A logical vector the same length as \code{lon}. \code{TRUE} = position
+classified as whacky; \code{FALSE} = retained.
 }
 \description{
 Iteratively removes positions whose step distance to the previous retained
-point exceeds `miles_max` nautical miles, recomputing distances after each
+point exceeds \code{miles_max} nautical miles, recomputing distances after each
 removal. Useful as a complement to speed-based filters when timestamps are
 unreliable.
 }
 \section{Algorithm}{
 
-Uses [traipse::track_distance()] to compute step distances. The leading `NA`
+Uses \code{\link[traipse:track_distance]{traipse::track_distance()}} to compute step distances. The leading \code{NA}
 (first point has no predecessor) is replaced by zero. At each iteration the
-first position exceeding `meters_max` is removed and distances are
+first position exceeding \code{meters_max} is removed and distances are
 recomputed. The loop exits when no step distance remains above the threshold.
 }
 
@@ -36,8 +36,8 @@ recomputed. The loop exits when no step distance remains above the threshold.
 
 The filter is intentionally liberal: a genuinely long transit leg may be
 removed if its step distance exceeds the threshold even though the implied
-speed is reasonable. Use speed-based filters ([rb_whack_fwdbwd()],
-[rb_whack_sequential_fast()]) when timestamps are available.
+speed is reasonable. Use speed-based filters (\code{\link[=rb_whack_fwdbwd]{rb_whack_fwdbwd()}},
+\code{\link[=rb_whack_sequential_fast]{rb_whack_sequential_fast()}}) when timestamps are available.
 }
 
 \examples{

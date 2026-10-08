@@ -13,7 +13,7 @@
 #' @return A RGB array
 #' @export
 #'
-mb_rayshade_raster <- function(r, zscale = 1) {
+rb_rayshade_raster <- function(r, zscale = 1) {
   rm <-
     r |>
     rayshader::raster_to_matrix()

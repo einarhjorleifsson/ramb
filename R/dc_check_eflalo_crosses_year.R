@@ -2,8 +2,8 @@
 #'
 #' @description
 #' Given an eflalo data.frame (with date/time columns for departure and landing), warns if any trips start in one year and end in another.
-#' Adds combined POSIXct timestamp columns if not already present, using `dc_create_timestamp`.
-#' Uses `rb_check_crosses_year` to detect cross-year trips.
+#' Adds combined POSIXct timestamp columns if not already present, using `rb_create_timestamp`.
+#' Uses `rb_detect_crosses_year` to detect cross-year trips.
 #'
 #' @param eflalo A data.frame containing at least FT_DDAT, FT_DTIME, FT_LDAT, FT_LTIME columns (date/time for departure/landing).
 #'
@@ -19,7 +19,7 @@
 #'   FT_LDAT = c("01/01/2023", "01/01/2023"),
 #'   FT_LTIME = c("00:30:00", "12:00:00")
 #' )
-#' dc_check_eflalo_crosses_year(eflalo)
+#' rb_check_trip_crosses_year(eflalo)
 #'
 #' # Example with a trip crossing year
 #' eflalo2 <- data.frame(
@@ -28,7 +28,7 @@
 #'   FT_LDAT = "01/01/2025",
 #'   FT_LTIME = "00:30:00"
 #' )
-#' dc_check_eflalo_crosses_year(eflalo2)
+#' rb_check_trip_crosses_year(eflalo2)
 #'
 #' # Example using UTC and ISO format
 #' eflalo3 <- data.frame(
@@ -37,10 +37,10 @@
 #'   FT_LDAT = "2025-01-01",
 #'   FT_LTIME = "00:00:01"
 #' )
-#' dc_check_eflalo_crosses_year(eflalo3)
+#' rb_check_trip_crosses_year(eflalo3)
 #'
 #' @export
-dc_check_eflalo_crosses_year <- function(eflalo) {
+rb_check_trip_crosses_year <- function(eflalo) {
   # Input checks
   if (!is.data.frame(eflalo)) stop("'eflalo' must be a data.frame.")
   required_cols <- c("FT_DDAT", "FT_DTIME", "FT_LDAT", "FT_LTIME")
@@ -48,16 +48,16 @@ dc_check_eflalo_crosses_year <- function(eflalo) {
   if (length(missing_cols) > 0)
     stop(sprintf("Missing required columns: %s", paste(missing_cols, collapse = ", ")))
   
-  # Add (if necessary) combined POSIXct columns using dc_create_timestamp
+  # Add (if necessary) combined POSIXct columns using rb_create_timestamp
   if (!"FT_DDATIM" %in% colnames(eflalo)) {
-    eflalo$FT_DDATIM <- dc_create_timestamp(eflalo$FT_DDAT, eflalo$FT_DTIME)
+    eflalo$FT_DDATIM <- rb_create_timestamp(eflalo$FT_DDAT, eflalo$FT_DTIME)
   }
   if (!"FT_LDATIM" %in% colnames(eflalo)) {
-    eflalo$FT_LDATIM <- dc_create_timestamp(eflalo$FT_LDAT, eflalo$FT_LTIME)
+    eflalo$FT_LDATIM <- rb_create_timestamp(eflalo$FT_LDAT, eflalo$FT_LTIME)
   }
   
-  # Check for trips that cross the year using rb_check_crosses_year
-  crosses_year <- rb_check_crosses_year(eflalo$FT_DDATIM, eflalo$FT_LDATIM)
+  # Check for trips that cross the year using rb_detect_crosses_year
+  crosses_year <- rb_detect_crosses_year(eflalo$FT_DDATIM, eflalo$FT_LDATIM)
   if (any(crosses_year, na.rm = TRUE)) {
     warning("There are trips that cross the year. This is not accounted for in splitAmongPings. Consider splitting those trips into half")
   }

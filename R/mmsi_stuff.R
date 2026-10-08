@@ -8,7 +8,7 @@
 #' @return A vector with mmsi categories
 #' @export
 #'
-rb_mmsi_category <- function(mmsi) {
+rb_classify_mmsi <- function(mmsi) {
   
   category <-
     tibble::tibble(mmsi = mmsi) |>
@@ -53,7 +53,7 @@ rb_mmsi_category <- function(mmsi) {
 #' @return A vector
 #' @export
 #'
-rb_mmsi_flag <- function(mmsi, lookup) {
+rb_lookup_mmsi_country <- function(mmsi, lookup) {
   
   # Check that it doesn't match any non-number
   numbers_only <- function(x) !grepl("\\D", x)

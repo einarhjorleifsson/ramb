@@ -65,7 +65,7 @@ rb_whack_duplicates <- function(vid, time, lon, lat, feed,
   if (m < 2L) return(dup)
   for (k in seq_len(min(n, m - 1L))) {
     i <- seq_len(m - k); j <- i + k
-    near <- v[i] == v[j] & abs(t[j] - t[i]) <= max_dt_s & rb_distance(x[i], y[i], x[j], y[j]) <= max_m
+    near <- v[i] == v[j] & abs(t[j] - t[i]) <= max_dt_s & rb_calc_distance(x[i], y[i], x[j], y[j]) <= max_m
     near[is.na(near)] <- FALSE
     dup[j[near & p[i] < p[j]]] <- TRUE
     dup[i[near & p[j] < p[i]]] <- TRUE

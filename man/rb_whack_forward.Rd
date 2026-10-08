@@ -7,9 +7,9 @@
 rb_whack_forward(x, kn_max = 25, max_gap_h = 4, min_dt_s = 10)
 }
 \arguments{
-\item{x}{A data frame (or tibble). Must contain columns `vid`, `lon`, `lat`,
-`time` (`POSIXct`). Typically the result of `filter(!whack)` after
-`rb_whack_fwdbwd()`.}
+\item{x}{A data frame (or tibble). Must contain columns \code{vid}, \code{lon}, \code{lat},
+\code{time} (\code{POSIXct}). Typically the result of \code{filter(!whack)} after
+\code{rb_whack_fwdbwd()}.}
 
 \item{kn_max}{Speed threshold in knots (default: 25).}
 
@@ -18,43 +18,43 @@ without flagging (default 4). Prevents legitimate port-to-port transits
 from being erroneously removed.}
 
 \item{min_dt_s}{Shortest time step, in seconds, used for a speed (default 10). A shorter
-step counts as `min_dt_s`: over a few seconds the error in position and the whole-second
-timestamps dominate the speed. Within `min_dt_s` a ping is therefore flagged only if it
-is more than `kn_max * min_dt_s` away (about 130 m at the defaults).}
+step counts as \code{min_dt_s}: over a few seconds the error in position and the whole-second
+timestamps dominate the speed. Within \code{min_dt_s} a ping is therefore flagged only if it
+is more than \code{kn_max * min_dt_s} away (about 130 m at the defaults).}
 }
 \value{
-The input data frame with an added logical column `whack2`:
-  `TRUE` = flagged by this second pass.
+The input data frame with an added logical column \code{whack2}:
+\code{TRUE} = flagged by this second pass.
 }
 \description{
-Second-pass filter designed to run **after** [rb_whack_fwdbwd()] on the already-
-cleaned data frame. Where `rb_whack_fwdbwd` misses consecutive clusters (because
+Second-pass filter designed to run \strong{after} \code{\link[=rb_whack_fwdbwd]{rb_whack_fwdbwd()}} on the already-
+cleaned data frame. Where \code{rb_whack_fwdbwd} misses consecutive clusters (because
 the bad points form an internally slow but geographically wrong track),
-`rb_whack_forward` catches them by always comparing against the **last retained**
+\code{rb_whack_forward} catches them by always comparing against the \strong{last retained}
 ping rather than the immediate predecessor.
 }
 \section{Algorithm}{
 
-Iterates forward through the track (sorted by `vid`, `time`). For each ping,
-the implied speed from the last *retained* ping is computed. If that speed
-exceeds `kn_max` **and** the time gap is below `max_gap_h`, the ping is
+Iterates forward through the track (sorted by \code{vid}, \code{time}). For each ping,
+the implied speed from the last \emph{retained} ping is computed. If that speed
+exceeds \code{kn_max} \strong{and} the time gap is below \code{max_gap_h}, the ping is
 flagged and skipped — the reference ping does not advance. The reference
-resets unconditionally when the time gap exceeds `max_gap_h` (legitimate
+resets unconditionally when the time gap exceeds \code{max_gap_h} (legitimate
 long gaps, e.g. vessel off-air overnight, should not trigger the filter).
 
-A time step shorter than `min_dt_s` counts as `min_dt_s`. Until 2026-10-08 the floor
+A time step shorter than \code{min_dt_s} counts as \code{min_dt_s}. Until 2026-10-08 the floor
 was 1 microsecond, and a duplicate report 0.4 m away in the same second was flagged as
-faster than `kn_max`.
+faster than \code{kn_max}.
 }
 
 \section{Comparison with other filters}{
-
-| | `rb_whack_fwdbwd` | `rb_whack_sequential_fast` | `rb_whack_forward` |
-|---|---|---|---|
-| Dispatch | data.frame + tbl_lazy | in-memory only | in-memory only |
-| Clusters | misses consecutive runs | correct | correct |
-| Speed | O(n) | O(n × k) | O(n) |
-| Aggressive | no (both-direction check) | moderate | yes (forward-only) |
+\tabular{llll}{
+    \tab \code{rb_whack_fwdbwd} \tab \code{rb_whack_sequential_fast} \tab \code{rb_whack_forward} \cr
+   Dispatch \tab data.frame + tbl_lazy \tab in-memory only \tab in-memory only \cr
+   Clusters \tab misses consecutive runs \tab correct \tab correct \cr
+   Speed \tab O(n) \tab O(n × k) \tab O(n) \cr
+   Aggressive \tab no (both-direction check) \tab moderate \tab yes (forward-only) \cr
+}
 }
 
 \examples{
@@ -68,6 +68,6 @@ clean <- df |>
 
 }
 \seealso{
-[rb_whack_clean()], where it is the second stage; [rb_whack_fwdbwd()]
-  for the former first-pass filter.
+\code{\link[=rb_whack_clean]{rb_whack_clean()}}, where it is the second stage; \code{\link[=rb_whack_fwdbwd]{rb_whack_fwdbwd()}}
+for the former first-pass filter.
 }

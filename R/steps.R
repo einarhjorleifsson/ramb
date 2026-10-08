@@ -1,4 +1,4 @@
-# Compare track_time vs rb_time (rb_st)
+# Compare track_time vs rb_time (rb_calc_step_time)
 
 #' Time between steps, forcing users to explicitly specify the unit
 #'
@@ -9,7 +9,7 @@
 #' @export
 #'
 #'
-rb_st <- function(time, units = "secs")  {
+rb_calc_step_time <- function(time, units = "secs")  {
   difftime(time, dplyr::lag(time), units = units) |> 
     as.numeric()
 }
@@ -25,6 +25,6 @@ rb_st <- function(time, units = "secs")  {
 #' @return A numerical vector
 #' @export
 #'
-rb_sa <- function(lon, lat, time) {
+rb_calc_step_acceleration <- function(lon, lat, time) {
   traipse::track_speed(lon, lat, time) / traipse::track_time(time)
 }

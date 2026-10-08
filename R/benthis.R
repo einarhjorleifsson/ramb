@@ -5,9 +5,11 @@
 #' @param kw Vessel power
 #'
 #' @return A numeric vector in meters
+#' @param method Only `"benthis"` so far: the Benthis gear-width models (Eigaard et al. 2016).
 #' @export
 #'
-rb_benthis_width <- function(metier, length, kw) {
+rb_predict_gear_width <- function(metier, length, kw, method = "benthis") {
+  method <- match.arg(method)
   tibble::tibble(metier5 = {{metier}}, 
                  length = {{length}}, 
                  kw = {{kw}}) |> 

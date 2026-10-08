@@ -16,37 +16,37 @@
 #' # Example 1: POSIXct, different years
 #' dt1 <- as.POSIXct(c("2024-12-31 23:59:59", "2024-01-01 00:00:00"), tz = "UTC")
 #' dt2 <- as.POSIXct(c("2025-01-01 00:00:01", "2024-12-31 23:00:00"), tz = "UTC")
-#' rb_check_crosses_year(dt1, dt2)
+#' rb_detect_crosses_year(dt1, dt2)
 #' # Returns: TRUE FALSE
 #'
 #' # Example 2: Date class, different years
 #' dt1 <- as.Date(c("2024-12-31", "2025-01-01"))
 #' dt2 <- as.Date(c("2025-01-01", "2025-01-01"))
-#' rb_check_crosses_year(dt1, dt2)
+#' rb_detect_crosses_year(dt1, dt2)
 #' # Returns: TRUE FALSE
 #'
 #' # Example 3: POSIXct, same year
 #' dt1 <- as.POSIXct("2025-06-01 12:00:00", tz = "UTC")
 #' dt2 <- as.POSIXct("2025-12-31 23:59:59", tz = "UTC")
-#' rb_check_crosses_year(dt1, dt2)
+#' rb_detect_crosses_year(dt1, dt2)
 #' # Returns: FALSE
 #'
 #' # Example 4: Error if timezones differ
 #' \dontrun{
 #' dt1 <- as.POSIXct("2024-12-31 23:59:59", tz = "UTC")
 #' dt2 <- as.POSIXct("2025-01-01 00:00:01", tz = "Europe/Oslo")
-#' rb_check_crosses_year(dt1, dt2)
+#' rb_detect_crosses_year(dt1, dt2)
 #' }
 #'
 #' # Example 5: Error if types differ
 #' \dontrun{
 #' dt1 <- as.Date("2024-12-31")
 #' dt2 <- as.POSIXct("2025-01-01 00:00:01", tz = "UTC")
-#' rb_check_crosses_year(dt1, dt2)
+#' rb_detect_crosses_year(dt1, dt2)
 #' }
 #'
 #' @export
-rb_check_crosses_year <- function(datetime1, datetime2) {
+rb_detect_crosses_year <- function(datetime1, datetime2) {
   # Check same class
   if (!inherits(datetime1, class(datetime2))) {
     stop("datetime1 and datetime2 must be of the same class.")

@@ -34,13 +34,13 @@ tmp %>%
   unnest(x)
 
 hb <- 
-  ramb::read_is_harbours() %>%
+  ramb::rb_read_harbours_mfri() %>%
   filter(iso2a == "IS",
          # filter out some smaller harbours, cause a nuisance downstream
          !hid %in% c("HRI", "ASS", "HAU", "GRE", "MJH", "MJO", "AED", "HJA")) %>% 
   mutate(hid = 1:n())
 d <- 
-  ramb::read_is_survey_tracks() %>% 
+  ramb::rb_read_survey_tracks_mfri() %>% 
   mutate(.rid = 1:n()) %>% 
   arrange(vid, time) %>% 
   select(.rid, everything()) %>% 

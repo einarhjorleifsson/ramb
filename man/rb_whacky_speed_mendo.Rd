@@ -7,37 +7,39 @@
 rb_whacky_speed_mendo(df, speed_filter = 25)
 }
 \arguments{
-\item{df}{A data frame with columns `x`, `y`, `time`, `device_id`, `seq`
-(see *Input requirements*).}
+\item{df}{A data frame with columns \code{x}, \code{y}, \code{time}, \code{device_id}, \code{seq}
+(see \emph{Input requirements}).}
 
 \item{speed_filter}{Speed threshold in knots (default 25).}
 }
 \value{
 The input data frame with all rows implying speeds above
-  `speed_filter` removed, along with computed columns `dx`, `dy`, `dt`,
-  `dd`, and `speed`.
+\code{speed_filter} removed, along with computed columns \code{dx}, \code{dy}, \code{dt},
+\code{dd}, and \code{speed}.
 }
 \description{
 A fast but aggressive speed filter adapted from Mendoza et al. (2024). At
-each iteration the **entire pair** of positions producing an excessive speed
-are dropped together (unlike [rb_whacky_speed()] which removes only the
+each iteration the \strong{entire pair} of positions producing an excessive speed
+are dropped together (unlike \code{\link[=rb_whacky_speed]{rb_whacky_speed()}} which removes only the
 latter endpoint). This makes it roughly twice as fast but removes an equal
 number of valid and invalid points around each bad segment.
 }
 \section{Input requirements}{
 
 The data frame must contain columns:
-* `x`, `y` - projected coordinates in **metres** (not decimal degrees).
-* `time` - `POSIXct` timestamps.
-* `device_id` - vessel or device identifier (used for grouping).
-* `seq` - unique row sequence identifier (used for filtering).
+\itemize{
+\item \code{x}, \code{y} - projected coordinates in \strong{metres} (not decimal degrees).
+\item \code{time} - \code{POSIXct} timestamps.
+\item \code{device_id} - vessel or device identifier (used for grouping).
+\item \code{seq} - unique row sequence identifier (used for filtering).
+}
 }
 
 \section{Limitation}{
 
 Because both endpoints of a bad segment are removed, the filter is less
-conservative than [rb_whacky_speed()]: it discards as many valid points as
-invalid ones. Prefer [rb_whack_sequential_fast()] for new work.
+conservative than \code{\link[=rb_whacky_speed]{rb_whacky_speed()}}: it discards as many valid points as
+invalid ones. Prefer \code{\link[=rb_whack_sequential_fast]{rb_whack_sequential_fast()}} for new work.
 }
 
 \references{

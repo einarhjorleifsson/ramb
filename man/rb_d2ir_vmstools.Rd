@@ -15,7 +15,7 @@ rb_d2ir_vmstools(lon, lat)
 Returns the rectangles as a vector
 }
 \description{
-Get the ICES rectangle from any lon-lat position, given that this position 
+Get the ICES rectangle from any lon-lat position, given that this position
 is within the ICES region.
 }
 \details{

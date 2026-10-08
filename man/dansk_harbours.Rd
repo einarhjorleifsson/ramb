@@ -7,9 +7,9 @@
 \format{
 A data frame with 942 rows and 2 variables:
 \describe{
-  \item{SI_HARB}{sequential numbers denoting unique harbour id}
-  \item{geometry}{harbour polygons}
-  }
+\item{SI_HARB}{sequential numbers denoting unique harbour id}
+\item{geometry}{harbour polygons}
+}
 }
 \source{
 WKSSFGEO

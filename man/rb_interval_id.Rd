@@ -9,7 +9,7 @@ rb_interval_id(point, interval, vid, time, start, end, id)
 \arguments{
 \item{point}{A tibble containing variables vid (vessel id) and time}
 
-\item{interval}{A tibble containing variables vid, id.lgs (the fishing 
+\item{interval}{A tibble containing variables vid, id.lgs (the fishing
 activity id), start and end}
 
 \item{vid}{The vessel id variable name}
@@ -28,7 +28,7 @@ id).
 }
 \description{
 The function aim is to match an event in one tibble with an interval in an
-another tibble. Specifically designed to be used with ais/vms data (points) 
+another tibble. Specifically designed to be used with ais/vms data (points)
 and fishing logbook records where start and end time of fishing activity is
 recorded.
 }

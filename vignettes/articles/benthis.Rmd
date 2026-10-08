@@ -97,7 +97,7 @@ Using the function in {ramb}
 
 lb2 <- 
   lb |> 
-  mutate(width = rb_benthis_width(metier5, length, kw))
+  mutate(width = rb_predict_gear_width(metier5, length, kw))
 identical(lb1$width, lb2$width)
 ```
 

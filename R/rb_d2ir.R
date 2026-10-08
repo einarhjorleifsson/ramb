@@ -16,16 +16,16 @@
 #'
 #' @examples
 #' # Example 1: Standard position inside ICES area
-#' rb_d2ir(-10.5, 62.5)
+#' rb_encode_ices_rectangle(-10.5, 62.5)
 #' # Example 2: Vectorized input
-#' rb_d2ir(c(-10.5, 15.2), c(62.5, 54.9))
+#' rb_encode_ices_rectangle(c(-10.5, 15.2), c(62.5, 54.9))
 #' # Example 3: Position outside ICES area
-#' rb_d2ir(100, 10)
+#' rb_encode_ices_rectangle(100, 10)
 #' # Example 4: With safe = FALSE (no midpoint rounding)
-#' rb_d2ir(-10.5, 62.5, safe = FALSE)
+#' rb_encode_ices_rectangle(-10.5, 62.5, safe = FALSE)
 #'
 #' @export
-rb_d2ir <- function(lon, lat, safe = TRUE, useI = FALSE) {
+rb_encode_ices_rectangle <- function(lon, lat, safe = TRUE, useI = FALSE) {
   # --- Input checks ---
   if (!is.numeric(lon) || !is.numeric(lat)) stop("Both 'lon' and 'lat' must be numeric vectors.")
   if (length(lon) != length(lat)) stop("'lon' and 'lat' must have the same length.")
@@ -85,15 +85,15 @@ rb_d2ir <- function(lon, lat, safe = TRUE, useI = FALSE) {
 # --- Minimal built-in test cases (run manually for verification) ---
 if (interactive() || identical(Sys.getenv("RB_D2IR_TEST"), "yes")) {
   # 1. Standard in-area
-  stopifnot(rb_d2ir(-10.5, 62.5) == "43E1")
+  stopifnot(rb_encode_ices_rectangle(-10.5, 62.5) == "43E1")
   # 2. Outside area
-  stopifnot(is.na(rb_d2ir(100, 10)))
+  stopifnot(is.na(rb_encode_ices_rectangle(100, 10)))
   # 3. Vectorized, mixed
-  test_res <- rb_d2ir(c(-10.5, 15.2, 100), c(62.5, 54.9, 10))
+  test_res <- rb_encode_ices_rectangle(c(-10.5, 15.2, 100), c(62.5, 54.9, 10))
   stopifnot(test_res[1] == "43E1", test_res[2] == "37K5", is.na(test_res[3]))
   # 4. Check length mismatch errors
   expect_error <- function(expr) tryCatch(expr, error = function(e) TRUE)
-  stopifnot(expect_error(rb_d2ir(1:3, 1:2)))
+  stopifnot(expect_error(rb_encode_ices_rectangle(1:3, 1:2)))
   # 5. Check safe = FALSE
-  stopifnot(rb_d2ir(-10.5, 62.5, safe = FALSE) == "43E1")
+  stopifnot(rb_encode_ices_rectangle(-10.5, 62.5, safe = FALSE) == "43E1")
 }

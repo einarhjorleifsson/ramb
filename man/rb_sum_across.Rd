@@ -24,7 +24,6 @@ returning their sum as a new column. Optionally removes the original columns use
 Useful for eflalo data where multiple columns represent catches of different species,
 and you want to produce a total catch column and at the same time remove the original columns.
 
-
 The function will error if no columns match \code{start_name}, or if any matching columns are not numeric.
 }
 \examples{

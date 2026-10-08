@@ -5,9 +5,9 @@
 #' @param x A character vector
 #'
 #' @return A vector
-#' @export
+#' @noRd
 #'
-rb_gear_from_metier <- function(x) {
+.rb_gear_from_metier <- function(x) {
   x |> stringr::str_split("_") |> purrr::map_chr(1)
 }
 #' Derive target from metier 5 or 6
@@ -17,9 +17,9 @@ rb_gear_from_metier <- function(x) {
 #' @param x A character vector
 #'
 #' @return A vector
-#' @export
+#' @noRd
 #'
-rb_target_from_metier <- function(x) {
+.rb_target_from_metier <- function(x) {
   x |> stringr::str_split("_") |> purrr::map_chr(2)
 }
 #' Derive metier 5 from metier 6
@@ -29,9 +29,9 @@ rb_target_from_metier <- function(x) {
 #' @param x A character vector
 #'
 #' @return A vector
-#' @export
+#' @noRd
 #'
-rb_met5_from6 <- function(x) {
+.rb_met5_from6 <- function(x) {
   sapply(strsplit(x, "_"), function(x) paste(x[1:2], collapse = "_"))
 }
 
@@ -43,9 +43,9 @@ rb_met5_from6 <- function(x) {
 #' Only done if trim is TRUE.
 #'
 #' @return A tibble containing metier 5 and description
-#' @export
+#' @noRd
 #'
-rb_get_ices_metier5 <- function(trim = TRUE, valid = TRUE) {
+.rb_get_ices_metier5 <- function(trim = TRUE, valid = TRUE) {
   res <- icesVocab::getCodeList("Metier5_FishingActivity")
   if(trim) {
     res <- 
@@ -71,8 +71,8 @@ rb_get_ices_metier5 <- function(trim = TRUE, valid = TRUE) {
 #' Only actuelt if trim is TRUE.
 #'
 #' @return A tibble containing metier 6 and description
-#' @export
-rb_get_ices_metier6 <- function(trim = TRUE, valid = TRUE) {
+#' @noRd
+.rb_get_ices_metier6 <- function(trim = TRUE, valid = TRUE) {
   res <- icesVocab::getCodeList("Metier6_FishingActivity")
   if(trim == TRUE) {
     res <- 
@@ -99,8 +99,8 @@ rb_get_ices_metier6 <- function(trim = TRUE, valid = TRUE) {
 #' Only actuelt if trim is TRUE.
 #'
 #' @return A tibble containing target list and description
-#' @export
-rb_get_ices_gears <- function(trim = TRUE, valid = TRUE) {
+#' @noRd
+.rb_get_ices_gears <- function(trim = TRUE, valid = TRUE) {
   res <- icesVocab::getCodeList("GearType")
   if(trim == TRUE) {
     res <- 
@@ -127,8 +127,8 @@ rb_get_ices_gears <- function(trim = TRUE, valid = TRUE) {
 #' Only actuelt if trim is TRUE.
 #'
 #' @return A tibble containing target list and description
-#' @export
-rb_get_ices_target <- function(trim = TRUE, valid = TRUE) {
+#' @noRd
+.rb_get_ices_target <- function(trim = TRUE, valid = TRUE) {
   res <- icesVocab::getCodeList("TargetAssemblage")
   if(trim == TRUE) {
     res <- 
@@ -155,15 +155,15 @@ rb_get_ices_target <- function(trim = TRUE, valid = TRUE) {
 #' @param correct Boolean (default TRUE), not active
 #'
 #' @return A vector
-#' @export
-rb_get_ices_metier5_benthis_lookup <- function(trim = TRUE, correct = TRUE) {
+#' @noRd
+.rb_get_ices_metier5_benthis_lookup <- function(trim = TRUE, correct = TRUE) {
   res <- 
     "https://raw.githubusercontent.com/ices-eg/RCGs/master/Metiers/Reference_lists/RDB_ISSG_Metier_list.csv" |> 
     utils::read.csv()
   if(trim) {
     res <- 
       res |>  
-      dplyr::mutate(metier5 = rb_met5_from6(Metier_level6)) |> 
+      dplyr::mutate(metier5 = .rb_met5_from6(Metier_level6)) |> 
       dplyr::select(metier5, benthis_metier = Benthis_metiers) |> 
       tibble::as_tibble() |> 
       dplyr::filter(benthis_metier != "") |> 
@@ -174,3 +174,37 @@ rb_get_ices_metier5_benthis_lookup <- function(trim = TRUE, correct = TRUE) {
   return(res)
 }
 
+#' Extract a part of an ICES metier code
+#'
+#' @param x A character vector of metier codes (level 5 or 6, e.g. `"OTB_DEF_>=120_0_0"`).
+#' @param part `"gear"` (first field), `"target"` (second field) or `"metier5"` (gear and target).
+#'
+#' @return A character vector.
+#' @export
+#'
+#' @examples
+#' rb_extract_metier("OTB_DEF_>=120_0_0", part = "metier5")
+rb_extract_metier <- function(x, part = c("gear", "target", "metier5")) {
+  part <- match.arg(part)
+  switch(part,
+         gear    = .rb_gear_from_metier(x),
+         target  = .rb_target_from_metier(x),
+         metier5 = .rb_met5_from6(x))
+}
+
+#' Get an ICES gear vocabulary table
+#'
+#' @param list Which table: `"gears"`, `"target"`, `"metier5"`, `"metier6"` or `"metier5_benthis_lookup"`.
+#' @param ... Passed on: `trim`, `valid` (and `correct` for `"metier5_benthis_lookup"`).
+#'
+#' @return A tibble, fetched with icesVocab.
+#' @export
+rb_get_gear_vocabulary <- function(list = c("gears", "target", "metier5", "metier6", "metier5_benthis_lookup"), ...) {
+  list <- match.arg(list)
+  switch(list,
+         gears   = .rb_get_ices_gears(...),
+         target  = .rb_get_ices_target(...),
+         metier5 = .rb_get_ices_metier5(...),
+         metier6 = .rb_get_ices_metier6(...),
+         metier5_benthis_lookup = .rb_get_ices_metier5_benthis_lookup(...))
+}

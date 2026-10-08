@@ -27,7 +27,7 @@ d <-
            crs = 4326,
            remove = FALSE) |> 
   # in harbour = 1, at sea = 0
-  mutate(in_harbour = rb_points_in_polygons(geometry, dansk_harbours))
+  mutate(in_harbour = rb_detect_in_polygons(geometry, dansk_harbours))
 # Jeppe ------------------------------------------------------------------------
 jeppe <-
   d |> 

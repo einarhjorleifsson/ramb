@@ -13,56 +13,58 @@ rb_interpolate_track(
 )
 }
 \arguments{
-\item{x}{Events needing a position: a data.frame/tibble or a `tbl_lazy`.
-Must contain the `by` columns and `time_var`.}
+\item{x}{Events needing a position: a data.frame/tibble or a \code{tbl_lazy}.
+Must contain the \code{by} columns and \code{time_var}.}
 
-\item{track}{Reference positions, matching `x`'s class (data.frame with
+\item{track}{Reference positions, matching \code{x}'s class (data.frame with
 data.frame, tbl_lazy with tbl_lazy sharing the same DuckDB connection).
-Must contain the `by` columns, `time_var`, and `value_vars`.}
+Must contain the \code{by} columns, \code{time_var}, and \code{value_vars}.}
 
-\item{by}{Character vector of grouping columns present in both `x` and
-`track` (default `c("vid", "trip")`) - interpolation never crosses a
+\item{by}{Character vector of grouping columns present in both \code{x} and
+\code{track} (default \code{c("vid", "trip")}) - interpolation never crosses a
 group boundary (e.g. a voyage).}
 
-\item{time_var}{Column name (string) of the timestamp in both `x` and
-`track` (default `"time"`). `POSIXct` for data.frame input, a timestamp
+\item{time_var}{Column name (string) of the timestamp in both \code{x} and
+\code{track} (default \code{"time"}). \code{POSIXct} for data.frame input, a timestamp
 type for tbl_lazy input.}
 
-\item{value_vars}{Character vector of columns in `track` to interpolate
-onto `x` (default `c("lon", "lat")`).}
+\item{value_vars}{Character vector of columns in \code{track} to interpolate
+onto \code{x} (default \code{c("lon", "lat")}).}
 }
 \value{
-`x` with `value_vars` added/overwritten (interpolated; `NA` where
-  the event falls outside its group's track coverage) and a new `dt_sec`
-  column.
+\code{x} with \code{value_vars} added/overwritten (interpolated; \code{NA} where
+the event falls outside its group's track coverage) and a new \code{dt_sec}
+column.
 }
 \description{
-For each row of `x` (an "event" needing a position - e.g. a logger fix
+For each row of \code{x} (an "event" needing a position - e.g. a logger fix
 whose own lon/lat is unreliable or absent), finds the two nearest points in
-`track` bracketing its timestamp - within the same group (`by`) - and
-linearly interpolates the `value_vars` columns onto it. No extrapolation:
-an event outside its group's track time coverage gets `NA`.
+\code{track} bracketing its timestamp - within the same group (\code{by}) - and
+linearly interpolates the \code{value_vars} columns onto it. No extrapolation:
+an event outside its group's track time coverage gets \code{NA}.
 }
 \details{
-Extracted 2026-09-23 from `fishycode`'s `curate/logbook_sensor_gps.R`,
-which had this as inline `group_modify()` logic that re-filtered the whole
-track table once per `(vid, trip)` group - O(groups x track_rows), and the
+Extracted 2026-09-23 from \code{fishycode}'s \code{curate/logbook_sensor_gps.R},
+which had this as inline \code{group_modify()} logic that re-filtered the whole
+track table once per \verb{(vid, trip)} group - O(groups x track_rows), and the
 actual bottleneck once the AIS chain itself sped up (whack_forward's fix,
 same commit range). Both paths here are O(events + track), not
 O(groups x track).
 }
 \section{Algorithm}{
 
-Dispatches on the class of `x`:
-* **data.frame** - `track` is split by `by` once (not once per group),
-  then [stats::approx()] (`rule = 1`, no extrapolation; `ties = mean` for
-  duplicate track timestamps) is applied per group.
-* **tbl_lazy** (DuckDB) - two `ASOF LEFT JOIN`s (one each direction) find
-  the bracketing track point per event; the interpolation formula runs in
-  SQL. Nothing is collected into R.
+Dispatches on the class of \code{x}:
+\itemize{
+\item \strong{data.frame} - \code{track} is split by \code{by} once (not once per group),
+then \code{\link[stats:approx]{stats::approx()}} (\code{rule = 1}, no extrapolation; \code{ties = mean} for
+duplicate track timestamps) is applied per group.
+\item \strong{tbl_lazy} (DuckDB) - two \verb{ASOF LEFT JOIN}s (one each direction) find
+the bracketing track point per event; the interpolation formula runs in
+SQL. Nothing is collected into R.
+}
 
-Both paths compute `dt_sec`: the time gap (seconds) between the two track
-fixes bracketing each event - `NA` when the event has no coverage, `0` when
+Both paths compute \code{dt_sec}: the time gap (seconds) between the two track
+fixes bracketing each event - \code{NA} when the event has no coverage, \code{0} when
 the event's timestamp exactly matches a track fix.
 }
 

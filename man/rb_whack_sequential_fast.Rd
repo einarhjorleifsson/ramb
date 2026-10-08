@@ -11,40 +11,41 @@ rb_whack_sequential_fast(lon, lat, time, kn_max = 25, min_dt_s = 10)
 
 \item{lat}{Numeric vector of latitudes in decimal degrees.}
 
-\item{time}{`POSIXct` vector of observation timestamps. Must be the same
-length as `lon` and `lat`.}
+\item{time}{\code{POSIXct} vector of observation timestamps. Must be the same
+length as \code{lon} and \code{lat}.}
 
 \item{kn_max}{Speed threshold in knots (default: 25). Any segment implying a speed
 greater than this value triggers point removal.}
 
 \item{min_dt_s}{Shortest time step, in seconds, used for a speed (default 10). A shorter
-step counts as `min_dt_s`: over a few seconds the error in position and the whole-second
-timestamps dominate the speed. Within `min_dt_s` a ping is therefore flagged only if it
-is more than `kn_max * min_dt_s` away (about 130 m at the defaults).}
+step counts as \code{min_dt_s}: over a few seconds the error in position and the whole-second
+timestamps dominate the speed. Within \code{min_dt_s} a ping is therefore flagged only if it
+is more than \code{kn_max * min_dt_s} away (about 130 m at the defaults).}
 }
 \value{
-A logical vector of the same length as `lon`. `TRUE` = position
-  flagged as implausible (would be removed); `FALSE` = position retained.
-  Tracks with fewer than 2 points are returned as all-`FALSE`.
+A logical vector of the same length as \code{lon}. \code{TRUE} = position
+flagged as implausible (would be removed); \code{FALSE} = position retained.
+Tracks with fewer than 2 points are returned as all-\code{FALSE}.
 }
 \description{
 Iteratively removes AIS positions that imply implausible travel speeds,
-handling **consecutive clusters** of bad points that [rb_whack_fwdbwd()] misses.
-At each iteration the first segment exceeding `kn_max` is identified and its
-**latter** endpoint removed (or the first endpoint when the bad segment is the
+handling \strong{consecutive clusters} of bad points that \code{\link[=rb_whack_fwdbwd]{rb_whack_fwdbwd()}} misses.
+At each iteration the first segment exceeding \code{kn_max} is identified and its
+\strong{latter} endpoint removed (or the first endpoint when the bad segment is the
 very first); the Haversine distances and speeds are then recomputed on the
 surviving points. The loop continues until no segment exceeds the threshold.
 }
-\section{Comparison with `rb_whack_fwdbwd()`}{
+\section{Comparison with \code{rb_whack_fwdbwd()}}{
+\tabular{lll}{
+    \tab \code{rb_whack_fwdbwd} \tab \code{rb_whack_sequential_fast} \cr
+   Dispatch \tab data.frame \strong{and} tbl_lazy \tab in-memory only \cr
+   Clusters \tab misses consecutive runs \tab correct \cr
+   Speed \tab O(n) single pass \tab O(n × k) where k = bad points \cr
+   Usage \tab \code{rb_whack_fwdbwd(df)} \tab `group_by(vid) \cr
+}
 
-| | `rb_whack_fwdbwd` | `rb_whack_sequential_fast` |
-|---|---|---|
-| Dispatch | data.frame **and** tbl_lazy | in-memory only |
-| Clusters | misses consecutive runs | correct |
-| Speed | O(n) single pass | O(n × k) where k = bad points |
-| Usage | `rb_whack_fwdbwd(df)` | `group_by(vid) |> mutate(whack = rb_whack_sequential_fast(lon, lat, time))` |
 
-This re-implements the algorithm of `ramb::rb_whacky_speed` in base R (no
+This re-implements the algorithm of \code{ramb::rb_whacky_speed} in base R (no
 dplyr/traipse inside the loop), which makes it roughly 7× faster on large
 vessel tracks.
 }
@@ -53,14 +54,15 @@ vessel tracks.
 
 This function operates on plain R vectors. To apply it per vessel on a
 grouped data frame use:
-```r
-df |>
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{df |>
   group_by(vid) |>
   mutate(whack = rb_whack_sequential_fast(lon, lat, time)) |>
   ungroup()
-```
-For a lazy DuckDB table use [rb_whack_fwdbwd()] instead (isolated spikes only)
-or `collect()` first.
+}\if{html}{\out{</div>}}
+
+For a lazy DuckDB table use \code{\link[=rb_whack_fwdbwd]{rb_whack_fwdbwd()}} instead (isolated spikes only)
+or \code{collect()} first.
 }
 
 \examples{
@@ -77,6 +79,6 @@ ais_df |>
 
 }
 \seealso{
-[rb_whack_fwdbwd()] for an O(n) single-pass filter that also supports
-  lazy DuckDB tables.
+\code{\link[=rb_whack_fwdbwd]{rb_whack_fwdbwd()}} for an O(n) single-pass filter that also supports
+lazy DuckDB tables.
 }

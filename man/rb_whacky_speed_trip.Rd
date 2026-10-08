@@ -2,45 +2,47 @@
 % Please edit documentation in R/whackies.R
 \name{rb_whacky_speed_trip}
 \alias{rb_whacky_speed_trip}
-\title{Trip-level speed filter using the `trip` package}
+\title{Trip-level speed filter using the \code{trip} package}
 \usage{
 rb_whacky_speed_trip(d, filter = TRUE, max_speed = 20)
 }
 \arguments{
-\item{d}{A (sf) data frame for a single trip with columns `lon`, `lat`,
-`time`.}
+\item{d}{A (sf) data frame for a single trip with columns \code{lon}, \code{lat},
+\code{time}.}
 
-\item{filter}{Logical. If `TRUE` (default), whacky points are removed and
-`.whacky` column is dropped from the return value. If `FALSE`, `.whacky`
+\item{filter}{Logical. If \code{TRUE} (default), whacky points are removed and
+\code{.whacky} column is dropped from the return value. If \code{FALSE}, \code{.whacky}
 is retained as a logical column and no rows are dropped.}
 
 \item{max_speed}{Speed threshold in knots (default 20).}
 }
 \value{
-If `filter = TRUE`: the input data frame with whacky rows removed
-  and no `.whacky` column. If `filter = FALSE`: the input data frame with an
-  added logical column `.whacky` (`TRUE` = whacky).
+If \code{filter = TRUE}: the input data frame with whacky rows removed
+and no \code{.whacky} column. If \code{filter = FALSE}: the input data frame with an
+added logical column \code{.whacky} (\code{TRUE} = whacky).
 }
 \description{
-Wraps [trip::speedfilter()] to flag or remove whacky AIS positions within a
-single trip. Optionally runs [rb_whacky_speed()] as a second pass to catch
-any residual whacky points that the `trip` package missed.
+Wraps \code{\link[trip:speedfilter]{trip::speedfilter()}} to flag or remove whacky AIS positions within a
+single trip. Optionally runs \code{\link[=rb_whacky_speed]{rb_whacky_speed()}} as a second pass to catch
+any residual whacky points that the \code{trip} package missed.
 }
 \section{Input}{
 
-`d` must be an sf data frame (or a data frame coercible to `Spatial` via
-[methods::as()]) with columns `lon`, `lat`, and `time`. Only a **single
-trip** should be passed — grouping is handled externally.
+\code{d} must be an sf data frame (or a data frame coercible to \code{Spatial} via
+\code{\link[methods:as]{methods::as()}}) with columns \code{lon}, \code{lat}, and \code{time}. Only a \strong{single
+trip} should be passed — grouping is handled externally.
 }
 
 \section{Two-pass design}{
 
-1. [trip::speedfilter()] applied at `max_speed` knots.
-2. If `filter = TRUE`, [rb_whacky_speed()] is applied to the residual as a
-   safety net.
+\enumerate{
+\item \code{\link[trip:speedfilter]{trip::speedfilter()}} applied at \code{max_speed} knots.
+\item If \code{filter = TRUE}, \code{\link[=rb_whacky_speed]{rb_whacky_speed()}} is applied to the residual as a
+safety net.
+}
 }
 
 \seealso{
-[rb_whack_fwdbwd()], [rb_whack_sequential_fast()] for alternatives that
-  do not depend on the `trip` package.
+\code{\link[=rb_whack_fwdbwd]{rb_whack_fwdbwd()}}, \code{\link[=rb_whack_sequential_fast]{rb_whack_sequential_fast()}} for alternatives that
+do not depend on the \code{trip} package.
 }

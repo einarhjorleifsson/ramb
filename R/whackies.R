@@ -175,7 +175,7 @@ rb_whack_fwdbwd <- function(x, kn_max = 25, min_dt_s = 10) {
     .fwdbwd <- function(lon, lat, time) {
       n <- length(lon)
       if (n < 3L) return(rep(FALSE, n))
-      dist <- rb_distance(lon[-n], lat[-n], lon[-1], lat[-1])
+      dist <- rb_calc_distance(lon[-n], lat[-n], lon[-1], lat[-1])
       dt  <- pmax(as.numeric(diff(time), units = "secs"), min_dt_s)
       spd <- dist / dt
       spd_in  <- c(NA_real_, spd)
@@ -316,7 +316,7 @@ rb_whack_sequential_fast <- function(lon, lat, time, kn_max = 25, min_dt_s = 10)
     idx <- which(keep)
     m   <- length(idx)
     if (m < 2L) break
-    dist <- rb_distance(lon[idx[-m]], lat[idx[-m]], lon[idx[-1]], lat[idx[-1]])
+    dist <- rb_calc_distance(lon[idx[-m]], lat[idx[-m]], lon[idx[-1]], lat[idx[-1]])
     dt  <- pmax(as.numeric(diff(time[idx]), units = "secs"), min_dt_s)
     spd <- dist / dt
     bad <- which(spd > ms_max)
@@ -374,7 +374,7 @@ rb_whacky_speed <- function(lon, lat, time, kn_max = 25) {
     stop("Length of coordinates and time must be the same")
   }
 
-  ms_max <- rb_kn2ms(kn_max)
+  ms_max <- .rb_kn2ms(kn_max)
   .rid_original <- 1:length(lon)
 
   d <-
@@ -592,7 +592,7 @@ rb_whacky_speed_mendo <- function(df, speed_filter = 25) {
 rb_whacky_speed_trip <- function(d, filter = TRUE, max_speed = 20) {
   tr <- methods::as(d |> dplyr::mutate(.idtrip = 1), "Spatial")
   tr <- suppressWarnings( trip::trip(tr, c("time", ".idtrip")) )
-  d$.whacky <- !trip::speedfilter(tr, max.speed = ramb::rb_kn2ms(max_speed) / 1000 * 60 * 60)
+  d$.whacky <- !trip::speedfilter(tr, max.speed = .rb_kn2ms(max_speed) / 1000 * 60 * 60)
   if(filter) {
     d |>
       dplyr::filter(!.whacky) |>

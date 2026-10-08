@@ -1,7 +1,7 @@
 Package: ramb
 Type: Package
 Title: Rambling
-Version: 2026.10.08
+Version: 2026.10.08.1
 Authors@R: c(
   person("Einar", "Hjörleifsson", role = c("aut", "cre"), email = "einar.hjorleifsson@gmail.com")
   )
@@ -12,7 +12,7 @@ Encoding: UTF-8
 LazyData: true
 LazyDataCompression: xz
 Depends: 
-    R (>= 3.5.0)
+    R (>= 4.1.0)
 Imports:
     data.table,
     dbplyr,
@@ -38,9 +38,14 @@ Suggests:
     ggnewscale,
     DBI,
     duckdb,
+    duckdbfs,
+    geo,
+    omar,
+    trip,
     argosfilter,
     rayshader,
     rmarkdown,
     testthat (>= 3.0.0)
 Config/roxygen2/version: 8.1.0
+Roxygen: list(markdown = TRUE)
 Config/testthat/edition: 3
