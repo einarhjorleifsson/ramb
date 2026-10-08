@@ -15,31 +15,54 @@ SELECT *, %s AS rb_year FROM ps", p_sql, s_sql, if (by_year) "year(time)" else "
 
 #' Cut vessel tracks into voyages between harbour stays
 #'
-#' A step-1 builder of the fishing-activity flow. A voyage is the sea between two stays (see
-#' [rb_find_trip_stays()]): a ping takes the stay it falls in (the earlier of two that overlap), the track is
-#' cut into runs of stay and sea, and each sea run becomes a voyage, from the harbour of the stay before it to
-#' the harbour of the stay after it.
+#' A step-1 builder of the fishing-activity flow. Three methods, one result: a table of voyages.
 #'
-#' @param pings A data frame or lazy DuckDB table with `vid` and `time`.
-#' @param stays Stays as returned by [rb_find_trip_stays()]: `vid`, `harbour_id`, `T_in`, `T_out`.
-#' @param method Only `"stays"` so far. (`"runs"` and `"jepol"`, cutting at runs of in-harbour pings, follow.)
+#' * `"stays"`: a voyage is the sea between two stays (see [rb_find_trip_stays()]). A ping takes the stay it
+#'   falls in (the earlier of two that overlap), the track is cut into runs of stay and sea, and each sea run
+#'   becomes a voyage, from the harbour of the stay before it to the harbour of the stay after it.
+#' * `"runs"`: as `"stays"`, but every run of pings tagged in a harbour ([rb_flag_ping_harbour()]) is a stay,
+#'   however short. This is what `rb_trip()` numbered.
+#' * `"jepol"`: the ICES VMS datacall rule (`define_trips_pol`, was `rb_trip_jepol()`): a voyage runs from the
+#'   first ping at sea to the first ping back in harbour; voyages of `min_dur_h` hours or less are dropped, and
+#'   with `split` one over `max_dur_h` hours is cut at a long gap between its pings. It reproduces the old
+#'   function exactly, including where it cuts (one ping before the longest gap); a long voyage with fewer than
+#'   two pings inside it, where the old function stopped, is left whole.
+#'
+#' @param pings A data frame or lazy DuckDB table with `vid` and `time`, and `harbour_id` for `"runs"` and
+#'   `"jepol"` (NA at sea).
+#' @param stays For `"stays"`: stays as returned by [rb_find_trip_stays()]: `vid`, `harbour_id`, `T_in`, `T_out`.
+#' @param method `"stays"`, `"runs"` or `"jepol"`.
 #' @param min_pings Voyages with fewer pings are dropped. They are numbered before they are dropped, so the
-#'   numbers have gaps where a short voyage was.
+#'   numbers have gaps where a short voyage was. Default 10 for `"stays"`, 1 (none dropped) otherwise.
 #' @param by_year Cut voyages at New Year and number them per vessel and year.
-#' @param vid,time The ping columns, if named otherwise.
+#' @param min_dur_h,max_dur_h,split For `"jepol"`: the minimum and maximum voyage length in hours, and whether
+#'   longer voyages are split.
+#' @param batch_pings For `"jepol"` on a lazy table: about this many pings are collected at a time, whole vessels.
+#' @param vid,time,harbour_id The ping columns, if named otherwise.
 #'
 #' @return One row per voyage: `vid`, `year` (with `by_year`), `voyage_id`, `T1`, `T2`, `harbour_from`,
 #'   `harbour_to`, `n_pings`. A data frame for data frame input, a lazy table for lazy input.
 #' @family trip
 #' @export
-rb_cut_trip_voyages <- function(pings, stays, method = "stays", min_pings = 10, by_year = TRUE,
-                                vid = vid, time = time) {
+rb_cut_trip_voyages <- function(pings, stays = NULL, method = c("stays", "runs", "jepol"), min_pings = NULL,
+                                by_year = TRUE, min_dur_h = 0.5, max_dur_h = 72, split = TRUE, batch_pings = 5e7,
+                                vid = vid, time = time, harbour_id = harbour_id) {
   method <- match.arg(method)
-  map <- .rb_cols(vid = {{ vid }}, time = {{ time }})
+  if (is.null(min_pings)) min_pings <- if (method == "stays") 10 else 1
+  if (method == "stays" && is.null(stays)) stop("Method \"stays\" needs `stays`.", call. = FALSE)
+  map <- .rb_cols(vid = {{ vid }}, time = {{ time }}, harbour_id = {{ harbour_id }})
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
-  p <- .rb_as_lazy(.rb_std_in(pings, map), con) |> dplyr::select(vid, time)
-  s <- .rb_as_lazy(stays, con)
+  p <- .rb_as_lazy(.rb_std_in(pings, if (method == "stays") map[c("vid", "time")] else map), con)
+  if (method == "jepol") {
+    return(.rb_cut_jepol(p, con, lazy_in, map, min_pings, by_year, min_dur_h, max_dur_h, split, batch_pings))
+  }
+  ps <- if (method == "stays") {
+    .rb_ping_stay_sql(.rb_sql(dplyr::select(p, vid, time)), .rb_sql(.rb_as_lazy(stays, con)), by_year)
+  } else {
+    sprintf("SELECT *, harbour_id AS stay_harbour_id, row_number() OVER () AS rb_rid, %s AS rb_year FROM (%s)",
+            if (by_year) "year(time)" else "0", .rb_sql(dplyr::select(p, vid, time, harbour_id)))
+  }
   sql <- sprintf("
 WITH ps AS (%s),
 f AS (SELECT *, stay_harbour_id IS NOT NULL AS in_h,
@@ -55,7 +78,7 @@ t AS (SELECT *, CASE WHEN NOT in_h THEN lag(h) OVER w END AS harbour_from,
       FROM runs WINDOW w AS (PARTITION BY vid, rb_year ORDER BY T1)),
 v AS (SELECT *, row_number() OVER (PARTITION BY vid, rb_year ORDER BY T1) AS voyage_id FROM t WHERE NOT in_h)
 SELECT vid, %s voyage_id, T1, T2, harbour_from, harbour_to, n_pings FROM v WHERE n_pings >= %d",
-    .rb_ping_stay_sql(.rb_sql(p), .rb_sql(s), by_year), if (by_year) "rb_year AS year," else "", as.integer(min_pings))
+    ps, if (by_year) "rb_year AS year," else "", as.integer(min_pings))
   out <- dplyr::tbl(con, dplyr::sql(sql))
   out <- dplyr::rename(out, !!!stats::setNames(rlang::syms("vid"), map[["vid"]]))
   if (lazy_in) return(out)
@@ -160,4 +183,41 @@ FROM ranked WHERE rn = 1",
   out <- as.data.frame(dplyr::collect(out))
   .rb_unregister(con)
   out
+}
+
+# The "jepol" method: whole vessels collected in batches, the rule applied in R (R/trip_jepol.R), one voyage table.
+.rb_cut_jepol <- function(p, con, lazy_in, map, min_pings, by_year, min_dur_h, max_dur_h, split, batch_pings) {
+  vn <- p |> dplyr::count(vid) |> dplyr::collect()
+  vn <- vn[order(-vn$n, vn$vid), ]
+  batches <- if (nrow(vn)) split(vn$vid, cumsum(as.numeric(vn$n)) %/% batch_pings) else list()
+  out <- lapply(batches, function(g) {
+    d <- p |> dplyr::filter(vid %in% g) |> dplyr::select(vid, time, harbour_id) |> dplyr::collect()
+    d <- d[order(d$vid, d$time, d$harbour_id, na.last = TRUE), ]
+    yr <- as.numeric(format(d$time, "%Y", tz = "UTC"))
+    k <- if (by_year) paste(d$vid, yr) else as.character(d$vid)
+    tr <- .rb_jepol(k, d$time, as.integer(!is.na(d$harbour_id)), min_dur_h, max_dur_h, split)$trip
+    f <- which(!is.na(tr))
+    if (!length(f)) return(NULL)
+    id <- unique(tr[f])
+    first <- f[match(id, tr[f])]
+    last <- f[length(f) + 1 - match(id, rev(tr[f]))]
+    prev <- pmax(first - 1, 1)
+    v <- data.frame(vid = d$vid[first], year = yr[first], k = k[first], T1 = d$time[first], T2 = d$time[last],
+                    harbour_from = ifelse(first > 1 & k[prev] == k[first], d$harbour_id[prev], NA),
+                    harbour_to = d$harbour_id[last], n_pings = as.numeric(tabulate(match(tr[f], id), length(id))))
+    v <- v[order(v$k, v$T1), ]
+    v$voyage_id <- as.numeric(stats::ave(seq_len(nrow(v)), v$k, FUN = seq_along))
+    v
+  })
+  out <- do.call(rbind, out)
+  if (is.null(out)) out <- data.frame(vid = vector(class(vn$vid)[1], 0), year = numeric(0), k = character(0),
+                                      T1 = as.POSIXct(character(0), tz = "UTC"), T2 = as.POSIXct(character(0), tz = "UTC"),
+                                      harbour_from = character(0), harbour_to = character(0), n_pings = numeric(0),
+                                      voyage_id = numeric(0))
+  out <- out[out$n_pings >= min_pings, c("vid", if (by_year) "year", "voyage_id", "T1", "T2", "harbour_from", "harbour_to", "n_pings")]
+  out <- out[order(out$vid, out$T1), ]
+  rownames(out) <- NULL
+  names(out)[1] <- map[["vid"]]
+  if (!lazy_in) { .rb_unregister(con); return(out) }
+  dplyr::tbl(con, .rb_register(con, out, "rb_voy_"))
 }

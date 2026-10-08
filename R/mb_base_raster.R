@@ -7,21 +7,13 @@
 #' @export
 #'
 rb_create_base_raster <- function() {
+  .rb_need("terra")
 
   #
   #
   CRS <- 5325
 
-  if(FALSE) {
-    BASE <- 2048
-    eez <-
-      gisland::read_eez() |>
-      sf::st_transform(crs = CRS)
-    bb <-
-      eez |>
-      sf::st_bbox()
-    bb <- as.integer( BASE * round( bb / BASE )) + c(0, 0, BASE, BASE)
-  }
+  # The bounding box of the Icelandic EEZ in EPSG:5325, rounded out to multiples of 2048 m.
   bb <- c(1107968, -260096, 2314240, 827392)
 
   r <-

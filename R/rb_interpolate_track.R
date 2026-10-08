@@ -142,7 +142,7 @@ rb_interpolate_track <- function(x, track, by = c("vid", "trip"),
     q(paste0(value_vars, "__0")), q(paste0(value_vars, "__2")), q(value_vars), q(time_var)
   ), collapse = ",\n      ")
 
-  sql <- glue::glue("
+  sql <- .rb_fill("
     WITH src AS ({x_sql}),
     xr AS (SELECT src.*, ROW_NUMBER() OVER () AS __rid FROM src),
     trk AS ({trk_sql}),

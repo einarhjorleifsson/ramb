@@ -204,7 +204,7 @@ rb_whack_fwdbwd <- function(x, kn_max = 25, min_dt_s = 10) {
     con       <- dbplyr::remote_con(x)
     inner_sql <- as.character(dbplyr::sql_render(dplyr::ungroup(x)))
 
-    sql <- glue::glue("
+    sql <- .rb_fill("
       WITH src AS ({inner_sql}),
       w AS (
         SELECT *,
@@ -339,7 +339,7 @@ rb_whack_sequential_fast <- function(lon, lat, time, kn_max = 25, min_dt_s = 10)
 #' recomputes speeds, and repeats until all speeds are within tolerance.
 #'
 #' @section Algorithm:
-#' Uses [traipse::track_speed()] to compute along-track speeds. The leading
+#' Computes along-track speeds on the WGS84 ellipsoid (as `traipse::track_speed()`). The leading
 #' `NA` speed (convention of `traipse`) is replaced by zero so the first point
 #' is never flagged on speed alone. At each iteration the **first** position
 #' whose incoming speed exceeds `ms_max` is removed; if that position is index
@@ -386,7 +386,7 @@ rb_whacky_speed <- function(lon, lat, time, kn_max = 25) {
                    x = lon,
                    y = lat) |>
     dplyr::mutate(.rid = 1:dplyr::n(),
-                  speed = traipse::track_speed(x, y, time),
+                  speed = .rb_track_speed(x, y, time),
                   speed = tidyr::replace_na(speed, 0))
 
   while(any(d$speed > ms_max, na.rm = TRUE)) {
@@ -399,7 +399,7 @@ rb_whacky_speed <- function(lon, lat, time, kn_max = 25) {
     d <-
       d |>
       dplyr::filter(.rid != a_whack) |>
-      dplyr::mutate(speed = traipse::track_speed(x, y, time),
+      dplyr::mutate(speed = .rb_track_speed(x, y, time),
                     speed = tidyr::replace_na(speed, 0))
   }
 
@@ -423,7 +423,7 @@ rb_whacky_speed <- function(lon, lat, time, kn_max = 25) {
 #' unreliable.
 #'
 #' @section Algorithm:
-#' Uses [traipse::track_distance()] to compute step distances. The leading `NA`
+#' Computes step distances on the WGS84 ellipsoid (as `traipse::track_distance()`). The leading `NA`
 #' (first point has no predecessor) is replaced by zero. At each iteration the
 #' first position exceeding `meters_max` is removed and distances are
 #' recomputed. The loop exits when no step distance remains above the threshold.
@@ -464,7 +464,7 @@ rb_whacky_distance <- function(lon, lat, miles_max = 6) {
     tibble::tibble(x = lon,
                    y = lat) |>
     dplyr::mutate(.rid = 1:dplyr::n(),
-                  distance = traipse::track_distance(x, y),
+                  distance = .rb_track_distance(x, y),
                   distance = tidyr::replace_na(distance, 0))
 
   while(any(d$distance > meters_max, na.rm = TRUE)) {
@@ -476,7 +476,7 @@ rb_whacky_distance <- function(lon, lat, miles_max = 6) {
     d <-
       d |>
       dplyr::filter(.rid != a_whack) |>
-      dplyr::mutate(distance = traipse::track_distance(x, y),
+      dplyr::mutate(distance = .rb_track_distance(x, y),
                     distance = tidyr::replace_na(distance, 0))
   }
 

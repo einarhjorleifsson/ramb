@@ -225,3 +225,44 @@ rb_flag_ping_impossible <- function(x, method = c("clean", "sda", "forward", "fw
   }
   .rb_std_out(x, map)
 }
+
+#' Tag pings with the harbour polygon they lie in
+#'
+#' Step 0 of the fishing-activity flow: each ping gets the id of the harbour polygon that holds it
+#' (`harbour_id`, NA at sea). Harbour pings are labelled and stay; nothing is dropped. A ping inside two
+#' polygons gets the smaller one (the more specific harbour), so there is one row per ping. Runs in DuckDB
+#' (spatial extension): a data frame is registered and collected, a lazy table stays lazy.
+#'
+#' @param pings A data frame or lazy DuckDB table with `lon`, `lat`.
+#' @param harbours An sf object of harbour polygons with `harbour_id`.
+#' @param keep Other columns of `harbours` to add to the pings (e.g. a second code).
+#' @param lon,lat The position columns, if named otherwise.
+#'
+#' @return `pings` with `harbour_id` and the `keep` columns: the same type, the same rows.
+#' @family flag pings
+#' @export
+rb_flag_ping_harbour <- function(pings, harbours, keep = NULL, lon = lon, lat = lat) {
+  map <- .rb_cols(lon = {{ lon }}, lat = {{ lat }})
+  lazy_in <- inherits(pings, "tbl_lazy")
+  con <- .rb_con_for(pings)
+  tryCatch(DBI::dbExecute(con, "LOAD spatial"), error = function(e) DBI::dbExecute(con, "INSTALL spatial; LOAD spatial"))
+  p <- .rb_as_lazy(.rb_std_in(pings, map), con)
+  hb <- sf::st_transform(harbours, 4326)
+  # WKB keeps the coordinates bit for bit; area (in degrees) only ranks two polygons that hold one ping
+  hw <- data.frame(sf::st_drop_geometry(hb)[, c("harbour_id", keep), drop = FALSE],
+                   rb_area = as.numeric(sf::st_area(sf::st_set_crs(sf::st_geometry(hb), NA))))
+  hw$rb_wkb <- lapply(sf::st_as_binary(sf::st_geometry(hb)), as.raw)
+  nm <- .rb_register(con, hw, "rb_harb_")
+  kp <- if (length(keep)) paste0(", ", paste(sprintf('h."%s"', keep), collapse = ", ")) else ""
+  sql <- sprintf("
+WITH p AS (SELECT *, row_number() OVER () AS rb_rid FROM (%s)),
+h AS (SELECT * EXCLUDE (rb_wkb), ST_GeomFromWKB(rb_wkb) AS rb_g FROM %s),
+j AS (SELECT p.*, h.harbour_id%s FROM p LEFT JOIN h ON ST_Intersects(h.rb_g, ST_Point(p.lon, p.lat))
+      QUALIFY row_number() OVER (PARTITION BY p.rb_rid ORDER BY h.rb_area NULLS LAST, h.harbour_id) = 1)
+SELECT * EXCLUDE (rb_rid) FROM j", .rb_sql(p), nm, kp)
+  out <- .rb_std_out(dplyr::tbl(con, dplyr::sql(sql)), map)
+  if (lazy_in) return(out)
+  out <- as.data.frame(dplyr::collect(out))
+  .rb_unregister(con)
+  out
+}

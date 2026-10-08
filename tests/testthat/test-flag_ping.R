@@ -81,3 +81,22 @@ test_that("a superseded function warns from user code, not from ramb's own", {
   expect_no_warning(rb_flag_ping_impossible(d))
   .rb_reset_renamed()
 })
+
+test_that("the harbour tag: data frame = lazy table, one row per ping, the smaller of two polygons wins", {
+  skip_if_not_installed("duckdbfs")
+  sq <- function(x0, y0, w) sf::st_polygon(list(rbind(c(x0, y0), c(x0 + w, y0), c(x0 + w, y0 + w), c(x0, y0 + w), c(x0, y0))))
+  h <- sf::st_sf(harbour_id = c("big", "small", "far"), code = c("B", "S", "F"),
+                 geometry = sf::st_sfc(sq(0, 0, 1), sq(0.2, 0.2, 0.1), sq(5, 5, 1), crs = 4326))
+  d <- data.frame(vid = 1L, time = as.POSIXct("2024-01-01", tz = "UTC") + 60 * 0:3,
+                  lon = c(0.25, 0.8, 5.5, 9), lat = c(0.25, 0.8, 5.5, 9))
+  a <- rb_flag_ping_harbour(d, h, keep = "code")
+  expect_equal(nrow(a), nrow(d))
+  expect_equal(a$harbour_id[order(a$time)], c("small", "big", "far", NA))
+  expect_equal(a$code[order(a$time)], c("S", "B", "F", NA))
+  b <- dplyr::collect(rb_flag_ping_harbour(duckdbfs::as_dataset(d), h, keep = "code"))
+  expect_equal(as.data.frame(b[order(b$time), ]), as.data.frame(a[order(a$time), ]), ignore_attr = TRUE)
+  e <- dplyr::rename(d, x = lon, y = lat)
+  r <- rb_flag_ping_harbour(e, h, lon = x, lat = y)
+  expect_equal(names(r), c(names(e), "harbour_id"))
+  expect_equal(r$harbour_id[order(r$time)], a$harbour_id[order(a$time)])
+})

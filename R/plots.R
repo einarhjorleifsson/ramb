@@ -11,6 +11,7 @@
 #' @export
 #'
 rb_plot_trip <- function(data, tid, radius = 10, col = "speed", trip = TRUE) {
+  .rb_need("mapdeck")
   
   if(any(!class(data) %in% "sf")) {
     data <- 

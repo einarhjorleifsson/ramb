@@ -46,6 +46,7 @@
 #' @noRd
 #'
 .rb_get_ices_metier5 <- function(trim = TRUE, valid = TRUE) {
+  .rb_need("icesVocab")
   res <- icesVocab::getCodeList("Metier5_FishingActivity")
   if(trim) {
     res <- 
@@ -73,6 +74,7 @@
 #' @return A tibble containing metier 6 and description
 #' @noRd
 .rb_get_ices_metier6 <- function(trim = TRUE, valid = TRUE) {
+  .rb_need("icesVocab")
   res <- icesVocab::getCodeList("Metier6_FishingActivity")
   if(trim == TRUE) {
     res <- 
@@ -101,6 +103,7 @@
 #' @return A tibble containing target list and description
 #' @noRd
 .rb_get_ices_gears <- function(trim = TRUE, valid = TRUE) {
+  .rb_need("icesVocab")
   res <- icesVocab::getCodeList("GearType")
   if(trim == TRUE) {
     res <- 
@@ -129,6 +132,7 @@
 #' @return A tibble containing target list and description
 #' @noRd
 .rb_get_ices_target <- function(trim = TRUE, valid = TRUE) {
+  .rb_need("icesVocab")
   res <- icesVocab::getCodeList("TargetAssemblage")
   if(trim == TRUE) {
     res <- 

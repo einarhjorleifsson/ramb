@@ -25,7 +25,7 @@ recomputes speeds, and repeats until all speeds are within tolerance.
 }
 \section{Algorithm}{
 
-Uses \code{\link[traipse:track_speed]{traipse::track_speed()}} to compute along-track speeds. The leading
+Computes along-track speeds on the WGS84 ellipsoid (as \code{traipse::track_speed()}). The leading
 \code{NA} speed (convention of \code{traipse}) is replaced by zero so the first point
 is never flagged on speed alone. At each iteration the \strong{first} position
 whose incoming speed exceeds \code{ms_max} is removed; if that position is index

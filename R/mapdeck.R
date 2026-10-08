@@ -16,6 +16,7 @@ rb_plot_trail <-
   function(d, col = "speed", tooltip = "speed", no_lines = TRUE,
            radius = 400,
            highlight_colour = "black", stroke_colour = "cyan") {
+    .rb_need("mapdeck")
     
     col2hex <- function (cname) {
       colMat <- grDevices::col2rgb(cname)

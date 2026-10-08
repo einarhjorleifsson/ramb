@@ -26,7 +26,7 @@ unreliable.
 }
 \section{Algorithm}{
 
-Uses \code{\link[traipse:track_distance]{traipse::track_distance()}} to compute step distances. The leading \code{NA}
+Computes step distances on the WGS84 ellipsoid (as \code{traipse::track_distance()}). The leading \code{NA}
 (first point has no predecessor) is replaced by zero. At each iteration the
 first position exceeding \code{meters_max} is removed and distances are
 recomputed. The loop exits when no step distance remains above the threshold.

@@ -26,5 +26,5 @@ rb_calc_step_time <- function(time, units = "secs")  {
 #' @export
 #'
 rb_calc_step_acceleration <- function(lon, lat, time) {
-  traipse::track_speed(lon, lat, time) / traipse::track_time(time)
+  .rb_track_speed(lon, lat, time) / .rb_track_time(time)
 }

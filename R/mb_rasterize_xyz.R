@@ -24,6 +24,7 @@ rb_calc_xyz_extent <- function(x) {
 #' @export
 #'
 rb_rasterize_xyz <- function(xyz, r0, agg = 1, fun = "mean", no_trim = TRUE) {
+  .rb_need("terra")
   
   e <-  rb_calc_xyz_extent(xyz)
   r0 <- terra::crop(r0, e)

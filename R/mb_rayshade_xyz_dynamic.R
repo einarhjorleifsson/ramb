@@ -16,6 +16,7 @@ rb_rayshade_xyz_dynamic <- function(xyz,
                                    max_meters = 1024
                                    
 ) {
+  .rb_need("terra")
   
   # overly complex
   res <- terra::res(r0)[1]

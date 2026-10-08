@@ -14,31 +14,30 @@ LazyDataCompression: xz
 Depends: 
     R (>= 4.1.0)
 Imports:
-    data.table,
     DBI,
     dbplyr,
     duckdb,
     duckdbfs,
     dplyr,
-    glue,
-    icesVocab,
     lubridate,
-    mapdeck,
     methods,
     purrr,
     Rcpp,
     readr,
-    scales,
+    rlang,
     sf,
     stringr,
-    terra,
     tibble,
-    tidyr,
-    traipse
+    tidyr
 LinkingTo:
     Rcpp
 Suggests:
     ggnewscale,
+    icesVocab,
+    mapdeck,
+    scales,
+    terra,
+    traipse,
     geo,
     omar,
     trip,

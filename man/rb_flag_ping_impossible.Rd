@@ -54,6 +54,7 @@ duplicate pings never serve as anchors. No row is dropped.
 \seealso{
 Other flag pings:
 \code{\link[=rb_flag_ping_duplicate]{rb_flag_ping_duplicate()}},
+\code{\link[=rb_flag_ping_harbour]{rb_flag_ping_harbour()}},
 \code{\link[=rb_flag_ping_invalid]{rb_flag_ping_invalid()}}
 }
 \concept{flag pings}

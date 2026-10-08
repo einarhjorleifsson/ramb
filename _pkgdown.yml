@@ -3,20 +3,17 @@ url: https://heima.hafro.is/~einarhj/ramb
 reference:
 - title: "Ping (step 0): flag pings"
   contents:
-  - rb_whack_clean
-  - rb_whack_sda
-  - rb_whack_forward
-  - rb_whack_fwdbwd
-  - rb_whack_sequential_fast
-  - rb_whack_duplicates
-  - rb_whacky_speed
-  - rb_whacky_speed_mendo
-  - rb_whacky_speed_trip
+  - rb_flag_ping_invalid
+  - rb_flag_ping_duplicate
+  - rb_flag_ping_impossible
+  - rb_flag_ping_harbour
 - title: "Trip (step 1)"
   contents:
+  - rb_find_trip_stays
+  - rb_cut_trip_voyages
+  - rb_assign_trip
+  - rb_link_trip_voyages
   - rb_add_tripid
-  - rb_trip
-  - rb_trip_jepol
   - rb_pad_harbour
 - title: "Record (step 2)"
   contents:
@@ -92,6 +89,19 @@ reference:
   - whacks1
   - benthis_parameters
   - metier5_benthis_lookup
+- title: "Superseded (old bodies kept, to be removed)"
+  contents:
+  - rb_trip
+  - rb_trip_jepol
+  - rb_whack_clean
+  - rb_whack_sda
+  - rb_whack_forward
+  - rb_whack_fwdbwd
+  - rb_whack_sequential_fast
+  - rb_whack_duplicates
+  - rb_whacky_speed
+  - rb_whacky_speed_mendo
+  - rb_whacky_speed_trip
 - title: "Old names"
   contents:
   - ramb-renamed

@@ -9,6 +9,8 @@
 #' @export
 #'
 rb_convert_rayshade_to_rgb <- function(shaded, original) {
+  .rb_need("scales")
+  .rb_need("terra")
   rb <-
     terra::rast(shaded,
               extent = terra::ext(original),

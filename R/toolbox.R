@@ -14,61 +14,6 @@ rb_number_runs <- function(x) {
 }
 
 
-
-# NOTE: Need to check if data is properly arranged
-#' rb_interval_id
-#'
-#' The function aim is to match an event in one tibble with an interval in an
-#' another tibble. Specifically designed to be used with ais/vms data (points) 
-#' and fishing logbook records where start and end time of fishing activity is
-#' recorded.
-#' 
-#' Superseeded by just using between within a dplyr-join
-#'
-#' @param point A tibble containing variables vid (vessel id) and time
-#' @param interval A tibble containing variables vid, id.lgs (the fishing 
-#' activity id), start and end
-#' @param vid The vessel id variable name
-#' @param time The name of the time variable in the ais data
-#' @param start The name of the start time variable in the logbooks
-#' @param end The name of the end time variable in the logbooks
-#' @param id The name of the tow id variable in the logbooks
-#'
-#' @return The point tibble with additional variable id.lgs (fishing activity
-#' id).
-#'
-rb_interval_id <- function(point, interval, vid, time, start, end, id) {
-  
-  point.dt <-
-    point |>
-    dplyr::select(vid = {{vid}},
-                  t = {{time}}) |> 
-    #dplyr::arrange(t) |> 
-    dplyr::mutate(dummy = t) |> 
-    data.table::data.table()
-  interval.dt <-
-    interval |>
-    dplyr::select(vid = {{vid}},
-                  t1 = {{start}},
-                  t2 = {{end}},
-                  id = {{id}}) |> 
-    #dplyr::arrange(start, end) |>
-    data.table::data.table()
-  
-  data.table::setkey(point.dt, vid, t, dummy)
-  data.table::setkey(interval.dt, vid, t1, t2)
-  
-  x <- 
-    data.table::foverlaps(point.dt, interval.dt, nomatch = NA) |> 
-    tibble::as_tibble() |> 
-    dplyr::pull( id )
-  
-  # point |> 
-  #   dplyr::mutate(.id = x) |> 
-  #   return()
-  
-}
-
 #' rb_ms2kn
 #'
 #' meters per second to knots for those of us that forget the convertion number

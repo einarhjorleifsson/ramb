@@ -1,5 +1,37 @@
 # ramb (development version)
 
+## Step 1: three ways to cut voyages (2026-10-08)
+
+- `rb_cut_trip_voyages(method = "runs")`: every run of harbour-tagged pings is a stay (was `rb_trip()`).
+- `rb_cut_trip_voyages(method = "jepol")`: the ICES VMS datacall rule (was `rb_trip_jepol()`), recoded in base R
+  from its `data.table` body. On the `dansk` data it gives the old trips exactly, with and without splits. Two
+  defects are kept for now so that it does: the split cuts one ping before the longest gap, and the 3-minute
+  test reads the gap before that ping. Where the old function stopped with an error (a long trip with fewer than
+  two pings inside), the trip is now left whole.
+- `rb_trip()` and `rb_trip_jepol()` are superseded and warn; `rb_trip_jepol()` now runs the recode, and
+  `data.table` is no longer imported. The unexported `rb_interval_id()` (unused, results in sorted order, not
+  input order) is removed.
+
+## Dependencies (2026-10-08)
+
+- `traipse` is recoded, not imported: step distances use Vincenty's formula on the WGS84 ellipsoid, within a
+  micrometre of `traipse::track_distance()` (geodist's geodesic) on track steps. `traipse` stays in Suggests for
+  the test that compares them.
+- `glue` is replaced by a base-R filler for the two SQL templates that used it.
+- `terra`, `mapdeck`, `scales` and `icesVocab` move to Suggests. The raster, map and vocabulary functions that need
+  them say which package to install.
+- `rlang`, already called directly and installed with `dplyr`, is declared in Imports.
+
+## Step 0: the harbour tag (2026-10-08)
+
+- `rb_flag_ping_harbour()`: each ping gets the harbour polygon it lies in (`harbour_id`, plus any columns in
+  `keep`); a ping inside two polygons takes the smaller one, so no ping is doubled. Harbour pings are labelled,
+  not flagged: they stay in the trail.
+- Ported from fishycode's `curate/ais_ping_tag.R`: on the whole Icelandic union (543,776,104 pings, 2007-2026)
+  the same polygon for every ping.
+- The pkgdown reference lists the step functions by stage; the superseded `rb_whack_*` / `rb_whacky_*` are in
+  their own group.
+
 ## Step 1: voyages and the trip of each ping (2026-10-08)
 
 - `rb_cut_trip_voyages()`: the sea between two harbour stays, per vessel and year, with the harbours either side;

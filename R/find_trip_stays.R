@@ -162,3 +162,17 @@ FROM st",
   .rb_unregister(con)
   out[order(out[[map[["vid"]]]], out$T_in), ]
 }
+
+# A Suggests package, checked where a function needs it.
+.rb_need <- function(pkg) {
+  if (!requireNamespace(pkg, quietly = TRUE))
+    stop(sprintf("This function needs the package '%s'. Install it with install.packages(\"%s\").", pkg, pkg), call. = FALSE)
+}
+
+# glue::glue() for SQL templates, in base R: each {expr} is evaluated in the caller's frame.
+.rb_fill <- function(template, env = parent.frame()) {
+  m <- gregexpr("\\{[^{}]+\\}", template)
+  regmatches(template, m) <- list(vapply(regmatches(template, m)[[1]], function(e)
+    paste(as.character(eval(parse(text = substr(e, 2, nchar(e) - 1)), env)), collapse = ""), character(1)))
+  template
+}

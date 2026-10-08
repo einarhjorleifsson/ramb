@@ -7,6 +7,7 @@
 #' @export 
 #'
 rb_rayshade_raster_rgb <- function(r, zscale = 1, zrange = NULL) {
+  .rb_need("terra")
   
   # determine split ------------------------------------------------------------
   dr <- ceiling(nrow(r) / 4000)
