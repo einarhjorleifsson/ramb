@@ -8,11 +8,24 @@
   if (inherits(x, "tbl_lazy")) return(dbplyr::remote_con(x))
   duckdbfs::cached_connection()
 }
+# Data frames registered for one call. A call on data frames releases them once it has collected its
+# result: registered frames left behind in a loop accumulate (fishycode R/write_parquet.R).
+.rb_reg <- new.env(parent = emptyenv())
+.rb_register <- function(con, x, prefix = "rb_in_") {
+  nm <- paste0(prefix, paste(sample(c(letters, 0:9), 10, TRUE), collapse = ""))
+  duckdb::duckdb_register(con, nm, as.data.frame(x))
+  assign(nm, TRUE, envir = .rb_reg)
+  nm
+}
+.rb_unregister <- function(con) {
+  for (nm in ls(.rb_reg)) {
+    try(duckdb::duckdb_unregister(con, nm), silent = TRUE)
+    rm(list = nm, envir = .rb_reg)
+  }
+}
 .rb_as_lazy <- function(x, con) {
   if (inherits(x, "tbl_lazy")) return(x)
-  nm <- paste0("rb_in_", paste(sample(c(letters, 0:9), 10, TRUE), collapse = ""))
-  duckdb::duckdb_register(con, nm, as.data.frame(x))
-  dplyr::tbl(con, nm)
+  dplyr::tbl(con, .rb_register(con, x))
 }
 .rb_sql <- function(x) as.character(dbplyr::sql_render(dplyr::ungroup(x)))
 
@@ -70,11 +83,10 @@ rb_find_trip_stays <- function(pings, harbours, min_stay_h = 4, min_stay = NULL,
                    poly = sf::st_as_text(sf::st_geometry(hb), digits = 15),
                    near_in = sf::st_as_text(sf::st_geometry(buf(radius_in)), digits = 15),
                    near_out = sf::st_as_text(sf::st_geometry(buf(r_out)), digits = 15))
-  tag <- paste(sample(c(letters, 0:9), 10, TRUE), collapse = "")
-  duckdb::duckdb_register(con, paste0("rb_hw_", tag), hw)
+  hw_nm <- .rb_register(con, hw, "rb_hw_")
   hg <- if (is.null(min_stay)) data.frame(harbour_id = character(0), g_h = numeric(0)) else
     data.frame(harbour_id = min_stay$harbour_id, g_h = min_stay$min_stay_h)
-  duckdb::duckdb_register(con, paste0("rb_hg_", tag), hg)
+  hg_nm <- .rb_register(con, hg, "rb_hg_")
 
   win_p <- win_e <- "TRUE"
   if (!is.null(t_in_window)) {
@@ -90,8 +102,8 @@ rb_find_trip_stays <- function(pings, harbours, min_stay_h = 4, min_stay = NULL,
   G <- min_stay_h
   sql <- sprintf("
 WITH seq AS (SELECT vid, time, lon, lat, row_number() OVER (PARTITION BY vid ORDER BY time) AS rn FROM (%s)),
-harb AS (SELECT harbour_id AS pid, ST_GeomFromText(poly) AS g, ST_GeomFromText(near_in) AS gi, ST_GeomFromText(near_out) AS go FROM rb_hw_%s),
-hg AS (SELECT harbour_id AS pid, g_h FROM rb_hg_%s),
+harb AS (SELECT harbour_id AS pid, ST_GeomFromText(poly) AS g, ST_GeomFromText(near_in) AS gi, ST_GeomFromText(near_out) AS go FROM %s),
+hg AS (SELECT harbour_id AS pid, g_h FROM %s),
 c AS (SELECT s.vid, s.rn, s.time, h.pid, ST_Distance(ST_Point(s.lon, s.lat), h.g) AS d, ST_Intersects(h.gi, ST_Point(s.lon, s.lat)) AS near_in
       FROM seq s JOIN harb h ON ST_Intersects(h.go, ST_Point(s.lon, s.lat))),
 tg AS (SELECT vid, rn, any_value(time) AS time,
@@ -142,10 +154,11 @@ SELECT vid, pid AS harbour_id, T_in, T_out, epoch(T_out - T_in) / 3600 AS dur_h,
             ELSE 'gap_near_harbour' END AS rule,
        evidence, T_in_ping, T_out_ping, T_in_ev, T_out_ev, 'reconstructed' AS basis
 FROM st",
-    .rb_sql(p), tag, tag, G, G, ev_sql, G, win_e, win_p)
+    .rb_sql(p), hw_nm, hg_nm, G, G, ev_sql, G, win_e, win_p)
   out <- dplyr::tbl(con, dplyr::sql(sql))
   out <- dplyr::rename(out, !!!stats::setNames(rlang::syms("vid"), map[["vid"]]))
   if (lazy_in) return(out)
   out <- dplyr::collect(out)
+  .rb_unregister(con)
   out[order(out[[map[["vid"]]]], out$T_in), ]
 }

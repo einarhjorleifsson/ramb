@@ -1,5 +1,14 @@
 # ramb (development version)
 
+## Step 1: voyages and the trip of each ping (2026-10-08)
+
+- `rb_cut_trip_voyages()`: the sea between two harbour stays, per vessel and year, with the harbours either side;
+  voyages under `min_pings` dropped after numbering. `rb_assign_trip()`: each ping's stay, voyage, `trip_id` and
+  `trip_basis` (`"reconstructed"` / `"none"`); declared trips and landings as sources follow.
+- Ported from fishycode's `curate/ais_trip.R`: on the Icelandic data the same 1,372,656 voyages and, for all
+  535,613,643 pings, the same stay and voyage in every year.
+- A call on data frames now releases the frames it registered in DuckDB once it has its result.
+
 ## Step 1 builder: harbour stays (2026-10-08)
 
 - `rb_find_trip_stays()`: harbour stays measured in elapsed time (rules `tag_then_gap`, `gap_near_harbour`,

@@ -66,4 +66,9 @@ A ping takes the harbour among those whose \code{radius_out} buffer holds it, pr
 at either end and merged; ping stays and event stays are merged in time. \code{rule} names the strongest
 evidence: event_pair > tag_then_gap > tag_span > gap_near_harbour.
 }
+\seealso{
+Other trip:
+\code{\link[=rb_assign_trip]{rb_assign_trip()}},
+\code{\link[=rb_cut_trip_voyages]{rb_cut_trip_voyages()}}
+}
 \concept{trip}
