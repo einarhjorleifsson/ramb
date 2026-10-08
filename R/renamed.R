@@ -15,6 +15,18 @@
   invisible(NULL)
 }
 
+# A function superseded by a new one keeps its old body and warns once per session, unless a ramb
+# function called it (the new functions use some of the old bodies).
+.rb_superseded <- function(old, new) {
+  if (identical(topenv(parent.frame(2)), asNamespace("ramb"))) return(invisible(NULL))
+  if (!isTRUE(.rb_warned[[old]])) {
+    assign(old, TRUE, envir = .rb_warned)
+    warning(sprintf("`%s()` is superseded by `%s` and will be removed in a future version; until then it behaves as before.",
+                    old, new), call. = FALSE)
+  }
+  invisible(NULL)
+}
+
 # For tests: forget which old names have warned this session.
 .rb_reset_renamed <- function() rm(list = ls(.rb_warned), envir = .rb_warned)
 

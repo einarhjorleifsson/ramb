@@ -63,6 +63,7 @@
 #'
 #' @export
 rb_whack_forward <- function(x, kn_max = 25, max_gap_h = 4, min_dt_s = 10) {
+  .rb_superseded("rb_whack_forward", 'rb_flag_ping_impossible(method = "forward")')
   ms_max      <- kn_max * 0.514444
   max_gap_sec <- max_gap_h * 3600
 
@@ -166,6 +167,7 @@ rb_whack_forward <- function(x, kn_max = 25, max_gap_h = 4, min_dt_s = 10) {
 #'
 #' @export
 rb_whack_fwdbwd <- function(x, kn_max = 25, min_dt_s = 10) {
+  .rb_superseded("rb_whack_fwdbwd", 'rb_flag_ping_impossible(method = "fwdbwd")')
   ms_max <- kn_max * 0.514444
 
   if (inherits(x, "data.frame")) {
@@ -307,6 +309,7 @@ rb_whack_fwdbwd <- function(x, kn_max = 25, min_dt_s = 10) {
 #'
 #' @export
 rb_whack_sequential_fast <- function(lon, lat, time, kn_max = 25, min_dt_s = 10) {
+  .rb_superseded("rb_whack_sequential_fast", 'rb_flag_ping_impossible(method = "sequential")')
   ms_max <- kn_max * 0.514444
   n  <- length(lon)
   if (n < 2L) return(rep(FALSE, n))
@@ -369,6 +372,7 @@ rb_whack_sequential_fast <- function(lon, lat, time, kn_max = 25, min_dt_s = 10)
 #'
 #' @export
 rb_whacky_speed <- function(lon, lat, time, kn_max = 25) {
+  .rb_superseded("rb_whacky_speed", 'rb_flag_ping_impossible()')
 
   if(length(lon) != length(lat) | length(lon) != length(time)) {
     stop("Length of coordinates and time must be the same")
@@ -519,6 +523,7 @@ rb_whacky_distance <- function(lon, lat, miles_max = 6) {
 #' @export
 #'
 rb_whacky_speed_mendo <- function(df, speed_filter = 25) {
+  .rb_superseded("rb_whacky_speed_mendo", 'rb_flag_ping_impossible()')
 
   ms2knots = 1.9438 #(m/s)/knots
 
@@ -590,6 +595,7 @@ rb_whacky_speed_mendo <- function(df, speed_filter = 25) {
 #' @export
 #'
 rb_whacky_speed_trip <- function(d, filter = TRUE, max_speed = 20) {
+  .rb_superseded("rb_whacky_speed_trip", 'rb_flag_ping_impossible()')
   tr <- methods::as(d |> dplyr::mutate(.idtrip = 1), "Spatial")
   tr <- suppressWarnings( trip::trip(tr, c("time", ".idtrip")) )
   d$.whacky <- !trip::speedfilter(tr, max.speed = .rb_kn2ms(max_speed) / 1000 * 60 * 60)
@@ -659,6 +665,7 @@ rb_whacky_speed_trip <- function(d, filter = TRUE, max_speed = 20) {
 rb_whack_sda <- function(x, kn_max = 25, ang = 25, distlim = rep(0, length(ang)),
                       speedlim_kn = rep(kn_max, length(ang)), vmask_min_dist = 0,
                       min_dt_s = 10) {
+  .rb_superseded("rb_whack_sda", 'rb_flag_ping_impossible(method = "sda")')
   grp_vars <- dplyr::group_vars(x)
   # lon and lat break ties in time, so the result does not depend on the row order of the input
   # (parquet reads come back in a different order from run to run)
@@ -735,6 +742,7 @@ rb_whack_sda <- function(x, kn_max = 25, ang = 25, distlim = rep(0, length(ang))
 #' }
 #' @export
 rb_whack_clean <- function(x, kn_max = 25, max_gap_h = 4, min_dt_s = 10, batch_pings = 5e6, ...) {
+  .rb_superseded("rb_whack_clean", 'rb_flag_ping_impossible(method = "clean")')
   if (inherits(x, "tbl_lazy")) return(.whack_clean_lazy(x, kn_max, max_gap_h, min_dt_s, batch_pings, ...))
   .whack_clean_df(x, kn_max, max_gap_h, min_dt_s, ...)
 }

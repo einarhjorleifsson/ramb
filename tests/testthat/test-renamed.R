@@ -91,7 +91,7 @@ test_that("every export follows the naming rule, except names a later phase repl
     fn <- get(f, envir = getNamespace("ramb"))
     if (!is.function(fn)) return(FALSE)
     b <- deparse(body(fn))
-    any(grepl(".rb_renamed(", b, fixed = TRUE)) || any(grepl(".Deprecated(", b, fixed = TRUE))
+    any(grepl(".rb_renamed(", b, fixed = TRUE)) || any(grepl(".Deprecated(", b, fixed = TRUE)) || any(grepl(".rb_superseded(", b, fixed = TRUE))
   }, logical(1))]
   # replaced in plan 013 phases 2-5; each will become an alias that warns
   later <- c("rb_whack_clean", "rb_whack_sda", "rb_whack_forward", "rb_whack_fwdbwd",

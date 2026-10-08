@@ -1,3 +1,18 @@
+# ramb (development version)
+
+## Step 0 of the flow: flag pings (2026-10-08)
+
+- `rb_flag_ping_invalid()`, `rb_flag_ping_duplicate()` and `rb_flag_ping_impossible(method = ...)` label
+  pings in one column, `ping_flag` (NA = usable, else the reason). Each tests only rows not yet flagged, so
+  a chain applies them in order. Data frames and lazy DuckDB tables give the same labels.
+- `rb_flag_ping_impossible()`'s methods are the existing filters: `"clean"` (was `rb_whack_clean()`), `"sda"`,
+  `"forward"`, `"fwdbwd"`, `"sequential"`.
+- Superseded, old bodies kept, warning once per session from user code: `rb_whack_clean()`, `rb_whack_sda()`,
+  `rb_whack_forward()`, `rb_whack_fwdbwd()`, `rb_whack_sequential_fast()`, `rb_whack_duplicates()`,
+  `rb_whacky_speed()`, `rb_whacky_speed_mendo()`, `rb_whacky_speed_trip()`.
+- Checked on real data: on all 69,815,643 pings of one year of the Icelandic AIS union, the chain gives the
+  same label as the procedure it replaces for every ping.
+
 # ramb 2026.10.08.1
 
 ## Function names follow one rule (2026-10-08)

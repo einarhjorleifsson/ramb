@@ -56,6 +56,7 @@
 rb_whack_duplicates <- function(vid, time, lon, lat, feed,
                                 priority = c("stk", "astd", "astdB", "emodnet"),
                                 max_dt_s = 10, kn_max = 25, n = 3) {
+  .rb_superseded("rb_whack_duplicates", 'rb_flag_ping_duplicate()')
   max_m <- kn_max * 1852 / 3600 * max_dt_s
   pr <- match(feed, priority); pr[is.na(pr)] <- length(priority) + 1L
   t  <- as.numeric(time)
