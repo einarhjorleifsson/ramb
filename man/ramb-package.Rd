@@ -9,11 +9,11 @@
 Some stuff on vessels tracks.
 }
 \author{
-\strong{Maintainer}: Einar Hjörleifsson \email{einar.hjorleifsson@gmail.com}
+\strong{Maintainer}: Einar Hj<U+00F6>rleifsson \email{einar.hjorleifsson@gmail.com}
 
 Authors:
 \itemize{
-  \item Einar Hjörleifsson \email{einar.hjorleifsson@gmail.com}
+  \item Einar Hj<U+00F6>rleifsson \email{einar.hjorleifsson@gmail.com}
 }
 
 }

@@ -167,7 +167,6 @@ rb_whack_forward <- function(x, kn_max = 25, max_gap_h = 4, min_dt_s = 10) {
 #' @export
 rb_whack_fwdbwd <- function(x, kn_max = 25, min_dt_s = 10) {
   ms_max <- kn_max * 0.514444
-  r      <- 6371000
 
   if (inherits(x, "data.frame")) {
 
@@ -176,11 +175,7 @@ rb_whack_fwdbwd <- function(x, kn_max = 25, min_dt_s = 10) {
     .fwdbwd <- function(lon, lat, time) {
       n <- length(lon)
       if (n < 3L) return(rep(FALSE, n))
-      phi1 <- lat[-n] * pi / 180;  phi2 <- lat[-1] * pi / 180
-      dphi <- (lat[-1] - lat[-n]) * pi / 180
-      dlam <- (lon[-1] - lon[-n]) * pi / 180
-      dist <- 2 * r * asin(pmin(1, sqrt(
-        sin(dphi/2)^2 + cos(phi1) * cos(phi2) * sin(dlam/2)^2)))
+      dist <- rb_distance(lon[-n], lat[-n], lon[-1], lat[-1])
       dt  <- pmax(as.numeric(diff(time), units = "secs"), min_dt_s)
       spd <- dist / dt
       spd_in  <- c(NA_real_, spd)
@@ -313,7 +308,6 @@ rb_whack_fwdbwd <- function(x, kn_max = 25, min_dt_s = 10) {
 #' @export
 rb_whack_sequential_fast <- function(lon, lat, time, kn_max = 25, min_dt_s = 10) {
   ms_max <- kn_max * 0.514444
-  r  <- 6371000
   n  <- length(lon)
   if (n < 2L) return(rep(FALSE, n))
   keep <- rep(TRUE, n)
@@ -322,11 +316,7 @@ rb_whack_sequential_fast <- function(lon, lat, time, kn_max = 25, min_dt_s = 10)
     idx <- which(keep)
     m   <- length(idx)
     if (m < 2L) break
-    phi1 <- lat[idx[-m]] * pi / 180;  phi2 <- lat[idx[-1]] * pi / 180
-    dphi <- (lat[idx[-1]] - lat[idx[-m]]) * pi / 180
-    dlam <- (lon[idx[-1]] - lon[idx[-m]]) * pi / 180
-    dist <- 2 * r * asin(pmin(1, sqrt(
-      sin(dphi/2)^2 + cos(phi1) * cos(phi2) * sin(dlam/2)^2)))
+    dist <- rb_distance(lon[idx[-m]], lat[idx[-m]], lon[idx[-1]], lat[idx[-1]])
     dt  <- pmax(as.numeric(diff(time[idx]), units = "secs"), min_dt_s)
     spd <- dist / dt
     bad <- which(spd > ms_max)
