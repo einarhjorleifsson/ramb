@@ -15,7 +15,10 @@ Depends:
     R (>= 4.1.0)
 Imports:
     data.table,
+    DBI,
     dbplyr,
+    duckdb,
+    duckdbfs,
     dplyr,
     glue,
     icesVocab,
@@ -36,9 +39,6 @@ LinkingTo:
     Rcpp
 Suggests:
     ggnewscale,
-    DBI,
-    duckdb,
-    duckdbfs,
     geo,
     omar,
     trip,

@@ -1,5 +1,14 @@
 # ramb (development version)
 
+## Step 1 builder: harbour stays (2026-10-08)
+
+- `rb_find_trip_stays()`: harbour stays measured in elapsed time (rules `tag_then_gap`, `gap_near_harbour`,
+  `tag_span`, and `event_pair` from optional harbour events), with a minimum stay per harbour, an arrival and
+  a per-harbour departure radius, and a window for chunked runs. Runs in DuckDB; lazy in, lazy out.
+- Ported from fishycode's `curate/harbour_stay.R`: on the Icelandic data (2007-2026) it gives the same
+  1,551,604 stays, row for row.
+- `DBI`, `duckdb` and `duckdbfs` move to Imports: lazy DuckDB tables are the default.
+
 ## Step 0 of the flow: flag pings (2026-10-08)
 
 - `rb_flag_ping_invalid()`, `rb_flag_ping_duplicate()` and `rb_flag_ping_impossible(method = ...)` label
