@@ -8,6 +8,26 @@
 \description{
 Some stuff on vessels tracks.
 }
+\section{Naming}{
+
+Every function is named verb first: \code{rb_<verb>_<stage>[_<detail>]} for a function that
+belongs to a step of the fishing-activity flow (the WGSFD 2026 one-flow document), and
+\code{rb_<verb>_<object>} for a tool that serves every step. The stage word says where on the
+flow a function sits: vessel, ping, trip, record, gear, fishing, effort, catch. For example
+\code{rb_assign_trip()} is step 1, \code{rb_find_trip_stays()} a step-1 builder.
+
+Each verb has one meaning: flag (label rows, drop none), assign (a step: a value from the best
+source, with a basis), share (distribute a quantity, conserving the total), find (intervals from
+a track), cut (segments of a track), build (a rule or window table), link (a crosswalk, ambiguity
+kept), limit (judge a value against a rule, raw kept), number, detect (a logical vector), calc (a
+numeric vector), encode, extract, convert, bin, and the plain English verbs (interpolate, fill,
+predict, classify, lookup, cap, standardise, sum, check, get, read, plot, register).
+
+A method is never part of a name; it is the \code{method} argument. A grouping is never part of
+a method; it is the \code{by} argument. Old names stay as aliases that warn they will be removed.
+The rename plan is fishycode's \code{curate/plans/013-ramb-one-flow.md}.
+}
+
 \author{
 \strong{Maintainer}: Einar Hj<U+00F6>rleifsson \email{einar.hjorleifsson@gmail.com}
 
