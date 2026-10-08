@@ -109,3 +109,55 @@ FROM j", base, .rb_sql(v), yr, drop)
   .rb_unregister(con)
   out
 }
+
+#' Link declared trips to voyages by overlap
+#'
+#' A step-1 link of the fishing-activity flow: each declared trip (e.g. a logbook trip) is linked to the voyage
+#' ([rb_cut_trip_voyages()]) of the same vessel that overlaps it by the most seconds (ties: more pings).
+#' `n_candidates` counts the voyages that overlap it at all; a link is a link, not a merge: one voyage may be
+#' linked to several trips.
+#'
+#' @param trips A data frame or lazy DuckDB table of declared trips: `vid`, `T1`, `T2` and the trip's key
+#'   columns (`keys`).
+#' @param voyages Voyages from [rb_cut_trip_voyages()].
+#' @param keys The columns that identify a trip, carried through (e.g. `c(".tid", "schema")`).
+#' @param t2_fix `"end_of_t1_day"`: a trip window is extended to at least the end of its departure day, for
+#'   logbooks that record `T2` as a date (midnight) or that put `T2` before `T1` on same-day trips; `"none"`.
+#' @param vid The vessel column, if named otherwise.
+#'
+#' @return One row per linked trip: `keys`, `vid`, the voyage's `year`, `voyage_id`, `T1_voyage`, `T2_voyage`,
+#'   `harbour_from`, `harbour_to`, `n_pings`, `overlap_s`, `trip_span_s`, `overlap_frac`, `n_candidates`, `basis`
+#'   (`"ais_overlap"`). A data frame for data frame input, a lazy table for lazy input.
+#' @family trip
+#' @export
+rb_link_trip_voyages <- function(trips, voyages, keys, t2_fix = c("end_of_t1_day", "none"), vid = vid) {
+  t2_fix <- match.arg(t2_fix)
+  map <- .rb_cols(vid = {{ vid }})
+  lazy_in <- inherits(trips, "tbl_lazy")
+  con <- .rb_con_for(trips)
+  tr <- .rb_as_lazy(.rb_std_in(trips, map), con)
+  v <- .rb_as_lazy(voyages, con)
+  kq <- paste(sprintf('"%s"', keys), collapse = ", ")
+  kl <- paste(sprintf('lb."%s"', keys), collapse = ", ")
+  fix <- if (t2_fix == "end_of_t1_day") "greatest(T2, date_trunc('day', T1) + INTERVAL 1 DAY - INTERVAL 1 SECOND)" else "T2"
+  sql <- sprintf("
+WITH lb AS (SELECT %s, vid, T1, T2, %s AS T2_fix FROM (%s) WHERE vid IS NOT NULL AND T1 IS NOT NULL),
+v AS (SELECT vid, year, voyage_id, T1, T2, harbour_from, harbour_to, n_pings FROM (%s)),
+ov AS (SELECT %s, lb.vid, v.year, v.voyage_id, v.T1 AS T1_voyage, v.T2 AS T2_voyage, v.harbour_from, v.harbour_to, v.n_pings,
+              date_diff('second', greatest(lb.T1, v.T1), least(lb.T2_fix, v.T2)) AS overlap_s,
+              date_diff('second', lb.T1, lb.T2_fix) AS trip_span_s
+       FROM lb JOIN v ON lb.vid = v.vid AND v.T1 <= lb.T2_fix AND v.T2 >= lb.T1),
+ranked AS (SELECT *, row_number() OVER (PARTITION BY %s ORDER BY overlap_s DESC, n_pings DESC, T1_voyage, voyage_id) AS rn,
+                  count(*) OVER (PARTITION BY %s) AS n_candidates
+           FROM ov WHERE overlap_s > 0)
+SELECT %s, vid, year, voyage_id, T1_voyage, T2_voyage, harbour_from, harbour_to, n_pings, overlap_s, trip_span_s,
+       round(overlap_s::DOUBLE / nullif(trip_span_s, 0), 4) AS overlap_frac, n_candidates, 'ais_overlap' AS basis
+FROM ranked WHERE rn = 1",
+    kq, fix, .rb_sql(tr), .rb_sql(v), kl, kq, kq, kq)
+  out <- dplyr::tbl(con, dplyr::sql(sql))
+  out <- dplyr::rename(out, !!!stats::setNames(rlang::syms("vid"), map[["vid"]]))
+  if (lazy_in) return(out)
+  out <- as.data.frame(dplyr::collect(out))
+  .rb_unregister(con)
+  out
+}

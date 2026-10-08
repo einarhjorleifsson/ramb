@@ -69,6 +69,7 @@ evidence: event_pair > tag_then_gap > tag_span > gap_near_harbour.
 \seealso{
 Other trip:
 \code{\link[=rb_assign_trip]{rb_assign_trip()}},
-\code{\link[=rb_cut_trip_voyages]{rb_cut_trip_voyages()}}
+\code{\link[=rb_cut_trip_voyages]{rb_cut_trip_voyages()}},
+\code{\link[=rb_link_trip_voyages]{rb_link_trip_voyages()}}
 }
 \concept{trip}

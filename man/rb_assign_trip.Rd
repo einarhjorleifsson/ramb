@@ -38,6 +38,7 @@ plan 013, phase 4). No ping is dropped.
 \seealso{
 Other trip:
 \code{\link[=rb_cut_trip_voyages]{rb_cut_trip_voyages()}},
-\code{\link[=rb_find_trip_stays]{rb_find_trip_stays()}}
+\code{\link[=rb_find_trip_stays]{rb_find_trip_stays()}},
+\code{\link[=rb_link_trip_voyages]{rb_link_trip_voyages()}}
 }
 \concept{trip}

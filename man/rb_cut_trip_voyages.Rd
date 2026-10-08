@@ -41,6 +41,7 @@ the harbour of the stay after it.
 \seealso{
 Other trip:
 \code{\link[=rb_assign_trip]{rb_assign_trip()}},
-\code{\link[=rb_find_trip_stays]{rb_find_trip_stays()}}
+\code{\link[=rb_find_trip_stays]{rb_find_trip_stays()}},
+\code{\link[=rb_link_trip_voyages]{rb_link_trip_voyages()}}
 }
 \concept{trip}
