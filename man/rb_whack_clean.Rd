@@ -30,7 +30,7 @@ rb_whack_clean(
 }
 \value{
 `x` with `whack` (logical) and `whack_stage` (`NA`, `"vmask"`, `"spike"` or
-  `"forward"`). A data frame comes back sorted by `vid` and `time`; a lazy table stays lazy.
+  `"forward"`). A data frame comes back sorted by `vid` and `time`; a lazy table comes back lazy.
 }
 \description{
 The recommended filter for vessel positions. It labels, it does not remove: every
@@ -56,14 +56,16 @@ and at 60 s, 6,881. Same-second reports come mostly from two feeds merged.
 }
 \section{Data frame and DuckDB}{
 
-* **data.frame** - the whole table is sorted by `vid`, `time` and processed in one
-  compiled call.
+The labelling always runs in compiled code, in R; DuckDB never runs the filter itself.
+* **data.frame** - the whole frame is sorted by `vid`, `time` and labelled in one
+  compiled call. A table too big for memory is split by the caller into batches of whole
+  vessels, which is exact for the reason given below.
 * **lazy DuckDB table** (`tbl_lazy`) - the algorithm is sequential per vessel (a ping's
   fate depends on the pings kept before it), which SQL window functions cannot express,
   so the table is processed in **batches of whole vessels** (a vessel's result depends on
   no other vessel, so batching is exact). Each batch is collected with only
   `vid`, `time`, `lon`, `lat`, labelled in compiled code, and only the **flagged** rows
-  (about 0.5 percent) are written back to a temporary table on the same connection. The
+  (well under 1 percent) are written back to a temporary table on the same connection. The
   result is a lazy table: `x` left-joined to those labels, so the next verbs, a filter
   or a `write_dataset()`, run in DuckDB and the full table is never held in R. Row order
   of the lazy result is not guaranteed.
@@ -75,7 +77,8 @@ and at 60 s, 6,881. Same-second reports come mostly from two feeds merged.
 d <- pings |> rb_whack_clean()
 track <- dplyr::filter(d, !whack)
 
-# DuckDB / parquet: stays lazy, labelled rows are never pulled into R
+# DuckDB / parquet: the pings pass through R one batch of whole vessels at a time;
+# the result is a lazy table
 pings <- duckdbfs::open_dataset("ping_tagged")
 pings |> rb_whack_clean() |> dplyr::filter(!whack) |> duckdbfs::write_dataset("ping_clean")
 }
