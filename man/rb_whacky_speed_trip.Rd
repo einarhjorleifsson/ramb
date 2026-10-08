@@ -41,6 +41,6 @@ trip** should be passed — grouping is handled externally.
 }
 
 \seealso{
-[whack_fwdbwd()], [whack_sequential_fast()] for alternatives that
+[rb_whack_fwdbwd()], [rb_whack_sequential_fast()] for alternatives that
   do not depend on the `trip` package.
 }

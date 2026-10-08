@@ -36,8 +36,8 @@ recomputed. The loop exits when no step distance remains above the threshold.
 
 The filter is intentionally liberal: a genuinely long transit leg may be
 removed if its step distance exceeds the threshold even though the implied
-speed is reasonable. Use speed-based filters ([whack_fwdbwd()],
-[whack_sequential_fast()]) when timestamps are available.
+speed is reasonable. Use speed-based filters ([rb_whack_fwdbwd()],
+[rb_whack_sequential_fast()]) when timestamps are available.
 }
 
 \examples{

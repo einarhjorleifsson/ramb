@@ -5,11 +5,11 @@ interpolate_track_cpp <- function(trk_code, trk_time, trk_vals, grp_start, x_cod
     .Call(`_ramb_interpolate_track_cpp`, trk_code, trk_time, trk_vals, grp_start, x_code, x_time)
 }
 
-whack_forward_cpp <- function(lon, lat, time, ms_max, max_gap_sec) {
-    .Call(`_ramb_whack_forward_cpp`, lon, lat, time, ms_max, max_gap_sec)
+whack_forward_cpp <- function(lon, lat, time, ms_max, max_gap_sec, min_dt) {
+    .Call(`_ramb_whack_forward_cpp`, lon, lat, time, ms_max, max_gap_sec, min_dt)
 }
 
-whack_sda_cpp <- function(lat, lon, time, grp, vmax, ang, distlim, speedlim, vmask_min_dist) {
-    .Call(`_ramb_whack_sda_cpp`, lat, lon, time, grp, vmax, ang, distlim, speedlim, vmask_min_dist)
+whack_sda_cpp <- function(lat, lon, time, grp, vmax, ang, distlim, speedlim, vmask_min_dist, min_dt) {
+    .Call(`_ramb_whack_sda_cpp`, lat, lon, time, grp, vmax, ang, distlim, speedlim, vmask_min_dist, min_dt)
 }
 

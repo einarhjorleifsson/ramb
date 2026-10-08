@@ -36,7 +36,7 @@ whose incoming speed exceeds `ms_max` is removed; if that position is index
 
 **Does not correctly flag the first data point** if it is the source of the
 error (the incoming speed for the first point is always set to 0). Prefer
-[whack_sequential_fast()] for new code — it is ~7× faster and does not have
+[rb_whack_sequential_fast()] for new code — it is ~7× faster and does not have
 this edge case.
 }
 
@@ -50,6 +50,6 @@ data |>
 
 }
 \seealso{
-[whack_sequential_fast()] for a faster drop-in replacement that
+[rb_whack_sequential_fast()] for a faster drop-in replacement that
   handles the first-point edge case.
 }

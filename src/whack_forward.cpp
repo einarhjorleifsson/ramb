@@ -21,7 +21,7 @@ using namespace Rcpp;
 // [[Rcpp::export]]
 LogicalVector whack_forward_cpp(NumericVector lon, NumericVector lat,
                                  NumericVector time,
-                                 double ms_max, double max_gap_sec) {
+                                 double ms_max, double max_gap_sec, double min_dt) {
   int n = lon.size();
   LogicalVector flag(n, false);
   if (n < 2) return flag;
@@ -53,8 +53,10 @@ LogicalVector whack_forward_cpp(NumericVector lon, NumericVector lat,
     if (!ISNAN(s) && s > 1.0) s = 1.0;
     double d = 2 * r * std::asin(s);
 
+    // A step shorter than min_dt counts as min_dt (was 1e-6 s until 2026-10-08, which
+    // flagged a duplicate report in the same second, 0.4 m away).
     double dt2 = dt;
-    if (dt2 < 1e-6) dt2 = 1e-6;
+    if (dt2 < min_dt) dt2 = min_dt;
 
     if (ISNAN(d) || d / dt2 > ms_max) {
       flag[i] = true;   // bad — do NOT advance prev

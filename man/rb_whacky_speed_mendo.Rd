@@ -37,7 +37,7 @@ The data frame must contain columns:
 
 Because both endpoints of a bad segment are removed, the filter is less
 conservative than [rb_whacky_speed()]: it discards as many valid points as
-invalid ones. Prefer [whack_sequential_fast()] for new work.
+invalid ones. Prefer [rb_whack_sequential_fast()] for new work.
 }
 
 \references{

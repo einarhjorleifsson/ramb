@@ -16,7 +16,8 @@
 //
 // Differences from the R package, all deliberate: haversine rather than acos (which gives
 // NaN or 0 under ~1 m); bearings from atan2; the vmask loop stops if a pass removes nothing
-// (the R loop can spin on a plateau); no Argos location-class argument.
+// (the R loop can spin on a plateau); no Argos location-class argument; a time step shorter
+// than min_dt counts as min_dt (the R package adds 1 s to every step; 2026-10-08).
 #include <Rcpp.h>
 #include <vector>
 #include <cmath>
@@ -56,7 +57,8 @@ inline double bearing_deg(double lat1, double lon1, double lat2, double lon2) {
 // 1 = vmask peak, 2 = angle/distance (or speed) spike. Nothing is dropped here: the caller labels.
 void sda_track(const double* lat, const double* lon, const double* t, int a, int b,
                double vmax, const std::vector<double>& ang, const std::vector<double>& distlim,
-               const std::vector<double>& speedlim, double vmask_min_dist, int* removed) {
+               const std::vector<double>& speedlim, double vmask_min_dist, double min_dt,
+               int* removed) {
   const int N = b - a;
   if (N < 5) return;
 
@@ -74,8 +76,8 @@ void sda_track(const double* lat, const double* lon, const double* t, int a, int
     s1.assign(n, 0.0); s2.assign(n, 0.0); v.assign(n, 0.0);
     for (int i = 0; i + 1 < n; ++i) {
       int p = cur[i], q = cur[i + 1];
-      s1[i] = rd.dist(p - a, q - a) / (std::fabs(t[p] - t[q]) + 1.0);
-      if (i + 2 < n) { int r2 = cur[i + 2]; s2[i] = rd.dist(p - a, r2 - a) / (std::fabs(t[p] - t[r2]) + 1.0); }
+      s1[i] = rd.dist(p - a, q - a) / std::max(std::fabs(t[p] - t[q]), min_dt);
+      if (i + 2 < n) { int r2 = cur[i + 2]; s2[i] = rd.dist(p - a, r2 - a) / std::max(std::fabs(t[p] - t[r2]), min_dt); }
     }
     for (int i = 2; i <= n - 3; ++i)
       v[i] = std::sqrt((s2[i - 2] * s2[i - 2] + s1[i - 1] * s1[i - 1] + s1[i] * s1[i] + s2[i] * s2[i]) / 4.0);
@@ -131,8 +133,8 @@ void sda_track(const double* lat, const double* lon, const double* t, int a, int
                        bearing_deg(lat[c], lon[c], lat[q], lon[q]));
         if (an > 180) an = 360 - an;
       }
-      double sprev = dprev / (std::fabs(t[c] - t[p]) + 1.0);
-      double snext = dnext / (std::fabs(t[q] - t[c]) + 1.0);
+      double sprev = dprev / std::max(std::fabs(t[c] - t[p]), min_dt);
+      double snext = dnext / std::max(std::fabs(t[q] - t[c]), min_dt);
       for (int k = 0; k < K; ++k) {
         bool far = (k < (int)speedlim.size() && speedlim[k] > 0)
                      ? (sprev > speedlim[k] && snext > speedlim[k])
@@ -156,7 +158,7 @@ void sda_track(const double* lat, const double* lon, const double* t, int a, int
 IntegerVector whack_sda_cpp(NumericVector lat, NumericVector lon, NumericVector time,
                             IntegerVector grp, double vmax, NumericVector ang,
                             NumericVector distlim, NumericVector speedlim,
-                            double vmask_min_dist) {
+                            double vmask_min_dist, double min_dt) {
   const int n = lat.size();
   std::vector<int> removed(n, 0);
   std::vector<double> A(ang.begin(), ang.end()), D(distlim.begin(), distlim.end()),
@@ -164,7 +166,7 @@ IntegerVector whack_sda_cpp(NumericVector lat, NumericVector lon, NumericVector 
   int start = 0;
   for (int i = 1; i <= n; ++i) {
     if (i == n || grp[i] != grp[start]) {
-      sda_track(&lat[0], &lon[0], &time[0], start, i, vmax, A, D, S, vmask_min_dist, removed.data());
+      sda_track(&lat[0], &lon[0], &time[0], start, i, vmax, A, D, S, vmask_min_dist, min_dt, removed.data());
       start = i;
     }
   }

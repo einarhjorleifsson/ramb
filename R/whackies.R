@@ -8,10 +8,10 @@
 
 #' Forward-only speed filter for whacky AIS positions (in-memory, O(n))
 #'
-#' Second-pass filter designed to run **after** [whack_fwdbwd()] on the already-
-#' cleaned data frame. Where `whack_fwdbwd` misses consecutive clusters (because
+#' Second-pass filter designed to run **after** [rb_whack_fwdbwd()] on the already-
+#' cleaned data frame. Where `rb_whack_fwdbwd` misses consecutive clusters (because
 #' the bad points form an internally slow but geographically wrong track),
-#' `whack_forward` catches them by always comparing against the **last retained**
+#' `rb_whack_forward` catches them by always comparing against the **last retained**
 #' ping rather than the immediate predecessor.
 #'
 #' @section Algorithm:
@@ -22,8 +22,12 @@
 #' resets unconditionally when the time gap exceeds `max_gap_h` (legitimate
 #' long gaps, e.g. vessel off-air overnight, should not trigger the filter).
 #'
+#' A time step shorter than `min_dt_s` counts as `min_dt_s`. Until 2026-10-08 the floor
+#' was 1 microsecond, and a duplicate report 0.4 m away in the same second was flagged as
+#' faster than `kn_max`.
+#'
 #' @section Comparison with other filters:
-#' | | `whack_fwdbwd` | `whack_sequential_fast` | `whack_forward` |
+#' | | `rb_whack_fwdbwd` | `rb_whack_sequential_fast` | `rb_whack_forward` |
 #' |---|---|---|---|
 #' | Dispatch | data.frame + tbl_lazy | in-memory only | in-memory only |
 #' | Clusters | misses consecutive runs | correct | correct |
@@ -32,28 +36,33 @@
 #'
 #' @param x A data frame (or tibble). Must contain columns `vid`, `lon`, `lat`,
 #'   `time` (`POSIXct`). Typically the result of `filter(!whack)` after
-#'   `whack_fwdbwd()`.
+#'   `rb_whack_fwdbwd()`.
 #' @param kn_max Speed threshold in knots (default: 25).
 #' @param max_gap_h Time gaps larger than this (hours) reset the reference
 #'   without flagging (default 4). Prevents legitimate port-to-port transits
 #'   from being erroneously removed.
+#' @param min_dt_s Shortest time step, in seconds, used for a speed (default 10). A shorter
+#'   step counts as `min_dt_s`: over a few seconds the error in position and the whole-second
+#'   timestamps dominate the speed. Within `min_dt_s` a ping is therefore flagged only if it
+#'   is more than `kn_max * min_dt_s` away (about 130 m at the defaults).
 #'
 #' @return The input data frame with an added logical column `whack2`:
 #'   `TRUE` = flagged by this second pass.
 #'
-#' @seealso [whack_fwdbwd()] for the first-pass filter.
+#' @seealso [rb_whack_clean()], where it is the second stage; [rb_whack_fwdbwd()]
+#'   for the former first-pass filter.
 #'
 #' @examples
 #' \dontrun{
 #'
 #' clean <- df |>
-#'   whack_fwdbwd() |>
+#'   rb_whack_fwdbwd() |>
 #'   filter(!whack) |>
-#'   whack_forward()
+#'   rb_whack_forward()
 #' }
 #'
 #' @export
-whack_forward <- function(x, kn_max = 25, max_gap_h = 4) {
+rb_whack_forward <- function(x, kn_max = 25, max_gap_h = 4, min_dt_s = 10) {
   ms_max      <- kn_max * 0.514444
   max_gap_sec <- max_gap_h * 3600
 
@@ -62,8 +71,10 @@ whack_forward <- function(x, kn_max = 25, max_gap_h = 4) {
   # on whacks1 and stress cases (isolated spikes, runs, a >4h gap, an injected
   # NA). `time` is passed as seconds-since-epoch, which is POSIXct's own
   # underlying numeric representation, so no unit conversion is needed here.
+  # Speeds use a time step of at least min_dt_s (2026-10-08; was 1e-6 s), in the
+  # port and in the test's R reference alike.
   .fwd <- function(lon, lat, time) {
-    whack_forward_cpp(lon, lat, as.numeric(time), ms_max, max_gap_sec)
+    whack_forward_cpp(lon, lat, as.numeric(time), ms_max, max_gap_sec, min_dt_s)
   }
 
   grp_vars <- dplyr::group_vars(x)
@@ -93,14 +104,14 @@ whack_forward <- function(x, kn_max = 25, max_gap_h = 4) {
 #' @section Algorithm:
 #' A point \eqn{i} is flagged `whack = TRUE` when
 #' \deqn{\text{speed}_{i-1 \to i} > \text{kn\_max} \;\AND\; \text{speed}_{i \to i+1} > \text{kn\_max}}
-#' Distances are computed via the Haversine formula; time differences are
-#' floored at 1 µs to avoid division by zero.
+#' Distances are computed via the Haversine formula; a time difference shorter
+#' than `min_dt_s` counts as `min_dt_s`.
 #'
 #' @section Cluster limitation:
 #' The forward-backward criterion detects **isolated** spikes (one bad point
 #' surrounded by good ones). It **misses consecutive clusters** of two or more
 #' adjacent bad points because neither endpoint of a bad segment passes both
-#' checks. Use [whack_sequential_fast()] for cluster-aware flagging (in-memory
+#' checks. Use [rb_whack_sequential_fast()] for cluster-aware flagging (in-memory
 #' only).
 #'
 #' @section Grouping:
@@ -118,6 +129,10 @@ whack_forward <- function(x, kn_max = 25, max_gap_h = 4) {
 #'   DuckDB). May be pre-filtered or pre-grouped.
 #' @param kn_max Speed threshold in knots (default: 25). Points are flagged only when
 #'   both neighbouring implied speeds exceed this value.
+#' @param min_dt_s Shortest time step, in seconds, used for a speed (default 10). A shorter
+#'   step counts as `min_dt_s`: over a few seconds the error in position and the whole-second
+#'   timestamps dominate the speed. Within `min_dt_s` a ping is therefore flagged only if it
+#'   is more than `kn_max * min_dt_s` away (about 130 m at the defaults).
 #'
 #' @return The same type as `x` (data.frame or tbl_lazy) with one additional
 #'   logical column `whack`: `TRUE` = position flagged as implausible,
@@ -125,7 +140,7 @@ whack_forward <- function(x, kn_max = 25, max_gap_h = 4) {
 #'   points within each vessel group are always `FALSE` (one-sided: no
 #'   incoming/outgoing neighbour respectively).
 #'
-#' @seealso [whack_sequential_fast()] for a cluster-aware in-memory variant.
+#' @seealso [rb_whack_sequential_fast()] for a cluster-aware in-memory variant.
 #'
 #' @examples
 #' \dontrun{
@@ -135,22 +150,22 @@ whack_forward <- function(x, kn_max = 25, max_gap_h = 4) {
 #' # --- data.frame path ---
 #'
 #' # ungrouped — works the same as grouped; vid column drives partitioning
-#' whacks1 |> whack_fwdbwd()
+#' whacks1 |> rb_whack_fwdbwd()
 #'
 #' # pre-grouped input; grouping is restored on output
-#' whacks1 |> group_by(vid) |> whack_fwdbwd()
+#' whacks1 |> group_by(vid) |> rb_whack_fwdbwd()
 #'
 #' # --- lazy DuckDB path ---
 #' ais <- open_dataset("<ais trail dataset>")
 #' ais |>
 #'   filter(year == 2025, provider == "stk") |>
-#'   whack_fwdbwd() |>
+#'   rb_whack_fwdbwd() |>
 #'   count(whack) |>
 #'   collect()
 #' }
 #'
 #' @export
-whack_fwdbwd <- function(x, kn_max = 25) {
+rb_whack_fwdbwd <- function(x, kn_max = 25, min_dt_s = 10) {
   ms_max <- kn_max * 0.514444
   r      <- 6371000
 
@@ -166,7 +181,7 @@ whack_fwdbwd <- function(x, kn_max = 25) {
       dlam <- (lon[-1] - lon[-n]) * pi / 180
       dist <- 2 * r * asin(pmin(1, sqrt(
         sin(dphi/2)^2 + cos(phi1) * cos(phi2) * sin(dlam/2)^2)))
-      dt  <- pmax(as.numeric(diff(time), units = "secs"), 1e-6)
+      dt  <- pmax(as.numeric(diff(time), units = "secs"), min_dt_s)
       spd <- dist / dt
       spd_in  <- c(NA_real_, spd)
       spd_out <- c(spd, NA_real_)
@@ -211,12 +226,12 @@ whack_fwdbwd <- function(x, kn_max = 25) {
             POWER(SIN(RADIANS((lat  - lat0) / 2)), 2) +
             COS(RADIANS(lat0)) * COS(RADIANS(lat)) *
             POWER(SIN(RADIANS((lon  - lon0) / 2)), 2)
-          )) / GREATEST(extract(epoch from (time::TIMESTAMP - t0::TIMESTAMP)), 1e-6) AS spd_in,
+          )) / GREATEST(extract(epoch from (time::TIMESTAMP - t0::TIMESTAMP)), {min_dt_s}) AS spd_in,
           2 * 6371000 * ASIN(SQRT(
             POWER(SIN(RADIANS((lat2 - lat)  / 2)), 2) +
             COS(RADIANS(lat))  * COS(RADIANS(lat2)) *
             POWER(SIN(RADIANS((lon2 - lon)  / 2)), 2)
-          )) / GREATEST(extract(epoch from (t2::TIMESTAMP - time::TIMESTAMP)), 1e-6) AS spd_out
+          )) / GREATEST(extract(epoch from (t2::TIMESTAMP - time::TIMESTAMP)), {min_dt_s}) AS spd_out
         FROM w
       )
       SELECT {col_sel},
@@ -235,19 +250,19 @@ whack_fwdbwd <- function(x, kn_max = 25) {
 #' Cluster-aware sequential speed filter (in-memory, vectorised)
 #'
 #' Iteratively removes AIS positions that imply implausible travel speeds,
-#' handling **consecutive clusters** of bad points that [whack_fwdbwd()] misses.
+#' handling **consecutive clusters** of bad points that [rb_whack_fwdbwd()] misses.
 #' At each iteration the first segment exceeding `kn_max` is identified and its
 #' **latter** endpoint removed (or the first endpoint when the bad segment is the
 #' very first); the Haversine distances and speeds are then recomputed on the
 #' surviving points. The loop continues until no segment exceeds the threshold.
 #'
-#' @section Comparison with `whack_fwdbwd()`:
-#' | | `whack_fwdbwd` | `whack_sequential_fast` |
+#' @section Comparison with `rb_whack_fwdbwd()`:
+#' | | `rb_whack_fwdbwd` | `rb_whack_sequential_fast` |
 #' |---|---|---|
 #' | Dispatch | data.frame **and** tbl_lazy | in-memory only |
 #' | Clusters | misses consecutive runs | correct |
 #' | Speed | O(n) single pass | O(n × k) where k = bad points |
-#' | Usage | `whack_fwdbwd(df)` | `group_by(vid) |> mutate(whack = whack_sequential_fast(lon, lat, time))` |
+#' | Usage | `rb_whack_fwdbwd(df)` | `group_by(vid) |> mutate(whack = rb_whack_sequential_fast(lon, lat, time))` |
 #'
 #' This re-implements the algorithm of `ramb::rb_whacky_speed` in base R (no
 #' dplyr/traipse inside the loop), which makes it roughly 7× faster on large
@@ -259,10 +274,10 @@ whack_fwdbwd <- function(x, kn_max = 25) {
 #' ```r
 #' df |>
 #'   group_by(vid) |>
-#'   mutate(whack = whack_sequential_fast(lon, lat, time)) |>
+#'   mutate(whack = rb_whack_sequential_fast(lon, lat, time)) |>
 #'   ungroup()
 #' ```
-#' For a lazy DuckDB table use [whack_fwdbwd()] instead (isolated spikes only)
+#' For a lazy DuckDB table use [rb_whack_fwdbwd()] instead (isolated spikes only)
 #' or `collect()` first.
 #'
 #' @param lon Numeric vector of longitudes in decimal degrees.
@@ -271,12 +286,16 @@ whack_fwdbwd <- function(x, kn_max = 25) {
 #'   length as `lon` and `lat`.
 #' @param kn_max Speed threshold in knots (default: 25). Any segment implying a speed
 #'   greater than this value triggers point removal.
+#' @param min_dt_s Shortest time step, in seconds, used for a speed (default 10). A shorter
+#'   step counts as `min_dt_s`: over a few seconds the error in position and the whole-second
+#'   timestamps dominate the speed. Within `min_dt_s` a ping is therefore flagged only if it
+#'   is more than `kn_max * min_dt_s` away (about 130 m at the defaults).
 #'
 #' @return A logical vector of the same length as `lon`. `TRUE` = position
 #'   flagged as implausible (would be removed); `FALSE` = position retained.
 #'   Tracks with fewer than 2 points are returned as all-`FALSE`.
 #'
-#' @seealso [whack_fwdbwd()] for an O(n) single-pass filter that also supports
+#' @seealso [rb_whack_fwdbwd()] for an O(n) single-pass filter that also supports
 #'   lazy DuckDB tables.
 #'
 #' @examples
@@ -286,13 +305,13 @@ whack_fwdbwd <- function(x, kn_max = 25) {
 #' # Apply per vessel on a collected data frame
 #' ais_df |>
 #'   group_by(vid) |>
-#'   mutate(whack = whack_sequential_fast(lon, lat, time)) |>
+#'   mutate(whack = rb_whack_sequential_fast(lon, lat, time)) |>
 #'   ungroup() |>
 #'   filter(!whack)
 #' }
 #'
 #' @export
-whack_sequential_fast <- function(lon, lat, time, kn_max = 25) {
+rb_whack_sequential_fast <- function(lon, lat, time, kn_max = 25, min_dt_s = 10) {
   ms_max <- kn_max * 0.514444
   r  <- 6371000
   n  <- length(lon)
@@ -308,7 +327,7 @@ whack_sequential_fast <- function(lon, lat, time, kn_max = 25) {
     dlam <- (lon[idx[-1]] - lon[idx[-m]]) * pi / 180
     dist <- 2 * r * asin(pmin(1, sqrt(
       sin(dphi/2)^2 + cos(phi1) * cos(phi2) * sin(dlam/2)^2)))
-    dt  <- pmax(as.numeric(diff(time[idx]), units = "secs"), 1e-6)
+    dt  <- pmax(as.numeric(diff(time[idx]), units = "secs"), min_dt_s)
     spd <- dist / dt
     bad <- which(spd > ms_max)
     if (length(bad) == 0L) break
@@ -336,7 +355,7 @@ whack_sequential_fast <- function(lon, lat, time, kn_max = 25) {
 #' @section Known limitation:
 #' **Does not correctly flag the first data point** if it is the source of the
 #' error (the incoming speed for the first point is always set to 0). Prefer
-#' [whack_sequential_fast()] for new code — it is ~7× faster and does not have
+#' [rb_whack_sequential_fast()] for new code — it is ~7× faster and does not have
 #' this edge case.
 #'
 #' @param lon Numeric vector of longitudes in decimal degrees.
@@ -347,7 +366,7 @@ whack_sequential_fast <- function(lon, lat, time, kn_max = 25) {
 #' @return A logical vector the same length as `lon`. `TRUE` = position
 #'   classified as whacky; `FALSE` = retained.
 #'
-#' @seealso [whack_sequential_fast()] for a faster drop-in replacement that
+#' @seealso [rb_whack_sequential_fast()] for a faster drop-in replacement that
 #'   handles the first-point edge case.
 #'
 #' @examples
@@ -418,8 +437,8 @@ rb_whacky_speed <- function(lon, lat, time, kn_max = 25) {
 #' @section Limitation:
 #' The filter is intentionally liberal: a genuinely long transit leg may be
 #' removed if its step distance exceeds the threshold even though the implied
-#' speed is reasonable. Use speed-based filters ([whack_fwdbwd()],
-#' [whack_sequential_fast()]) when timestamps are available.
+#' speed is reasonable. Use speed-based filters ([rb_whack_fwdbwd()],
+#' [rb_whack_sequential_fast()]) when timestamps are available.
 #'
 #' @param lon Numeric vector of longitudes in decimal degrees.
 #' @param lat Numeric vector of latitudes in decimal degrees.
@@ -495,7 +514,7 @@ rb_whacky_distance <- function(lon, lat, miles_max = 6) {
 #' @section Limitation:
 #' Because both endpoints of a bad segment are removed, the filter is less
 #' conservative than [rb_whacky_speed()]: it discards as many valid points as
-#' invalid ones. Prefer [whack_sequential_fast()] for new work.
+#' invalid ones. Prefer [rb_whack_sequential_fast()] for new work.
 #'
 #' @param df A data frame with columns `x`, `y`, `time`, `device_id`, `seq`
 #'   (see *Input requirements*).
@@ -575,7 +594,7 @@ rb_whacky_speed_mendo <- function(df, speed_filter = 25) {
 #'   and no `.whacky` column. If `filter = FALSE`: the input data frame with an
 #'   added logical column `.whacky` (`TRUE` = whacky).
 #'
-#' @seealso [whack_fwdbwd()], [whack_sequential_fast()] for alternatives that
+#' @seealso [rb_whack_fwdbwd()], [rb_whack_sequential_fast()] for alternatives that
 #'   do not depend on the `trip` package.
 #'
 #' @export
@@ -621,6 +640,9 @@ rb_whacky_speed_trip <- function(d, filter = TRUE, max_speed = 20) {
 #'    until none is left. The speed form is the time-aware one: the same leg is long or
 #'    short depending on the time it took.
 #'
+#' Every speed uses a time step of at least `min_dt_s`; `argosfilter` adds 1 s to every
+#' step instead.
+#'
 #' The package defaults tuned for Argos seal tracks (15/25 degrees, 2.5/5 km, 5 km) leave
 #' tens of thousands of speed spikes in vessel AIS. The defaults here follow the tuning in
 #' fishycode `curate/checks/sda_tune.R`: a speed test, `vmask_min_dist = 0`.
@@ -631,6 +653,10 @@ rb_whacky_speed_trip <- function(d, filter = TRUE, max_speed = 20) {
 #' @param distlim Distance limits in metres, one per `ang`; used where `speedlim_kn` is 0.
 #' @param speedlim_kn Speed limits in knots, one per `ang` (default `kn_max`); 0 = use `distlim`.
 #' @param vmask_min_dist See above (default 0).
+#' @param min_dt_s Shortest time step, in seconds, used for a speed (default 10). A shorter
+#'   step counts as `min_dt_s`: over a few seconds the error in position and the whole-second
+#'   timestamps dominate the speed. Within `min_dt_s` a ping is therefore flagged only if it
+#'   is more than `kn_max * min_dt_s` away (about 130 m at the defaults).
 #'
 #' @return `x`, sorted by `vid`, `time` (ties by `lon`, `lat`), with `whack_sda`: `NA` = not flagged,
 #'   `"vmask"` or `"spike"` = the step that flagged it.
@@ -638,10 +664,11 @@ rb_whacky_speed_trip <- function(d, filter = TRUE, max_speed = 20) {
 #' @references Freitas, C., Lydersen, C., Fedak, M.A. and Kovacs, K.M. (2008). A simple
 #'   new algorithm to filter marine mammal Argos locations. Marine Mammal Science 24:315-325.
 #'
-#' @seealso [whack_clean()], the full recipe; [whack_forward()], [whack_fwdbwd()].
+#' @seealso [rb_whack_clean()], the full recipe; [rb_whack_forward()], [rb_whack_fwdbwd()].
 #' @export
-whack_sda <- function(x, kn_max = 25, ang = 25, distlim = rep(0, length(ang)),
-                      speedlim_kn = rep(kn_max, length(ang)), vmask_min_dist = 0) {
+rb_whack_sda <- function(x, kn_max = 25, ang = 25, distlim = rep(0, length(ang)),
+                      speedlim_kn = rep(kn_max, length(ang)), vmask_min_dist = 0,
+                      min_dt_s = 10) {
   grp_vars <- dplyr::group_vars(x)
   # lon and lat break ties in time, so the result does not depend on the row order of the input
   # (parquet reads come back in a different order from run to run)
@@ -649,7 +676,7 @@ whack_sda <- function(x, kn_max = 25, ang = 25, distlim = rep(0, length(ang)),
   code <- match(x$vid, unique(x$vid))
   r <- whack_sda_cpp(x$lat, x$lon, as.numeric(x$time), code, kn_max * 0.514444,
                      as.numeric(ang), as.numeric(distlim), as.numeric(speedlim_kn) * 0.514444,
-                     vmask_min_dist)
+                     vmask_min_dist, min_dt_s)
   x$whack_sda <- c(NA_character_, "vmask", "spike")[r + 1L]
   if (length(grp_vars) > 0) x <- dplyr::group_by(x, dplyr::across(dplyr::all_of(grp_vars)))
   x
@@ -663,15 +690,20 @@ whack_sda <- function(x, kn_max = 25, ang = 25, distlim = rep(0, length(ang)),
 #' reason for each flag is kept.
 #'
 #' Two stages, because neither is enough on its own:
-#' 1. [whack_sda()] - judges each ping from **both sides** (rms speed to four neighbours,
+#' 1. [rb_whack_sda()] - judges each ping from **both sides** (rms speed to four neighbours,
 #'    then both legs at the ping), so it can flag a bad ping that the forward scan would
 #'    adopt as its anchor, e.g. the first ping after a long gap.
-#' 2. [whack_forward()] on what stage 1 left - compares with the last **kept** ping, so it
+#' 2. [rb_whack_forward()] on what stage 1 left - compares with the last **kept** ping, so it
 #'    resolves runs and interleaved streams that stage 1 cannot judge from the neighbours.
 #'
-#' Measured on 543.6 M AIS pings (2007-2026): 2.89 M flagged against 3.08 M for the
-#' former `whack_fwdbwd()` + `whack_forward()`, with 6 speed spikes left in the unflagged
-#' tracks against 49. See the fishyweb page on whacky positions for the timing.
+#' Measured on 543.6 M AIS pings (2007-2026): 1.45 M flagged (0.27 %), against 2.87 M with the
+#' former 1-microsecond time step. The difference is almost all near-duplicate reports from two
+#' merged feeds (96 % between feeds, 92 % within 50 m of the ping before); the kept track is
+#' 0.003 % shorter and keeps 706 legs over 1 km at over 25 kn, against 716.
+#'
+#' The time-step floor `min_dt_s = 10` was chosen on June 2016 and June 2023 (7.2 M pings):
+#' with a floor of up to 10 s no kept leg jumps more than 200 m at over 25 kn; at 20 s, 575 do,
+#' and at 60 s, 6,881. Same-second reports come mostly from two feeds merged.
 #'
 #' @section Data frame and DuckDB:
 #' * **data.frame** - the whole table is sorted by `vid`, `time` and processed in one
@@ -688,10 +720,12 @@ whack_sda <- function(x, kn_max = 25, ang = 25, distlim = rep(0, length(ang)),
 #'
 #' @param x A data frame or a lazy DuckDB table with `vid`, `lon`, `lat` and `time`.
 #' @param kn_max Speed threshold in knots (default 25).
-#' @param max_gap_h Passed to [whack_forward()] (default 4).
+#' @param max_gap_h Passed to [rb_whack_forward()] (default 4).
+#' @param min_dt_s Shortest time step for a speed, in seconds, used by both stages
+#'   (default 10); see [rb_whack_forward()].
 #' @param batch_pings Lazy tables only: approximate pings per batch of whole vessels
 #'   (default 5 million, which keeps R below a few GB).
-#' @param ... Passed to [whack_sda()].
+#' @param ... Passed to [rb_whack_sda()].
 #'
 #' @return `x` with `whack` (logical) and `whack_stage` (`NA`, `"vmask"`, `"spike"` or
 #'   `"forward"`). A data frame comes back sorted by `vid` and `time`; a lazy table stays lazy.
@@ -699,25 +733,25 @@ whack_sda <- function(x, kn_max = 25, ang = 25, distlim = rep(0, length(ang)),
 #' @examples
 #' \dontrun{
 #' # data frame
-#' d <- pings |> whack_clean()
+#' d <- pings |> rb_whack_clean()
 #' track <- dplyr::filter(d, !whack)
 #'
 #' # DuckDB / parquet: stays lazy, labelled rows are never pulled into R
 #' pings <- duckdbfs::open_dataset("ping_tagged")
-#' pings |> whack_clean() |> dplyr::filter(!whack) |> duckdbfs::write_dataset("ping_clean")
+#' pings |> rb_whack_clean() |> dplyr::filter(!whack) |> duckdbfs::write_dataset("ping_clean")
 #' }
 #' @export
-whack_clean <- function(x, kn_max = 25, max_gap_h = 4, batch_pings = 5e6, ...) {
-  if (inherits(x, "tbl_lazy")) return(.whack_clean_lazy(x, kn_max, max_gap_h, batch_pings, ...))
-  .whack_clean_df(x, kn_max, max_gap_h, ...)
+rb_whack_clean <- function(x, kn_max = 25, max_gap_h = 4, min_dt_s = 10, batch_pings = 5e6, ...) {
+  if (inherits(x, "tbl_lazy")) return(.whack_clean_lazy(x, kn_max, max_gap_h, min_dt_s, batch_pings, ...))
+  .whack_clean_df(x, kn_max, max_gap_h, min_dt_s, ...)
 }
 
-.whack_clean_df <- function(x, kn_max, max_gap_h, ...) {
+.whack_clean_df <- function(x, kn_max, max_gap_h, min_dt_s, ...) {
   grp_vars <- dplyr::group_vars(x)
-  out <- whack_sda(x, kn_max = kn_max, ...)
+  out <- rb_whack_sda(x, kn_max = kn_max, min_dt_s = min_dt_s, ...)
   s1 <- !is.na(out$whack_sda)
-  fwd <- whack_forward(out[!s1, ], kn_max = kn_max, max_gap_h = max_gap_h)
-  # whack_forward() re-sorts by vid, time; out[!s1, ] already is, so the order is the same
+  fwd <- rb_whack_forward(out[!s1, ], kn_max = kn_max, max_gap_h = max_gap_h, min_dt_s = min_dt_s)
+  # rb_whack_forward() re-sorts by vid, time; out[!s1, ] already is, so the order is the same
   stage <- out$whack_sda
   stage[!s1] <- ifelse(fwd$whack2, "forward", NA_character_)
   out$whack_sda <- NULL
@@ -727,7 +761,7 @@ whack_clean <- function(x, kn_max = 25, max_gap_h = 4, batch_pings = 5e6, ...) {
   out
 }
 
-.whack_clean_lazy <- function(x, kn_max, max_gap_h, batch_pings, ...) {
+.whack_clean_lazy <- function(x, kn_max, max_gap_h, min_dt_s, batch_pings, ...) {
   con <- dbplyr::remote_con(x)
   # A deterministic row number per vessel, computed in DuckDB and identically in the batch
   # (the batch is sorted by time, lon, lat before it is labelled), is the join key back.
@@ -751,7 +785,7 @@ whack_clean <- function(x, kn_max = 25, max_gap_h = 4, batch_pings = 5e6, ...) {
       dplyr::ungroup() |>
       dplyr::collect() |>
       dplyr::arrange(vid, time, lon, lat)
-    lab <- .whack_clean_df(d, kn_max, max_gap_h, ...)
+    lab <- .whack_clean_df(d, kn_max, max_gap_h, min_dt_s, ...)
     lab <- lab[lab$whack, c("vid", ".whack_rn", "whack_stage")]
     lab$.whack_rn <- as.numeric(lab$.whack_rn)
     if (first) {
@@ -761,9 +795,60 @@ whack_clean <- function(x, kn_max = 25, max_gap_h = 4, batch_pings = 5e6, ...) {
       DBI::dbAppendTable(con, tmp, lab)
     }
   }
-  if (first) stop("whack_clean(): the table has no vessels.", call. = FALSE)
+  if (first) stop("rb_whack_clean(): the table has no vessels.", call. = FALSE)
+  # window_order() clears the numbering's order: left on the result it is added to a later
+  # arrange(), which fails after a count() or summarise() ("time" must appear in GROUP BY)
   keyed |>
     dplyr::left_join(dplyr::tbl(con, tmp), by = c("vid", ".whack_rn")) |>
     dplyr::mutate(whack = !is.na(whack_stage)) |>
-    dplyr::select(-.whack_rn)
+    dplyr::select(-.whack_rn) |>
+    dbplyr::window_order()
+}
+
+
+#' Deprecated names of the whacky-position filters
+#'
+#' `whack_clean()`, `whack_sda()`, `whack_forward()`, `whack_fwdbwd()` and
+#' `whack_sequential_fast()` were renamed [rb_whack_clean()], [rb_whack_sda()],
+#' [rb_whack_forward()], [rb_whack_fwdbwd()] and [rb_whack_sequential_fast()] on 2026-10-08,
+#' in line with the rest of the package. The old names still work, with a warning.
+#'
+#' @param ... Passed to the new function.
+#' @name whack-deprecated
+#' @keywords internal
+NULL
+
+#' @rdname whack-deprecated
+#' @export
+whack_clean <- function(...) {
+  .Deprecated("rb_whack_clean", package = "ramb")
+  rb_whack_clean(...)
+}
+
+#' @rdname whack-deprecated
+#' @export
+whack_sda <- function(...) {
+  .Deprecated("rb_whack_sda", package = "ramb")
+  rb_whack_sda(...)
+}
+
+#' @rdname whack-deprecated
+#' @export
+whack_forward <- function(...) {
+  .Deprecated("rb_whack_forward", package = "ramb")
+  rb_whack_forward(...)
+}
+
+#' @rdname whack-deprecated
+#' @export
+whack_fwdbwd <- function(...) {
+  .Deprecated("rb_whack_fwdbwd", package = "ramb")
+  rb_whack_fwdbwd(...)
+}
+
+#' @rdname whack-deprecated
+#' @export
+whack_sequential_fast <- function(...) {
+  .Deprecated("rb_whack_sequential_fast", package = "ramb")
+  rb_whack_sequential_fast(...)
 }
