@@ -1,5 +1,18 @@
 # ramb (development version)
 
+## Step 2 and the window method of step 4 (2026-10-09)
+
+Ported from fishycode (`R/duration_limit.R`, `curate/station_window.R`, `R/trail_sql.R`; fishycode plan 014
+phase 2). Each port gives fishycode's built outputs exactly: 7,496,440 record windows, 7,239,778 judged durations,
+and one month of the trail (4,864,265 fixes, 1,098,145 matches). All run on data frames and lazy DuckDB tables.
+
+- `rb_limit_record_duration()`: a duration above the gear's limit becomes `NA`, the raw value is kept.
+- `rb_build_record_windows()`: one window per (record, phase): tow, set, haul, jig, or the whole day; capped at
+  the vessel's next recorded event; `win_basis` says where each came from.
+- `rb_link_record_pings()`: every (ping, record) match; day windows claim only unclaimed pings.
+- `rb_assign_record()`: `n_records`, and the record where exactly one holds the ping.
+- `rb_assign_fishing(method = "window")`: in a window that can be fishing and inside its speed range.
+
 ## Step 1: three ways to cut voyages (2026-10-08)
 
 - `rb_cut_trip_voyages(method = "runs")`: every run of harbour-tagged pings is a stay (was `rb_trip()`).
