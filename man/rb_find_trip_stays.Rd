@@ -2,11 +2,11 @@
 % Please edit documentation in R/find_trip_stays.R
 \name{rb_find_trip_stays}
 \alias{rb_find_trip_stays}
-\title{Find harbour stays in vessel tracks}
+\title{Find port stays in vessel tracks}
 \usage{
 rb_find_trip_stays(
   pings,
-  harbours,
+  ports,
   min_stay_h = 4,
   min_stay = NULL,
   radius_in = 2000,
@@ -22,17 +22,17 @@ rb_find_trip_stays(
 \arguments{
 \item{pings}{A data frame or lazy DuckDB table of cleaned pings: \code{vid}, \code{time}, \code{lon}, \code{lat}.}
 
-\item{harbours}{An sf object of harbour polygons with \code{harbour_id}, and optionally \code{radius_out} (metres;
+\item{ports}{An sf object of port polygons with \code{port_id}, and optionally \code{radius_out} (metres;
 the departure radius, at least \code{radius_in}).}
 
-\item{min_stay_h}{Minimum stay, hours, where \code{min_stay} has no row for the harbour.}
+\item{min_stay_h}{Minimum stay, hours, where \code{min_stay} has no row for the port.}
 
-\item{min_stay}{Optional data frame \code{harbour_id}, \code{min_stay_h}: a minimum per harbour.}
+\item{min_stay}{Optional data frame \code{port_id}, \code{min_stay_h}: a minimum per port.}
 
 \item{radius_in}{Arrival radius, metres.}
 
-\item{events}{Optional data frame or lazy table of harbour events: \code{vid}, \code{time}, \code{io} (\code{"I"} arrival,
-\code{"U"} departure), \code{harbour_id}, \code{good} (logical).}
+\item{events}{Optional data frame or lazy table of port events: \code{vid}, \code{time}, \code{io} (\code{"I"} arrival,
+\code{"U"} departure), \code{port_id}, \code{good} (logical).}
 
 \item{t_in_window}{Optional \code{c(from, to)} (POSIXct): keep only stays that begin in \verb{[from, to)}, applied
 before ping and event stays are merged. For processing a long series in chunks.}
@@ -42,29 +42,29 @@ before ping and event stays are merged. For processing a long series in chunks.}
 \item{vid, time, lon, lat}{The ping columns, if named otherwise.}
 }
 \value{
-One row per stay: \code{vid}, \code{harbour_id}, \code{T_in}, \code{T_out}, \code{dur_h}, \code{rule}, \code{evidence},
+One row per stay: \code{vid}, \code{port_id}, \code{T_in}, \code{T_out}, \code{dur_h}, \code{rule}, \code{evidence},
 \code{T_in_ping}, \code{T_out_ping}, \code{T_in_ev}, \code{T_out_ev}, \code{basis} (\code{"reconstructed"}). A data frame for data
 frame input, a lazy table for lazy input.
 }
 \description{
 A step-1 builder of the fishing-activity flow: the stays that cut a track into voyages
-(\code{\link[=rb_cut_trip_voyages]{rb_cut_trip_voyages()}}). A stay is elapsed time at a harbour, from any of three rules on the pings
-and, optionally, from declared harbour events:
+(\code{\link[=rb_cut_trip_voyages]{rb_cut_trip_voyages()}}). A stay is elapsed time at a port, from any of three rules on the pings
+and, optionally, from declared port events:
 }
 \details{
 \itemize{
-\item \code{tag_then_gap}: two consecutive pings at the same harbour, the first within \code{radius_in} of it, at least
+\item \code{tag_then_gap}: two consecutive pings at the same port, the first within \code{radius_in} of it, at least
 the minimum stay apart, one of them inside the polygon;
-\item \code{gap_near_harbour}: the same, neither inside the polygon;
+\item \code{gap_near_port}: the same, neither inside the polygon;
 \item \code{tag_span}: a run of pings inside the polygon spanning at least the minimum stay;
-\item \code{event_pair} (with \code{events}): an arrival then a departure event at the same harbour, adjacent in the
+\item \code{event_pair} (with \code{events}): an arrival then a departure event at the same port, adjacent in the
 vessel's events, both judged good, at least the minimum stay apart.
 }
 
-A ping takes the harbour among those whose \code{radius_out} buffer holds it, preferring one whose
+A ping takes the port among those whose \code{radius_out} buffer holds it, preferring one whose
 \code{radius_in} buffer also holds it, then the nearest. Seeds are extended over the contiguous inside pings
 at either end and merged; ping stays and event stays are merged in time. \code{rule} names the strongest
-evidence: event_pair > tag_then_gap > tag_span > gap_near_harbour.
+evidence: event_pair > tag_then_gap > tag_span > gap_near_port.
 }
 \seealso{
 Other trip:

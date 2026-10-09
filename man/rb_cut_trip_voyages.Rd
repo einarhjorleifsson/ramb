@@ -2,7 +2,7 @@
 % Please edit documentation in R/cut_trip_voyages.R
 \name{rb_cut_trip_voyages}
 \alias{rb_cut_trip_voyages}
-\title{Cut vessel tracks into voyages between harbour stays}
+\title{Cut vessel tracks into voyages between port stays}
 \usage{
 rb_cut_trip_voyages(
   pings,
@@ -16,14 +16,14 @@ rb_cut_trip_voyages(
   batch_pings = 5e+07,
   vid = vid,
   time = time,
-  harbour_id = harbour_id
+  port_id = port_id
 )
 }
 \arguments{
-\item{pings}{A data frame or lazy DuckDB table with \code{vid} and \code{time}, and \code{harbour_id} for \code{"runs"} and
+\item{pings}{A data frame or lazy DuckDB table with \code{vid} and \code{time}, and \code{port_id} for \code{"runs"} and
 \code{"jepol"} (NA at sea).}
 
-\item{stays}{For \code{"stays"}: stays as returned by \code{\link[=rb_find_trip_stays]{rb_find_trip_stays()}}: \code{vid}, \code{harbour_id}, \code{T_in}, \code{T_out}.}
+\item{stays}{For \code{"stays"}: stays as returned by \code{\link[=rb_find_trip_stays]{rb_find_trip_stays()}}: \code{vid}, \code{port_id}, \code{T_in}, \code{T_out}.}
 
 \item{method}{\code{"stays"}, \code{"runs"} or \code{"jepol"}.}
 
@@ -37,11 +37,11 @@ longer voyages are split.}
 
 \item{batch_pings}{For \code{"jepol"} on a lazy table: about this many pings are collected at a time, whole vessels.}
 
-\item{vid, time, harbour_id}{The ping columns, if named otherwise.}
+\item{vid, time, port_id}{The ping columns, if named otherwise.}
 }
 \value{
-One row per voyage: \code{vid}, \code{year} (with \code{by_year}), \code{voyage_id}, \code{T1}, \code{T2}, \code{harbour_from},
-\code{harbour_to}, \code{n_pings}. A data frame for data frame input, a lazy table for lazy input.
+One row per voyage: \code{vid}, \code{year} (with \code{by_year}), \code{voyage_id}, \code{T1}, \code{T2}, \code{port_from},
+\code{port_to}, \code{n_pings}. A data frame for data frame input, a lazy table for lazy input.
 }
 \description{
 A step-1 builder of the fishing-activity flow. Three methods, one result: a table of voyages.
@@ -50,11 +50,11 @@ A step-1 builder of the fishing-activity flow. Three methods, one result: a tabl
 \itemize{
 \item \code{"stays"}: a voyage is the sea between two stays (see \code{\link[=rb_find_trip_stays]{rb_find_trip_stays()}}). A ping takes the stay it
 falls in (the earlier of two that overlap), the track is cut into runs of stay and sea, and each sea run
-becomes a voyage, from the harbour of the stay before it to the harbour of the stay after it.
-\item \code{"runs"}: as \code{"stays"}, but every run of pings tagged in a harbour (\code{\link[=rb_flag_ping_harbour]{rb_flag_ping_harbour()}}) is a stay,
+becomes a voyage, from the port of the stay before it to the port of the stay after it.
+\item \code{"runs"}: as \code{"stays"}, but every run of pings tagged in a port (\code{\link[=rb_flag_ping_port]{rb_flag_ping_port()}}) is a stay,
 however short. This is what \code{rb_trip()} numbered.
 \item \code{"jepol"}: the ICES VMS datacall rule (\code{define_trips_pol}, was \code{rb_trip_jepol()}): a voyage runs from the
-first ping at sea to the first ping back in harbour; voyages of \code{min_dur_h} hours or less are dropped, and
+first ping at sea to the first ping back in port; voyages of \code{min_dur_h} hours or less are dropped, and
 with \code{split} one over \code{max_dur_h} hours is cut at a long gap between its pings. It reproduces the old
 function exactly, including where it cuts (one ping before the longest gap); a long voyage with fewer than
 two pings inside it, where the old function stopped, is left whole.

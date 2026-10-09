@@ -50,6 +50,7 @@
 \alias{rb_cap_iqr}
 \alias{rb_cap_miller}
 \alias{rb_cap_winsorize}
+\alias{rb_flag_ping_harbour}
 \title{Old function names}
 \usage{
 rb_speed(...)
@@ -147,6 +148,8 @@ rb_cap_iqr(...)
 rb_cap_miller(...)
 
 rb_cap_winsorize(...)
+
+rb_flag_ping_harbour(pings, harbours, keep = NULL, ...)
 }
 \arguments{
 \item{...}{Passed to the new function.}

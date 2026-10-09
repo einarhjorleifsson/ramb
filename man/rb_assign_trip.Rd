@@ -25,12 +25,13 @@ rb_assign_trip(
 \item{vid, time}{The ping columns, if named otherwise.}
 }
 \value{
-\code{pings} with \code{stay_harbour_id} (with \code{stays}), \code{voyage_id}, \code{trip_id}, \code{trip_basis}: the same
+\code{pings} with \code{stay_port_id} and, where the stays carry a \code{stay_id}, the stay's key \code{stay_id} (with
+\code{stays}), \code{voyage_id}, \code{trip_id}, \code{trip_basis}: the same
 type, the same rows.
 }
 \description{
 Step 1 of the fishing-activity flow. Each ping gets the voyage it lies in (\code{voyage_id}, from
-\code{\link[=rb_cut_trip_voyages]{rb_cut_trip_voyages()}}) and, with \code{stays}, the harbour stay it lies in (\code{stay_harbour_id}). \code{trip_id} is
+\code{\link[=rb_cut_trip_voyages]{rb_cut_trip_voyages()}}) and, with \code{stays}, the port stay it lies in (\code{stay_port_id}). \code{trip_id} is
 the voyage and \code{trip_basis} says where it came from: \code{"reconstructed"} (the track) or \code{"none"}. Declared
 trips (logbook) and landings as sources, and their reconciliation with the voyages, are to come (fishycode
 plan 013, phase 4). No ping is dropped.

@@ -1,5 +1,19 @@
 # ramb (development version)
 
+## "port", not "harbour" (2026-10-09)
+
+The place a trip starts and ends is a port throughout (fishycode plan 014, decision 075).
+
+- `rb_flag_ping_harbour()` is now `rb_flag_ping_port(pings, ports)`, adding `port_id`. The old name warns, and still
+  takes `harbours` and returns `harbour_id`.
+- `rb_find_trip_stays(pings, ports, ...)`: ports carry `port_id`, and so do the stays and the events. The rule
+  `gap_near_harbour` is `gap_near_port`.
+- `rb_cut_trip_voyages()`: `port_id` (for `"runs"`), and `port_from`/`port_to` on the voyages.
+- `rb_assign_trip()`: `stay_port_id`, and the stay's key `stay_id` where the stays carry one. A ping can then hold
+  the key and not the stay's values.
+- Not renamed: the `dansk_harbours` data, `rb_read_harbours_mfri()` (it reads a file of that name) and the
+  superseded `rb_trip_jepol(in_harbour)`.
+
 ## Step 2 and the window method of step 4 (2026-10-09)
 
 Ported from fishycode (`R/duration_limit.R`, `curate/station_window.R`, `R/trail_sql.R`; fishycode plan 014

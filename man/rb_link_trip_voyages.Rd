@@ -27,7 +27,7 @@ logbooks that record \code{T2} as a date (midnight) or that put \code{T2} before
 }
 \value{
 One row per linked trip: \code{keys}, \code{vid}, the voyage's \code{year}, \code{voyage_id}, \code{T1_voyage}, \code{T2_voyage},
-\code{harbour_from}, \code{harbour_to}, \code{n_pings}, \code{overlap_s}, \code{trip_span_s}, \code{overlap_frac}, \code{n_candidates}, \code{basis}
+\code{port_from}, \code{port_to}, \code{n_pings}, \code{overlap_s}, \code{trip_span_s}, \code{overlap_frac}, \code{n_candidates}, \code{basis}
 (\code{"ais_overlap"}). A data frame for data frame input, a lazy table for lazy input.
 }
 \description{

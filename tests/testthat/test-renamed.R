@@ -103,3 +103,13 @@ test_that("every export follows the naming rule, except names a later phase repl
   rule <- paste0("^rb_(", paste(verbs, collapse = "|"), ")(_|$)")
   expect_equal(exports[!grepl(rule, exports)], character(0))
 })
+
+test_that("rb_flag_ping_harbour() warns and keeps its old argument and column", {
+  sq <- sf::st_sf(harbour_id = "h1", geometry = sf::st_sfc(sf::st_polygon(list(rbind(c(0, 0), c(1, 0), c(1, 1), c(0, 1), c(0, 0)))), crs = 4326))
+  p <- data.frame(vid = 1L, time = Sys.time() + 1:2, lon = c(0.5, 2), lat = c(0.5, 2))
+  rlang::local_options(lifecycle_verbosity = "warning")
+  r <- suppressWarnings(rb_flag_ping_harbour(p, sq))
+  expect_equal(r$harbour_id[order(r$lon)], c("h1", NA))
+  r2 <- rb_flag_ping_port(p, dplyr::rename(sq, port_id = harbour_id))
+  expect_equal(r2$port_id[order(r2$lon)], c("h1", NA))
+})

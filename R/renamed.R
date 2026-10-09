@@ -233,3 +233,13 @@ rb_cap_miller <- function(...) { .rb_renamed("rb_cap_miller", 'rb_cap_outliers(m
 #' @rdname ramb-renamed
 #' @export
 rb_cap_winsorize <- function(...) { .rb_renamed("rb_cap_winsorize", 'rb_cap_outliers(method = "winsorize")'); rb_cap_outliers(..., method = "winsorize") }
+
+# Plan 014 (fishycode): the place word is "port". The old name keeps its old arguments and its old column.
+#' @rdname ramb-renamed
+#' @export
+rb_flag_ping_harbour <- function(pings, harbours, keep = NULL, ...) {
+  .rb_renamed("rb_flag_ping_harbour", "rb_flag_ping_port()")
+  out <- rb_flag_ping_port(pings, dplyr::rename(harbours, port_id = harbour_id), keep = keep, ...)
+  dplyr::rename(out, harbour_id = port_id)
+}
+

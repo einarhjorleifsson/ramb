@@ -29,7 +29,7 @@ utils::globalVariables(
   
 
 # Added with the step functions (plan 013 phase 2).
-utils::globalVariables(c(".whack_rn", "good", "harbour_id", "io", "n", "provider", "whack_stage"))
+utils::globalVariables(c(".whack_rn", "good", "port_id", "io", "n", "provider", "whack_stage"))
 
 #' @importFrom rlang :=
 NULL
