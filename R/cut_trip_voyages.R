@@ -3,15 +3,17 @@
 # Ported from fishycode's curate/ais_trip.R (decision 061; ramb plan 013 phase 2). Tier 2: one DuckDB query
 # each; a data frame is registered and the result collected, a lazy table stays lazy.
 
-# A ping takes the stay it falls in; inside two overlapping stays, the earlier one.
+# A ping takes the stay it falls in; inside two overlapping stays, the earlier one. Rows are numbered within the
+# vessel (rb_rid), not over the whole table: an unpartitioned row_number() runs on one core, which made the
+# step 5.5 times slower than the code it replaced (fishycode TODO 48).
 # With `stay_id` in the stays, the ping also takes the stay's key, so a ping can carry the key and not the
 # stay's values (fishycode plan 014).
 .rb_ping_stay_sql <- function(p_sql, s_sql, by_year, stay_id = FALSE) {
   sprintf("
-WITH p AS (SELECT *, row_number() OVER () AS rb_rid FROM (%s)),
+WITH p AS (SELECT *, row_number() OVER (PARTITION BY vid ORDER BY time) AS rb_rid FROM (%s)),
 s AS (SELECT vid, port_id, T_in, T_out, %s AS stay_id FROM (%s)),
 ps AS (SELECT p.*, s.port_id AS stay_port_id, s.stay_id FROM p LEFT JOIN s ON s.vid = p.vid AND p.time BETWEEN s.T_in AND s.T_out
-       QUALIFY row_number() OVER (PARTITION BY p.rb_rid ORDER BY s.T_in NULLS LAST, s.port_id) = 1)
+       QUALIFY row_number() OVER (PARTITION BY p.vid, p.rb_rid ORDER BY s.T_in NULLS LAST, s.port_id) = 1)
 SELECT *, %s AS rb_year FROM ps", p_sql, if (stay_id) "stay_id" else "NULL::BIGINT", s_sql, if (by_year) "year(time)" else "0")
 }
 
@@ -62,7 +64,7 @@ rb_cut_trip_voyages <- function(pings, stays = NULL, method = c("stays", "runs",
   ps <- if (method == "stays") {
     .rb_ping_stay_sql(.rb_sql(dplyr::select(p, vid, time)), .rb_sql(.rb_as_lazy(stays, con)), by_year)
   } else {
-    sprintf("SELECT *, port_id AS stay_port_id, row_number() OVER () AS rb_rid, %s AS rb_year FROM (%s)",
+    sprintf("SELECT *, port_id AS stay_port_id, row_number() OVER (PARTITION BY vid ORDER BY time) AS rb_rid, %s AS rb_year FROM (%s)",
             if (by_year) "year(time)" else "0", .rb_sql(dplyr::select(p, vid, time, port_id)))
   }
   sql <- sprintf("
@@ -115,7 +117,7 @@ rb_assign_trip <- function(pings, voyages, stays = NULL, by_year = TRUE, vid = v
   p <- .rb_as_lazy(.rb_std_in(pings, map), con)
   v <- .rb_as_lazy(voyages, con)
   base <- if (is.null(stays)) {
-    sprintf("SELECT *, NULL::VARCHAR AS stay_port_id, NULL::BIGINT AS stay_id, row_number() OVER () AS rb_rid FROM (%s)", .rb_sql(p))
+    sprintf("SELECT *, NULL::VARCHAR AS stay_port_id, NULL::BIGINT AS stay_id, row_number() OVER (PARTITION BY vid ORDER BY time) AS rb_rid FROM (%s)", .rb_sql(p))
   } else {
     sprintf("SELECT * EXCLUDE (rb_year) FROM (%s)", .rb_ping_stay_sql(.rb_sql(p), .rb_sql(.rb_as_lazy(stays, con)), by_year,
                                                                    stay_id = "stay_id" %in% colnames(stays)))
@@ -125,7 +127,7 @@ rb_assign_trip <- function(pings, voyages, stays = NULL, by_year = TRUE, vid = v
   sql <- sprintf("
 WITH b AS (%s), v AS (%s),
 j AS (SELECT b.*, v.voyage_id FROM b LEFT JOIN v ON v.vid = b.vid %s AND b.time BETWEEN v.T1 AND v.T2
-      QUALIFY row_number() OVER (PARTITION BY b.rb_rid ORDER BY v.T1) = 1)
+      QUALIFY row_number() OVER (PARTITION BY b.vid, b.rb_rid ORDER BY v.T1) = 1)
 SELECT * EXCLUDE (%s), voyage_id AS trip_id,
        CASE WHEN voyage_id IS NULL THEN 'none' ELSE 'reconstructed' END AS trip_basis
 FROM j", base, .rb_sql(v), yr, drop)
