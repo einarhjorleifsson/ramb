@@ -5,7 +5,7 @@
 The articles are now a small user-facing set explaining the essence of the package, all self-contained (package data only, no undeclared dependencies):
 
 - `flow`: the fishing-activity flow, the naming conventions and the basis vocabulary — the get-started article (named `flow`, not `ramb`: pkgdown reserves the package name for a root vignette).
-- `trips`: extended with step 0 (flagging invalid and impossible pings, tagging port pings with `rb_flag_ping_port()`) and closes with `rb_assign_trip()`. Three interactive `mapview` maps illustrate the flagging, the port polygons and the cut voyages on one vessel-year (`EX_11`, 2015).
+- `trips`: extended with step 0 (flagging invalid and impossible pings, tagging port pings with `rb_flag_ping_port()`) and closes with `rb_assign_trip()`. Interactive `mapview` maps with toggleable layers illustrate the cut: two clean trips (`EX_3`, Sep 2020) where the rules agree, the afternoon where `"runs"` and `"jepol"` disagree (`EX_10`, Jul 2014, two six-minute mini-voyages), and a voyage sailing with eight flagged pings.
 - `gear`: the former `benthis` article, now self-contained (no `vmstools` needed for example data) and widened to métier extraction and the BENTHIS lookup; the hotlinked journal figure is gone.
 - `catch`: new — sharing catch and value over fishing pings with `rb_share_catch()`.
 - `tools`: new — the step-independent toolbox (track calculations, interpolation, polygons, ICES rectangles, binning, capping, timestamps, MMSI).

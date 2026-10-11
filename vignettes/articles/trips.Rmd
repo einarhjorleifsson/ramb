@@ -56,53 +56,20 @@ d |> count(ping_flag)
 A third flagger, `rb_flag_ping_duplicate()`, marks the lower-priority
 feed's copy when several feeds report the same fix.
 
-Where are the flagged pings? One vessel, one year — `EX_11` in 2015 has
-the most flags in these data. The flagged pings (red) sit at the
-fringes of the track, exactly where a positional glitch would put them:
-
-```{r}
-library(mapview)
-
-ex11 <-
-  d |>
-  filter(vid == "EX_11", lubridate::year(time) == 2015) |>
-  sf::st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE)
-
-mapview(ex11 |> filter(is.na(ping_flag)) |> slice(seq(1, n(), by = 25)),
-        cex = 1, alpha = 0.3, col.regions = "grey60", layer.name = "ok") +
-  mapview(ex11 |> filter(!is.na(ping_flag)),
-          cex = 5, col.regions = "red", layer.name = "flagged")
-```
-
 Finally, tag each ping with the port polygon it lies in. `port_id` is a
-value in port, `NA` at sea — this is the column trips are cut on:
+value in port, `NA` at sea — this is the column trips are cut on. The
+flagged pings are set aside (kept in `flagged` for the maps below);
+nothing is deleted:
 
 ```{r}
 harbours <- dansk_harbours |> rename(port_id = SI_HARB)
+
+flagged <- d |> filter(!is.na(ping_flag))
 
 d <-
   d |>
   filter(is.na(ping_flag)) |>
   rb_flag_ping_port(harbours)
-```
-
-The harbour polygons that matter for this vessel, and the pings they
-catch (green is in port, blue at sea):
-
-```{r}
-ex11_sea <-
-  d |>
-  filter(vid == "EX_11", lubridate::year(time) == 2015) |>
-  sf::st_as_sf(coords = c("lon", "lat"), crs = 4326)
-hb_local <- sf::st_crop(dansk_harbours, sf::st_bbox(ex11_sea) + c(-0.5, -0.5, 0.5, 0.5))
-
-mapview(hb_local, col.regions = "orange", alpha.regions = 0.4,
-        layer.name = "harbours") +
-  mapview(ex11_sea |>
-            slice(seq(1, n(), by = 50)) |>
-            mutate(port = ifelse(is.na(port_id), "sea", "port")),
-          zcol = "port", cex = 1.5,
-          col.regions = c("steelblue", "darkgreen"))
 ```
 
 ## Step 1: cut the track into voyages
@@ -150,24 +117,120 @@ trip was rebuilt from the track, `"none"` where no voyage covers the
 ping (the port pings here):
 
 ```{r}
-d |>
-  rb_assign_trip(jepol) |>
-  count(trip_basis)
+p <- d |> rb_assign_trip(jepol)
+p |> count(trip_basis)
 ```
 
-The cut, visualised — `EX_11`'s 2015 pings coloured by voyage. The
-uncoloured (grey) clusters at the polygon are the port pings, with
-`trip_basis = "none"`:
+## The cut, in maps
+
+Toggle the layers (top right of each map) to look at one trip at a
+time.
+
+### Two clean trips
+
+`EX_3`, September 2020 — two voyages out of port 917, no flagged pings
+anywhere in their windows:
+
+* **Voyage 3** (Sep 15, ~8 h at sea): a simple out-and-back day trip,
+  south along the coast and home again.
+* **Voyage 4** (Sep 17–18, ~12 h): an overnight trip — out in the
+  evening, fishing through the night, back before dawn.
 
 ```{r}
-d |>
-  rb_assign_trip(jepol) |>
-  filter(vid == "EX_11", lubridate::year(time) == 2015) |>
-  sf::st_as_sf(coords = c("lon", "lat"), crs = 4326) |>
-  mutate(voyage = factor(voyage_id)) |>
-  slice(seq(1, n(), by = 10)) |>
-  mapview(zcol = "voyage", cex = 2)
+library(mapview)
+
+as_line <- function(x) {
+  x |>
+    arrange(time) |>
+    sf::st_as_sf(coords = c("lon", "lat"), crs = 4326) |>
+    sf::st_combine() |>
+    sf::st_cast("LINESTRING") |>
+    sf::st_sf()
+}
+
+ex3 <- p |> filter(vid == "EX_3", lubridate::year(time) == 2020, voyage_id %in% 3:4)
+
+mapview(harbours |> filter(port_id == 917),
+        col.regions = "orange", alpha.regions = 0.4, layer.name = "Port 917") +
+  mapview(ex3 |> filter(voyage_id == 3) |> as_line(),
+          color = "steelblue", lwd = 2, layer.name = "Voyage 3 (Sep 15)") +
+  mapview(ex3 |> filter(voyage_id == 4) |> as_line(),
+          color = "darkred", lwd = 2, layer.name = "Voyage 4 (Sep 17-18)")
 ```
+
+On clean tracks like these the choice of cutting rule is immaterial:
+each run at sea is one voyage under both `"runs"` and `"jepol"`, and
+the two tables row-match exactly. The rules only earn their keep when
+the track is less tidy — as next.
+
+### When the rules disagree
+
+`EX_10`, July 2014, out of port 141. The runs rule cuts seven voyages
+this year, the jepol rule five — the difference is one afternoon:
+
+* **The day's trip** (blue): out at 04:08, back at 11:25. Both rules
+  agree on it.
+* **Two mini-voyages** (red): brief out-and-backs the same afternoon,
+  at 14:37 and 14:53, each under ten minutes. `"runs"` takes every port
+  departure literally and makes them voyages 5 and 6; `"jepol"` drops
+  any voyage shorter than `min_dur_h` (0.5 h), so these pings end up
+  with `trip_basis = "none"`.
+* **One flagged ping** (black): a `"forward"` flag from step 0, set
+  aside before cutting, so it takes no part in either rule.
+
+```{r}
+ex10 <-
+  d |>
+  rb_assign_trip(runs) |>
+  filter(vid == "EX_10", lubridate::date(time) == as.Date("2014-07-18"))
+
+mapview(harbours |> filter(port_id == 141),
+        col.regions = "orange", alpha.regions = 0.4, layer.name = "Port 141") +
+  mapview(ex10 |> filter(voyage_id == 4) |> as_line(),
+          color = "steelblue", lwd = 2, layer.name = "Day trip (04:08-11:25)") +
+  mapview(ex10 |> filter(voyage_id %in% 5:6) |>
+            sf::st_as_sf(coords = c("lon", "lat"), crs = 4326),
+          col.regions = "red", cex = 4, layer.name = "Mini-voyages (runs only)") +
+  mapview(flagged |> filter(vid == "EX_10", lubridate::date(time) == as.Date("2014-07-18")) |>
+            sf::st_as_sf(coords = c("lon", "lat"), crs = 4326),
+          col.regions = "black", cex = 6, layer.name = "Flagged ping")
+```
+
+Which is right? If the afternoon runs were the skipper moving berth or
+testing the engine, dropping them (jepol) is honest; if gear was in the
+water, only `"runs"` keeps them. The third rule, `"stays"`, goes the
+other way entirely: it ends a voyage only at a *stay*, so a brief
+harbour passage mid-trip would not split the day's trip either.
+
+### Trouble pings inside a voyage
+
+The next day on the same vessel. Voyage 5 (Jul 19, 04:12–12:30) sails
+with eight flagged pings in its window:
+
+* **The voyage** (blue): the track as kept after step 0.
+* **The flagged pings** (red): a `"vmask"` flag near port in the
+  morning, then a burst of seven `"forward"` flags in the last quarter
+  of an hour before landing — the classic signature of a GPS glitch
+  burst on the final approach.
+
+```{r}
+v5 <- p |> filter(vid == "EX_10", voyage_id == 5, lubridate::year(time) == 2014)
+f5 <- flagged |>
+  filter(vid == "EX_10", lubridate::date(time) == as.Date("2014-07-19"))
+
+mapview(harbours |> filter(port_id == 141),
+        col.regions = "orange", alpha.regions = 0.4, layer.name = "Port 141") +
+  mapview(v5 |> as_line(),
+          color = "steelblue", lwd = 2, layer.name = "Voyage 5 (Jul 19)") +
+  mapview(f5 |> sf::st_as_sf(coords = c("lon", "lat"), crs = 4326),
+          col.regions = "red", cex = 6, layer.name = "Flagged pings")
+```
+
+Because the flags are set aside first, neither cutting rule is confused
+by the glitch: the voyage is cut on the clean pings, and the voyage
+window then covers the gap. This is why step 0 flags rather than drops
+— the flagged pings still exist for audit, but they cannot bend the
+trip boundaries.
 
 From here the flow continues with the logbook record (step 2): which
 declared trip or haul covers each ping. `rb_link_trip_logbook()` builds
