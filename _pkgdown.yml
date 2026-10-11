@@ -1,5 +1,15 @@
 url: https://heima.hafro.is/~einarhj/ramb
 
+articles:
+- title: "Worked examples"
+  contents:
+  - trips
+  - benthis
+  - case_example01
+- title: "Implementation notes"
+  contents:
+  - technicalities
+
 reference:
 - title: "Ping (step 0): flag pings"
   contents:
@@ -13,7 +23,7 @@ reference:
   - rb_cut_trip_voyages
   - rb_assign_trip
   - rb_link_trip_voyages
-  - rb_add_tripid
+  - rb_link_trip_logbook
   - rb_pad_harbour
 - title: "Record (step 2)"
   contents:
@@ -28,7 +38,7 @@ reference:
   - rb_standardise_gear_meshsize
 - title: "Catch (step 6)"
   contents:
-  - dc_spread_cash_and_catch
+  - rb_share_catch
 - title: "Tools: track calculations"
   contents:
   - rb_calc_speed
@@ -48,7 +58,6 @@ reference:
   - rb_drop_in_polygons
   - rb_encode_ices_rectangle
   - rb_bin_midpoint
-  - rb_grade
 - title: "Tools: values, dates, vessels"
   contents:
   - rb_cap_outliers

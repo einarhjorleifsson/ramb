@@ -14,7 +14,7 @@ rb_classify_mmsi <- function(mmsi) {
     dplyr::mutate(
       mmsi = as.character(mmsi),
       mmsi_candidate = dplyr::case_when(
-        nchar(mmsi) == 9 & numbers_only(mmsi) ~ TRUE,
+        nchar(mmsi) == 9 & .rb_numbers_only(mmsi) ~ TRUE,
         .default = FALSE
       )
     ) |>
@@ -66,13 +66,10 @@ rb_classify_mmsi <- function(mmsi) {
 #' @export
 #'
 rb_lookup_mmsi_country <- function(mmsi, lookup) {
-  # Check that it doesn't match any non-number
-  numbers_only <- function(x) !grepl("\\D", x)
-
   tibble::tibble(mmsi = mmsi) |>
     dplyr::mutate(
       .mmsi_candidate = dplyr::case_when(
-        nchar(mmsi) == 9 & numbers_only(mmsi) ~ TRUE,
+        nchar(mmsi) == 9 & .rb_numbers_only(mmsi) ~ TRUE,
         .default = FALSE
       )
     ) |>

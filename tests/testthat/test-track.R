@@ -1,3 +1,20 @@
+test_that("rb_calc_distance() gives haversine metres on the filters' sphere", {
+  expect_equal(rb_calc_distance(0, 64, 0, 65), 2 * pi * 6371000 / 360)
+  expect_equal(rb_calc_distance(-21.9, 64.1, -21.9, 64.1), 0)
+  expect_equal(rb_calc_distance(10, 0, 11, 0), 2 * pi * 6371000 / 360) # one degree of longitude at the equator
+  expect_equal(
+    rb_calc_distance(-22, 64, -24, 65),
+    rb_calc_distance(-24, 65, -22, 64)
+  )
+})
+
+test_that("rb_calc_distance() is vectorised, recycles and passes NA through", {
+  d <- rb_calc_distance(c(0, 0, NA), 64, 0, c(65, 64, 64))
+  expect_length(d, 3)
+  expect_equal(d[1:2], c(2 * pi * 6371000 / 360, 0))
+  expect_true(is.na(d[3]))
+  expect_equal(rb_calc_distance(0, 0, 180, 0), pi * 6371000) # antipodes: asin() argument capped at 1
+})
 # The traipse recode (R/geodesic.R): same steps as traipse/geodist's geodesic, to well under a millimetre.
 
 test_that("track distance, time and speed match traipse", {

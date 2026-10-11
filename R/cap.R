@@ -1,11 +1,5 @@
-#' Calculate the upper IQR multiplier value
-#'
-#' @param x A numeric vector
-#' @param multiplier Default is 1.5
-#'
-#' @return The upper limit value
-#'
-rb_iqr <- function(x, multiplier = 1.5) {
+# Upper IQR-multiplier limit of x (computed on the log scale, back-transformed)
+.rb_iqr <- function(x, multiplier = 1.5) {
   y <- log(x)
   upper <- min(
     max(y, na.rm = TRUE),
@@ -26,19 +20,13 @@ rb_iqr <- function(x, multiplier = 1.5) {
 #' @noRd
 #'
 .rb_cap_iqr <- function(x, multiplier = 1.5) {
-  upper <- rb_iqr(x, multiplier)
+  upper <- .rb_iqr(x, multiplier)
   x[x > upper] <- upper
   return(x)
 }
 
-#' Calculate the upper Winsor value
-#'
-#' @param x A numeric vector
-#' @param probs Default is 0.99
-#'
-#' @return The value corresponding to the percentile
-#'
-rb_winsor <- function(x, probs = 0.99) {
+# The probs percentile of x, used as the winsorizing limit
+.rb_winsor <- function(x, probs = 0.99) {
   stats::quantile(x = x, probs = probs, na.rm = FALSE)
 }
 
@@ -61,21 +49,14 @@ rb_winsor <- function(x, probs = 0.99) {
     message("Value should be between 0 and 1")
   }
 
-  limit <- rb_winsor(x, probs)
+  limit <- .rb_winsor(x, probs)
   x[x > limit] <- limit
 
   return(x)
 }
 
-#' Calculate the Miller limit
-#'
-#' @param x A numeric vector
-#' @param step_limit A single value (default 1.5), log10 step values between consecutive
-#' ordered values of x will be capped by the maximum step value.
-#'
-#' @return A value to be used as cap
-#'
-rb_miller <- function(x, step_limit = 1.5) {
+# Miller limit: highest value of x before a log10 step larger than step_limit
+.rb_miller <- function(x, step_limit = 1.5) {
   w <- x |> unique() |> sort()
   w <- w[w > 0]
 
@@ -121,7 +102,7 @@ rb_miller <- function(x, step_limit = 1.5) {
 #' @noRd
 #'
 .rb_cap_miller <- function(x, step_limit = 1.5) {
-  limit <- rb_miller(x, step_limit)
+  limit <- .rb_miller(x, step_limit)
 
   x[x > limit] <- limit
   return(x)

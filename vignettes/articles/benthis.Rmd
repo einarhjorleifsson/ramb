@@ -63,7 +63,7 @@ data("eflalo")
 lb <- 
   eflalo |> 
   as_tibble() |> 
-  mutate(metier5 = rb_met5_from6(LE_MET_level6)) |> 
+  mutate(metier5 = rb_extract_metier(LE_MET_level6, part = "metier5")) |>
   select(length = VE_LEN, kw = VE_KW, metier5, metier6 = LE_MET_level6) |> 
   distinct() |> 
   mutate(.rid = 1:n(),
@@ -101,14 +101,5 @@ lb2 <-
 identical(lb1$width, lb2$width)
 ```
 
-## Comparision with ICES VMS datacall flow
-
-Just a double check:
-
-```{r}
-source("~/stasi/ices/ICES-VMS-and-Logbook-Data-Call/0_global_functions.R")
-lb3 <- lb
-lb3$width <- add_gearwidth(lb3, "metier6", "length", "kw")
-identical(lb2$width / 1000, lb3$width)
-near(lb2$width / 1000, lb3$width) |> table(useNA = "ifany")
-```
+The function returns metres; divide by 1000 if your workflow expects
+kilometres (the ICES VMS datacall flow does).

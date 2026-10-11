@@ -14,7 +14,8 @@
 #' a track), cut (segments of a track), build (a rule or window table), link (a crosswalk, ambiguity
 #' kept), limit (judge a value against a rule, raw kept), number, detect (a logical vector), calc (a
 #' numeric vector), encode, extract, convert, bin, and the plain English verbs (interpolate, fill,
-#' predict, classify, lookup, cap, standardise, sum, check, get, read, plot, register).
+#' predict, classify, lookup, cap, standardise, sum, check, get, read, plot, register). Two of these
+#' pair up: \code{detect} returns a logical vector, \code{check} inspects a table and warns.
 #'
 #' A method is never part of a name; it is the \code{method} argument. A grouping is never part of
 #' a method; it is the \code{by} argument. The rename plan is fishycode's

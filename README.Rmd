@@ -20,9 +20,9 @@ knitr::opts_chunk$set(
 <!-- badges: start -->
 <!-- badges: end -->
 
-The goal of {ramb} is to return various "move"-objects to tibbles for further downstream processing using the tidyverse lingo. The focus has been on AIS vessel data and has only been tested on limited dataset.
+{ramb} provides tools for vessel-track (AIS/VMS) data and the steps of the ICES fishing-activity flow (WGSFD): flagging pings, finding port stays, cutting trips, building record windows, and gear, effort and catch handling. Everything returns tibbles for downstream tidyverse processing, and data frames and lazy DuckDB tables give the same result.
 
-The multibeam-bathymetry raster and rayshading functions that used to live here moved to the sister package {omb} (`../omb`, functions prefixed `om_`) in 2026-10.
+The multibeam-bathymetry raster and rayshading functions that used to live here moved to the sister package {omb} (`../omb`, functions prefixed `om_`) in 2026-10, and the movement-behaviour models moved to {fishymodel} (`../fishymodel`, functions prefixed `fm_`).
 
 ## Installation
 

@@ -15,3 +15,4 @@ TOPSECRET.R
 ^zgarbage$
 ^TODO\.md$
 AGENTS.md
+^air\.toml$

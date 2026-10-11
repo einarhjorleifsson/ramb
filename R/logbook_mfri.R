@@ -225,7 +225,9 @@ rb_fill_gear_width <- function(lb) {
   return(lb)
 }
 
-rb_lump_gears <- function(lb) {
+# Lump Icelandic gear ids into broader groups. Currently unused; kept for the
+# MFRI logbook curation flow it was written for.
+.rb_lump_gears <- function(lb) {
   lb |>
     dplyr::mutate(
       gid = dplyr::case_when(

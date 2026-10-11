@@ -1,10 +1,56 @@
-#' Mapping between mobileid and vessel id
+#' rb_read_harbours_mfri
 #'
-#' @param con oracle connection
+#' A conenient wrapper that read a dataframe of Icelandic harbours (hid) with
+#' associated polygon geometry from an open ftp-site.
 #'
-#' @return a query
+#' @return An sf-tibble
+#' @export
 #'
-rb_mobile_vid <- function(con) {
+rb_read_harbours_mfri <- function() {
+  sf::read_sf("ftp://ftp.hafro.is/pub/data/shapes/harbours.gpkg")
+}
+
+#' rb_read_survey_tracks_mfri
+#'
+#' A conenient wrapper that read a dataframe of Icelandic trawl vessel ais/vms
+#' data. The variables are \code{vid} (vessel idendification numner), \code{cruise_id}
+#' (cruise identification number) and the usual ais/vms variables (\code{time},
+#' \code{lon}, \code{lat}, \code{speed}, \code{heading}).
+#'
+#' @return A tibble
+#' @export
+#'
+rb_read_survey_tracks_mfri <- function() {
+  readr::read_csv(
+    "ftp://ftp.hafro.is/pub/data/csv/is_survey-tracks.csv",
+    show_col_types = FALSE
+  )
+}
+
+
+#' rb_read_survey_stations_mfri
+#'
+#' A conenient wrapper that read a dataframe of Icelandic trawl vessel survey
+#' tow data. The variables are \code{cruise_id} (cruise identification number),
+#' \code{station_id} (unique station identification numner), \code{station_nr}
+#' (a non-unique station number), \code{date} (date the tow was taken),
+#' \code{vid} (vessel identification number), \code{sclass} (sample class, 30
+#' is the annual spring survey, 35 the annual fall survey) and time-space
+#' informations: start (\code{lon1}, \code{lat1}, \code{t1}) and end
+#' (\code{lon2}, \code{lat2}, \code{t2}) of towing as reported by the vessel
+#' captain.
+#'
+#' @return A tibble
+#' @export
+#'
+rb_read_survey_stations_mfri <- function() {
+  readr::read_csv(
+    "ftp://ftp.hafro.is/pub/data/csv/is_survey-stations.csv",
+    show_col_types = FALSE
+  )
+}
+# Query: mapping between mobileid and vessel id
+.rb_mobile_vid <- function(con) {
   omar::tbl_mar(con, "ops$einarhj.mobile_vid") |>
     dplyr::mutate(
       t1 = to_date(t1, "YYYY:MM:DD"),
@@ -12,17 +58,8 @@ rb_mobile_vid <- function(con) {
     )
 }
 
-#' Query ais/vms database
-#'
-#' @name rb_stk_trail
-#'
-#' @param con oracle connection
-#' @param vid vessel id
-#'
-#'
-#' @return a query
-#'
-rb_stk_trail <- function(con, vid) {
+# Query: the stk.trail table with decoded positions and ramb column names
+.rb_stk_trail <- function(con, vid) {
   omar::tbl_mar(con, "stk.trail") |>
     dplyr::mutate(
       lon = poslon * 180 / pi,
@@ -55,30 +92,23 @@ rb_read_trail_mfri <- function(con, vid) {
   if (!missing(vid)) {
     VID <- vid
     q <-
-      rb_mobile_vid(con) |>
+      .rb_mobile_vid(con) |>
       dplyr::filter(!is.na(pings) | link == "manual") |>
       dplyr::select(mid, vid, t1, t2) |>
       dplyr::filter(vid %in% VID) |>
-      dplyr::left_join(rb_stk_trail(con), by = "mid") |>
+      dplyr::left_join(.rb_stk_trail(con), by = "mid") |>
       dplyr::filter(time >= t1, time <= t2) |>
       dplyr::select(-c(t1, t2))
   } else {
     q <-
-      rb_stk_trail(con)
+      .rb_stk_trail(con)
   }
   return(q)
 }
 
-#' Read all trails - redundant
-#'
-#' @param con oracle connection
-#' @param VID vessel
-#' @param YEARS years
-#' @param use_PAM xxx
-#'
-#' @return a tibble
-#'
-rb_read_trails <- function(con, VID, YEARS, use_PAM = FALSE) {
+# Read and merge stk, logbook and PAM trails for given vessels and years.
+# Legacy: kept for the old MFRI workflow; rb_read_trail_mfri() is the reader.
+.rb_read_trails <- function(con, VID, YEARS, use_PAM = FALSE) {
   D1 <- paste0(min(YEARS), "-01-01")
   D2 <- paste0(max(YEARS), "-12-31")
 

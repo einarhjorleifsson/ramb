@@ -4,9 +4,9 @@
 \name{ramb-package}
 \alias{ramb}
 \alias{ramb-package}
-\title{ramb: Rambling}
+\title{ramb: Vessel Track Tools and the ICES Fishing-Activity Flow}
 \description{
-Some stuff on vessels tracks.
+Tools for vessel-track (AIS/VMS) data and the steps of the ICES fishing-activity flow (WGSFD): flagging pings, finding port stays, cutting trips, building record windows, and gear, effort and catch handling. Everything returns tibbles for downstream tidyverse processing, and data frames and lazy DuckDB tables give the same result.
 }
 \section{Naming}{
 
@@ -21,7 +21,8 @@ source, with a basis), share (distribute a quantity, conserving the total), find
 a track), cut (segments of a track), build (a rule or window table), link (a crosswalk, ambiguity
 kept), limit (judge a value against a rule, raw kept), number, detect (a logical vector), calc (a
 numeric vector), encode, extract, convert, bin, and the plain English verbs (interpolate, fill,
-predict, classify, lookup, cap, standardise, sum, check, get, read, plot, register).
+predict, classify, lookup, cap, standardise, sum, check, get, read, plot, register). Two of these
+pair up: \code{detect} returns a logical vector, \code{check} inspects a table and warns.
 
 A method is never part of a name; it is the \code{method} argument. A grouping is never part of
 a method; it is the \code{by} argument. The rename plan is fishycode's

@@ -1,53 +1,79 @@
 ---
-title: "Trips"
+title: "Defining trips from vessel tracks"
 ---
 
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
-  message = FALSE, 
+  message = FALSE,
   warning = FALSE,
   collapse = TRUE,
-  error = TRUE,
   comment = "#>"
 )
 ```
 
-## Defining trips based on points in or not in harbour
+A trip (voyage) is the part of a vessel track between leaving port and
+returning to port. In ramb, cutting a track into trips is step 1 of the
+fishing-activity flow, done by `rb_cut_trip_voyages()`. One function, three
+rules (`method`): here we compare two of them on the Danish example data.
+
+## Pings in port and at sea
+
+First, flag each ping as in port or at sea. `dansk_harbours` is a set of
+harbour polygons shipped with the package; `rb_detect_in_polygons()` tells
+us which pings fall inside one. Trips are cut on `port_id`: a value in port,
+`NA` at sea.
 
 ```{r}
 library(ramb)
 library(sf)
-library(tidyverse)
-# example data -----------------------------------------------------------------
-d <-
-  dansk |> 
-  arrange(vessel_id, time_stamp) |> 
-  # find points in harbour
-  st_as_sf(coords = c("lon", "lat"),
-           crs = 4326,
-           remove = FALSE) |> 
-  # in harbour = 1, at sea = 0
-  mutate(in_harbour = rb_detect_in_polygons(geometry, dansk_harbours))
-# Jeppe ------------------------------------------------------------------------
-jeppe <-
-  d |> 
-  mutate(trip_id = ramb:::rb_trip_jepol(vessel_id, time_stamp, in_harbour))
-# Einar ------------------------------------------------------------------------
-einar <-
-  d |> 
-  group_by(vessel_id) |> 
-  mutate(trip_id = rb_trip(in_harbour)) |> 
-  ungroup()
+library(dplyr)
 
-jeppe |> 
-  st_drop_geometry() |>
-  count(trip_id, name = "jeppe") |> 
-  full_join(einar |> 
-              st_drop_geometry() |> 
-              mutate(trip_id = paste0(vessel_id, "_", trip_id)) |> 
-              count(trip_id, name = "einar")) |> 
-  #filter(jeppe != einar) |> 
-  mutate(dt = abs(jeppe - einar)) |> 
-  count(dt)
+d <-
+  dansk |>
+  arrange(vessel_id, time_stamp) |>
+  st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE) |>
+  mutate(
+    in_harbour = rb_detect_in_polygons(geometry, dansk_harbours),
+    port_id = if_else(in_harbour, 1L, NA_integer_)
+  ) |>
+  st_drop_geometry()
 ```
 
+## Two cutting rules
+
+* `method = "runs"`: every run of pings in port, however short, ends a
+  voyage.
+* `method = "jepol"`: the ICES VMS datacall rule (`define_trips_pol`). A
+  voyage runs from the first ping at sea to the first ping back in port;
+  voyages shorter than `min_dur_h` hours are dropped, and voyages longer
+  than `max_dur_h` hours are split at long gaps between pings.
+
+The ping columns are called `vessel_id` and `time_stamp` in `dansk`, so we
+say so via `vid` and `time`:
+
+```{r}
+jepol <- rb_cut_trip_voyages(d, method = "jepol", vid = vessel_id, time = time_stamp)
+runs  <- rb_cut_trip_voyages(d, method = "runs",  vid = vessel_id, time = time_stamp)
+```
+
+Both return one row per voyage: vessel, year, voyage id, start and end time,
+the ports departed from and returned to, and the number of pings.
+
+```{r}
+jepol
+```
+
+## Comparison
+
+The two rules largely agree on these data; the jepol rule drops a few short
+harbour-to-harbour runs:
+
+```{r}
+count(jepol, vessel_id, name = "voyages_jepol") |>
+  full_join(count(runs, vessel_id, name = "voyages_runs"), by = "vessel_id")
+```
+
+A third rule, `method = "stays"`, cuts the track at port *stays* found by
+`rb_find_trip_stays()` — stays being longer stops, so brief harbour passages
+do not end a voyage. That is the rule used in the full fishing-activity
+flow.

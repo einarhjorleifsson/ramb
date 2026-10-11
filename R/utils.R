@@ -1,13 +1,29 @@
-# Check that it doesn't match any non-letter
-letters_only <- function(x) !grepl("[^A-Za-z]", x)
-# Check that it doesn't match any non-number
-numbers_only <- function(x) !grepl("\\D", x)
+# TRUE if x contains digits only; used by the MMSI functions
+.rb_numbers_only <- function(x) !grepl("\\D", x)
 
-str_extract_between_parenthesis <- function(x) {
-  stringr::str_match(x, "(?<=\\().+?(?=\\))")
-}
 
-str_extract_dmy_period <-
-  function(x) {
-    stringr::str_extract(x, "\\d+\\D+\\d+\\D+\\d+")
+#' rb_peek
+#'
+#' Experimental function, returns rows adjacent to the one fulfilling a critera
+#'
+#' @param d ais/vms track tibble
+#' @param what the variable name to check
+#' @param criteria the critera.
+#'
+#' @return a tibble
+#' @export
+#'
+rb_peek <- function(d, what, criteria) {
+  d |>
+    dplyr::filter({{ what }} > criteria) |>
+    dplyr::pull(.rid) -> rid
+  d <-
+    d |>
+    dplyr::mutate(whacky = ifelse(.rid %in% rid, "whacky", ""))
+  # need to vectorize:
+  rids <- NULL
+  for (i in 1:length(rid)) {
+    rids <- c(rids, rid[i] + c(-2, -1, 0, 1, 2))
   }
+  d |> dplyr::filter(.rid %in% rids)
+}

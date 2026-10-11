@@ -1,5 +1,14 @@
 # ramb (development version)
 
+## Renames for consistency with the verb glossary (2026-10-11)
+
+- `dc_spread_cash_and_catch()` is now `rb_share_catch()` — "share" is the glossary verb for distributing a quantity while conserving the total, and the last export without the `rb_` prefix is gone. The placeholder arguments `ignore_Einstein` and `go_nuclear` are now `raise_unallocated = FALSE` and `raise_unmatched = FALSE` (still reserved, not yet implemented).
+- `rb_add_tripid()` is now `rb_link_trip_logbook()` — a VMS-to-logbook crosswalk, "link" in the glossary, and no longer confusable with `rb_assign_trip()`.
+- `rb_grade()` is removed; `rb_bin_midpoint()` is the same binning with the floating-point floor fixed.
+- Internal helpers now follow the dot-prefix policy and lost their stray help pages: `.rb_iqr()`, `.rb_winsor()`, `.rb_miller()` (cap.R), `.rb_mobile_vid()`, `.rb_stk_trail()`, `.rb_read_trails()` (read_trails.R), `.rb_lump_gears()` (logbook_mfri.R) and `.rb_numbers_only()` (utils.R).
+- The `R/` sources are reorganised from 40 topically-named files into 22 named after their stage or function (`trip.R`, `track.R`, `time.R`, `gear.R`, `catch.R`, ...); test files mirror them. No behaviour change.
+- The articles are user-facing again: six developer-note sketches (two of which sourced `TOPSECRET.R`) moved out to fishycode (`curate/ramb-articles/`); `trips.Rmd` was rewritten for the one-flow API (`rb_cut_trip_voyages()`), `case_example01.Rmd` now calls the `fm_*` models in fishymodel, and the four remaining articles appear in the pkgdown navbar.
+
 ## Old model functions resurrected in fishymodel (2026-10-11)
 
 The trip-model wrappers removed on 2025-09-10 (commit f9d4039) — `rb_gaussian()`, `rb_gaussian_binary_clustering()`, `rb_hidden_markov_step()` and `rb_hidden_markov_step_and_turn()`, plus the `tidy_*` wrappers — now live in the sister package `fishymodel` (`../fishymodel`), renamed with an `fm_` prefix.

@@ -153,5 +153,15 @@ utils::globalVariables(c(
   "whack_stage"
 ))
 
+# rb_calc_duration (epoch is the dbplyr/DuckDB translation) and
+# rb_limit_record_duration column pronouns.
+utils::globalVariables(c(
+  "epoch",
+  ".data",
+  "duration_m",
+  "duration_source",
+  "dur_max_min"
+))
+
 #' @importFrom rlang :=
 NULL

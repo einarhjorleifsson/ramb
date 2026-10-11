@@ -1,12 +1,16 @@
 Package: ramb
 Type: Package
-Title: Rambling
+Title: Vessel Track Tools and the ICES Fishing-Activity Flow
 Version: 2026.10.08.1
 Authors@R: c(
   person("Einar", "Hjörleifsson", role = c("aut", "cre"), email = "einar.hjorleifsson@gmail.com")
   )
 Maintainer: Einar Hjörleifsson <einar.hjorleifsson@gmail.com>
-Description: Some stuff on vessels tracks.
+Description: Tools for vessel-track (AIS/VMS) data and the steps of the ICES
+    fishing-activity flow (WGSFD): flagging pings, finding port stays, cutting
+    trips, building record windows, and gear, effort and catch handling.
+    Everything returns tibbles for downstream tidyverse processing, and data
+    frames and lazy DuckDB tables give the same result.
 License: GPL (>= 3)
 Encoding: UTF-8
 LazyData: true

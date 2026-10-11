@@ -1,5 +1,5 @@
 ---
-title: "Technicalities"
+title: "Binning to midpoints: a floating-point note"
 ---
 
 ```{r, include = FALSE}
