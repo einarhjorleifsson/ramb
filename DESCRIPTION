@@ -31,16 +31,12 @@ Imports:
 LinkingTo:
     Rcpp
 Suggests:
-    ggnewscale,
     icesVocab,
     mapdeck,
-    scales,
-    terra,
     traipse,
     omar,
     trip,
     argosfilter,
-    rayshader,
     rmarkdown,
     testthat (>= 3.0.0)
 Config/roxygen2/version: 8.1.0

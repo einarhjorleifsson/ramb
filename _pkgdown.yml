@@ -59,18 +59,10 @@ reference:
   - rb_lookup_mmsi_country
   - rb_sum_across
   - rb_peek
-- title: "Tools: plots and rasters"
+- title: "Tools: plots"
   contents:
   - rb_plot_trail
   - rb_plot_trip
-  - rb_create_base_raster
-  - rb_create_bbox
-  - rb_calc_xyz_extent
-  - rb_rasterize_xyz
-  - rb_rayshade_raster
-  - rb_rayshade_raster_rgb
-  - rb_rayshade_xyz_dynamic
-  - rb_convert_rayshade_to_rgb
 - title: "MFRI-only readers"
   contents:
   - rb_read_logbook_mfri
