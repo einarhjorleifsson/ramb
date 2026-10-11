@@ -56,6 +56,24 @@ d |> count(ping_flag)
 A third flagger, `rb_flag_ping_duplicate()`, marks the lower-priority
 feed's copy when several feeds report the same fix.
 
+Where are the flagged pings? One vessel, one year — `EX_11` in 2015 has
+the most flags in these data. The flagged pings (red) sit at the
+fringes of the track, exactly where a positional glitch would put them:
+
+```{r}
+library(mapview)
+
+ex11 <-
+  d |>
+  filter(vid == "EX_11", lubridate::year(time) == 2015) |>
+  sf::st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE)
+
+mapview(ex11 |> filter(is.na(ping_flag)) |> slice(seq(1, n(), by = 25)),
+        cex = 1, alpha = 0.3, col.regions = "grey60", layer.name = "ok") +
+  mapview(ex11 |> filter(!is.na(ping_flag)),
+          cex = 5, col.regions = "red", layer.name = "flagged")
+```
+
 Finally, tag each ping with the port polygon it lies in. `port_id` is a
 value in port, `NA` at sea — this is the column trips are cut on:
 
@@ -66,6 +84,25 @@ d <-
   d |>
   filter(is.na(ping_flag)) |>
   rb_flag_ping_port(harbours)
+```
+
+The harbour polygons that matter for this vessel, and the pings they
+catch (green is in port, blue at sea):
+
+```{r}
+ex11_sea <-
+  d |>
+  filter(vid == "EX_11", lubridate::year(time) == 2015) |>
+  sf::st_as_sf(coords = c("lon", "lat"), crs = 4326)
+hb_local <- sf::st_crop(dansk_harbours, sf::st_bbox(ex11_sea) + c(-0.5, -0.5, 0.5, 0.5))
+
+mapview(hb_local, col.regions = "orange", alpha.regions = 0.4,
+        layer.name = "harbours") +
+  mapview(ex11_sea |>
+            slice(seq(1, n(), by = 50)) |>
+            mutate(port = ifelse(is.na(port_id), "sea", "port")),
+          zcol = "port", cex = 1.5,
+          col.regions = c("steelblue", "darkgreen"))
 ```
 
 ## Step 1: cut the track into voyages
@@ -116,6 +153,20 @@ ping (the port pings here):
 d |>
   rb_assign_trip(jepol) |>
   count(trip_basis)
+```
+
+The cut, visualised — `EX_11`'s 2015 pings coloured by voyage. The
+uncoloured (grey) clusters at the polygon are the port pings, with
+`trip_basis = "none"`:
+
+```{r}
+d |>
+  rb_assign_trip(jepol) |>
+  filter(vid == "EX_11", lubridate::year(time) == 2015) |>
+  sf::st_as_sf(coords = c("lon", "lat"), crs = 4326) |>
+  mutate(voyage = factor(voyage_id)) |>
+  slice(seq(1, n(), by = 10)) |>
+  mapview(zcol = "voyage", cex = 2)
 ```
 
 From here the flow continues with the logbook record (step 2): which

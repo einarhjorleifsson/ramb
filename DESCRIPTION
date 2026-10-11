@@ -39,6 +39,7 @@ LinkingTo:
 Suggests:
     icesVocab,
     mapdeck,
+    mapview,
     traipse,
     omar,
     trip,
