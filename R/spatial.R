@@ -1,32 +1,30 @@
 #' Points in polygon
-#' 
+#'
 #' Find points that are within polygon(s)
 #'
 #' @param x object containing geometry POINT of class sf or sfc
 #' @param y object containing geometry POLYGON of class sf or sfc
 #'
 #' @return A boolean vector
-#' 
+#'
 #' @export
 #'
 rb_detect_in_polygons <- function(x, y) {
-  
   # the checks
-  if(!inherits(sf::st_geometry(x), "sfc_POINT")) { 
+  if (!inherits(sf::st_geometry(x), "sfc_POINT")) {
     stop("Expected first object to be POINTs")
   }
-  if(!inherits(sf::st_geometry(y), "sfc_POLYGON")) { 
+  if (!inherits(sf::st_geometry(y), "sfc_POLYGON")) {
     stop("Expected latter object to be POLYGONs")
   }
-  
-  if(sf::st_crs(x) != sf::st_crs(y)) {
+
+  if (sf::st_crs(x) != sf::st_crs(y)) {
     stop("The objects do not have the same projections")
   }
-  
-  # the meat  
+
+  # the meat
   i <- sf::st_intersects(x, y) |> lengths() > 0
   return(i)
-  
 }
 
 
@@ -36,24 +34,22 @@ rb_detect_in_polygons <- function(x, y) {
 #' @param y object containing geometry POLYGON of class sf, sfc or sfg
 #'
 #' @return Normally POINT object of class sf that are within object y
-#' 
+#'
 #' @note No serious testing in done
 #' @export
 #'
 rb_keep_in_polygons <- function(x, y) {
-  
   i <- rb_detect_in_polygons(x, y)
-  
+
   # the return
-  if(inherits(x, "data.frame")) {
+  if (inherits(x, "data.frame")) {
     x <- x[i, ]
     return(x)
   }
-  
-  if(inherits(x, "sfc")) {
+
+  if (inherits(x, "sfc")) {
     return(i)
   }
-  
 }
 
 
@@ -63,21 +59,20 @@ rb_keep_in_polygons <- function(x, y) {
 #' @param y object cotaining geometry POLYGON of class sf, sfc or sfg
 #'
 #' @return Normally POINT object of class sf that are within object y
-#' 
+#'
 #' @export
 #'
 rb_drop_in_polygons <- function(x, y) {
-  
   i <- rb_detect_in_polygons(x, y)
   i <- !i
-  
+
   # the return
-  if(inherits(x, "data.frame")) {
+  if (inherits(x, "data.frame")) {
     x <- x[i, ]
     return(x)
   }
-  
-  if(inherits(x, "sfc")) {
+
+  if (inherits(x, "sfc")) {
     return(i)
   }
 }

@@ -25,7 +25,7 @@
 # (vid, time) with a logical column whack2 (TRUE = flagged). Grouping on the
 # input is restored.
 .rb_whack_forward <- function(x, kn_max = 25, max_gap_h = 4, min_dt_s = 10) {
-  ms_max      <- kn_max * 0.514444
+  ms_max <- kn_max * 0.514444
   max_gap_sec <- max_gap_h * 3600
 
   # Compiled core (src/whack_forward.cpp) — ~1000x the R for-loop this
@@ -44,8 +44,9 @@
     dplyr::group_by(vid) |>
     dplyr::mutate(whack2 = .fwd(lon, lat, time)) |>
     dplyr::ungroup()
-  if (length(grp_vars) > 0)
+  if (length(grp_vars) > 0) {
     out <- dplyr::group_by(out, dplyr::across(dplyr::all_of(grp_vars)))
+  }
   out
 }
 
@@ -63,18 +64,21 @@
   ms_max <- kn_max * 0.514444
 
   if (inherits(x, "data.frame")) {
-
     grp_vars <- dplyr::group_vars(x)
 
     .fwdbwd <- function(lon, lat, time) {
       n <- length(lon)
-      if (n < 3L) return(rep(FALSE, n))
+      if (n < 3L) {
+        return(rep(FALSE, n))
+      }
       dist <- rb_calc_distance(lon[-n], lat[-n], lon[-1], lat[-1])
-      dt  <- pmax(as.numeric(diff(time), units = "secs"), min_dt_s)
+      dt <- pmax(as.numeric(diff(time), units = "secs"), min_dt_s)
       spd <- dist / dt
-      spd_in  <- c(NA_real_, spd)
+      spd_in <- c(NA_real_, spd)
       spd_out <- c(spd, NA_real_)
-      (!is.na(spd_in) & !is.na(spd_out)) & (spd_in > ms_max) & (spd_out > ms_max)
+      (!is.na(spd_in) & !is.na(spd_out)) &
+        (spd_in > ms_max) &
+        (spd_out > ms_max)
     }
 
     out <- x |>
@@ -85,18 +89,18 @@
       dplyr::ungroup()
 
     # Restore original grouping if present
-    if (length(grp_vars) > 0)
+    if (length(grp_vars) > 0) {
       out <- dplyr::group_by(out, dplyr::across(dplyr::all_of(grp_vars)))
+    }
     out
-
   } else if (inherits(x, "tbl_lazy")) {
-
     orig_cols <- colnames(x)
-    col_sel   <- paste(sprintf('"%s"', orig_cols), collapse = ", ")
-    con       <- dbplyr::remote_con(x)
+    col_sel <- paste(sprintf('"%s"', orig_cols), collapse = ", ")
+    con <- dbplyr::remote_con(x)
     inner_sql <- as.character(dbplyr::sql_render(dplyr::ungroup(x)))
 
-    sql <- .rb_fill("
+    sql <- .rb_fill(
+      "
       WITH src AS ({inner_sql}),
       w AS (
         SELECT *,
@@ -126,10 +130,10 @@
       SELECT {col_sel},
         (spd_in > {ms_max} AND spd_out > {ms_max}) AS whack
       FROM spd
-    ")
+    "
+    )
 
     dplyr::tbl(con, dplyr::sql(sql))
-
   } else {
     stop("`x` must be a data.frame or a lazy DuckDB tbl (tbl_lazy).")
   }
@@ -144,21 +148,38 @@
 #
 # Returns a logical vector, TRUE = flagged. Tracks with fewer than 2 points
 # are all FALSE.
-.rb_whack_sequential_fast <- function(lon, lat, time, kn_max = 25, min_dt_s = 10) {
+.rb_whack_sequential_fast <- function(
+  lon,
+  lat,
+  time,
+  kn_max = 25,
+  min_dt_s = 10
+) {
   ms_max <- kn_max * 0.514444
-  n  <- length(lon)
-  if (n < 2L) return(rep(FALSE, n))
+  n <- length(lon)
+  if (n < 2L) {
+    return(rep(FALSE, n))
+  }
   keep <- rep(TRUE, n)
 
   repeat {
     idx <- which(keep)
-    m   <- length(idx)
-    if (m < 2L) break
-    dist <- rb_calc_distance(lon[idx[-m]], lat[idx[-m]], lon[idx[-1]], lat[idx[-1]])
-    dt  <- pmax(as.numeric(diff(time[idx]), units = "secs"), min_dt_s)
+    m <- length(idx)
+    if (m < 2L) {
+      break
+    }
+    dist <- rb_calc_distance(
+      lon[idx[-m]],
+      lat[idx[-m]],
+      lon[idx[-1]],
+      lat[idx[-1]]
+    )
+    dt <- pmax(as.numeric(diff(time[idx]), units = "secs"), min_dt_s)
     spd <- dist / dt
     bad <- which(spd > ms_max)
-    if (length(bad) == 0L) break
+    if (length(bad) == 0L) {
+      break
+    }
     p <- bad[1L]
     keep[if (p == 1L) idx[1L] else idx[p + 1L]] <- FALSE
   }
@@ -181,19 +202,36 @@
 #
 # x: data frame with vid, lon, lat, time. Returns x sorted by (vid, time),
 # ties by (lon, lat), with whack_sda: NA, "vmask" or "spike".
-.rb_whack_sda <- function(x, kn_max = 25, ang = 25, distlim = rep(0, length(ang)),
-                          speedlim_kn = rep(kn_max, length(ang)), vmask_min_dist = 0,
-                          min_dt_s = 10) {
+.rb_whack_sda <- function(
+  x,
+  kn_max = 25,
+  ang = 25,
+  distlim = rep(0, length(ang)),
+  speedlim_kn = rep(kn_max, length(ang)),
+  vmask_min_dist = 0,
+  min_dt_s = 10
+) {
   grp_vars <- dplyr::group_vars(x)
   # lon and lat break ties in time, so the result does not depend on the row order of the input
   # (parquet reads come back in a different order from run to run)
   x <- dplyr::arrange(dplyr::ungroup(x), vid, time, lon, lat)
   code <- match(x$vid, unique(x$vid))
-  r <- whack_sda_cpp(x$lat, x$lon, as.numeric(x$time), code, kn_max * 0.514444,
-                     as.numeric(ang), as.numeric(distlim), as.numeric(speedlim_kn) * 0.514444,
-                     vmask_min_dist, min_dt_s)
+  r <- whack_sda_cpp(
+    x$lat,
+    x$lon,
+    as.numeric(x$time),
+    code,
+    kn_max * 0.514444,
+    as.numeric(ang),
+    as.numeric(distlim),
+    as.numeric(speedlim_kn) * 0.514444,
+    vmask_min_dist,
+    min_dt_s
+  )
   x$whack_sda <- c(NA_character_, "vmask", "spike")[r + 1L]
-  if (length(grp_vars) > 0) x <- dplyr::group_by(x, dplyr::across(dplyr::all_of(grp_vars)))
+  if (length(grp_vars) > 0) {
+    x <- dplyr::group_by(x, dplyr::across(dplyr::all_of(grp_vars)))
+  }
   x
 }
 
@@ -209,13 +247,20 @@
   grp_vars <- dplyr::group_vars(x)
   out <- .rb_whack_sda(x, kn_max = kn_max, min_dt_s = min_dt_s, ...)
   s1 <- !is.na(out$whack_sda)
-  fwd <- .rb_whack_forward(out[!s1, ], kn_max = kn_max, max_gap_h = max_gap_h, min_dt_s = min_dt_s)
+  fwd <- .rb_whack_forward(
+    out[!s1, ],
+    kn_max = kn_max,
+    max_gap_h = max_gap_h,
+    min_dt_s = min_dt_s
+  )
   # .rb_whack_forward() re-sorts by vid, time; out[!s1, ] already is, so the order is the same
   stage <- out$whack_sda
   stage[!s1] <- ifelse(fwd$whack2, "forward", NA_character_)
   out$whack_sda <- NULL
   out$whack_stage <- stage
   out$whack <- !is.na(stage)
-  if (length(grp_vars) > 0) out <- dplyr::group_by(out, dplyr::across(dplyr::all_of(grp_vars)))
+  if (length(grp_vars) > 0) {
+    out <- dplyr::group_by(out, dplyr::across(dplyr::all_of(grp_vars)))
+  }
   out
 }

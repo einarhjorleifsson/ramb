@@ -31,9 +31,10 @@
 #'
 #' @export
 rb_sum_across <- function(d, start_name = "LE_KG", remove = TRUE) {
-  
   # Input checks
-  if (is.null(start_name) || !is.character(start_name) || length(start_name) != 1) {
+  if (
+    is.null(start_name) || !is.character(start_name) || length(start_name) != 1
+  ) {
     stop("start_name must be a single character string.")
   }
   cols_to_sum <- grep(paste0("^", start_name), names(d), value = TRUE)
@@ -43,9 +44,12 @@ rb_sum_across <- function(d, start_name = "LE_KG", remove = TRUE) {
   if (!all(sapply(d[cols_to_sum], is.numeric))) {
     stop("All columns to sum must be numeric.")
   }
-  
-  d <- dplyr::mutate(d, !!start_name := rowSums(dplyr::across(dplyr::starts_with(start_name))))
-  
+
+  d <- dplyr::mutate(
+    d,
+    !!start_name := rowSums(dplyr::across(dplyr::starts_with(start_name)))
+  )
+
   if (remove) {
     # Remove only the original columns, not the new sum column
     cols_to_remove <- setdiff(cols_to_sum, start_name)

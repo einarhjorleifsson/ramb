@@ -35,9 +35,15 @@
 #'
 #' @export
 rb_bin_midpoint <- function(x, dx) {
-  if (!is.numeric(x)) stop("`x` must be a numeric vector.")
-  if (!is.numeric(dx) || length(dx) != 1) stop("`dx` must be a single numeric value.")
-  if (is.na(dx) || dx <= 0) stop("`dx` must be a positive number.")
-  
+  if (!is.numeric(x)) {
+    stop("`x` must be a numeric vector.")
+  }
+  if (!is.numeric(dx) || length(dx) != 1) {
+    stop("`dx` must be a single numeric value.")
+  }
+  if (is.na(dx) || dx <= 0) {
+    stop("`dx` must be a positive number.")
+  }
+
   floor(round(x / dx, digits = 10)) * dx + dx / 2
 }

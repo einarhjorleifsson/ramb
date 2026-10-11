@@ -18,47 +18,75 @@
 #'
 #' @examples
 #' # rb_add_tripid(ve, le, vessel_id = vid, trip_id = tid, time = time, departure = T1, arrival = T2)
-rb_add_tripid <- function(ve, le, vessel_id = vid, trip_id = tid, time = time, departure = T1, arrival = T2) {
-  
+rb_add_tripid <- function(
+  ve,
+  le,
+  vessel_id = vid,
+  trip_id = tid,
+  time = time,
+  departure = T1,
+  arrival = T2
+) {
   # Turn column names into strings for checking
   vessel_id_chr <- as.character(substitute(vessel_id))
   trip_id_chr <- as.character(substitute(trip_id))
   time_chr <- as.character(substitute(time))
   departure_chr <- as.character(substitute(departure))
   arrival_chr <- as.character(substitute(arrival))
-  
+
   # Check for required columns in VMS data
   vms_missing <- setdiff(c(vessel_id_chr, time_chr), names(ve))
-  if(length(vms_missing) > 0) {
-    warning("Missing the following columns in VMS data: ", paste(vms_missing, collapse = ", "))
+  if (length(vms_missing) > 0) {
+    warning(
+      "Missing the following columns in VMS data: ",
+      paste(vms_missing, collapse = ", ")
+    )
   }
 
   # Check for required columns in logbook data
-  logbook_missing <- setdiff(c(vessel_id_chr, trip_id_chr, departure_chr, arrival_chr), names(le))
-  if(length(logbook_missing) > 0) {
-    warning("Missing the following columns in logbook data: ", paste(logbook_missing, collapse = ", "))
+  logbook_missing <- setdiff(
+    c(vessel_id_chr, trip_id_chr, departure_chr, arrival_chr),
+    names(le)
+  )
+  if (length(logbook_missing) > 0) {
+    warning(
+      "Missing the following columns in logbook data: ",
+      paste(logbook_missing, collapse = ", ")
+    )
   }
 
   # A missing join/id column means the join below cannot run at all - return
   # the VMS data unmodified rather than letting dplyr::left_join error out
   # after the warning above has already told the caller why.
-  if(length(vms_missing) > 0 || length(logbook_missing) > 0) {
+  if (length(vms_missing) > 0 || length(logbook_missing) > 0) {
     return(ve)
   }
 
   out <- ve |>
-    dplyr::left_join(le |> dplyr::distinct( {{ vessel_id }}, {{ trip_id }}, .keep_all = TRUE),
-                     by = dplyr::join_by( {{ vessel_id }}, dplyr::between( {{time}}, {{ departure }}, {{ arrival }} ))) |>
+    dplyr::left_join(
+      le |> dplyr::distinct({{ vessel_id }}, {{ trip_id }}, .keep_all = TRUE),
+      by = dplyr::join_by(
+        {{ vessel_id }},
+        dplyr::between({{ time }}, {{ departure }}, {{ arrival }})
+      )
+    ) |>
     dplyr::select(-dplyr::any_of(c(departure_chr, arrival_chr)))
-  
+
   # Warn if all trip_ids are NA after join
-  if(all(is.na(out[[trip_id_chr]]))) {
-    warning("No trip IDs were matched to the VMS data. Check if timestamps and vessel IDs overlap between datasets.")
+  if (all(is.na(out[[trip_id_chr]]))) {
+    warning(
+      "No trip IDs were matched to the VMS data. Check if timestamps and vessel IDs overlap between datasets."
+    )
   }
-  
+
   # Warn about dropped columns
-  warning("Departure and arrival columns (", departure_chr, ", ", arrival_chr, ") will be removed from the output.")
-  
+  warning(
+    "Departure and arrival columns (",
+    departure_chr,
+    ", ",
+    arrival_chr,
+    ") will be removed from the output."
+  )
+
   return(out)
 }
-

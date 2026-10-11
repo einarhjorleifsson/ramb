@@ -56,8 +56,12 @@ rb_detect_crosses_year <- function(datetime1, datetime2) {
     tz1 <- attr(datetime1, "tzone")
     tz2 <- attr(datetime2, "tzone")
     # If tzone not set, default to ""
-    if (is.null(tz1)) tz1 <- ""
-    if (is.null(tz2)) tz2 <- ""
+    if (is.null(tz1)) {
+      tz1 <- ""
+    }
+    if (is.null(tz2)) {
+      tz2 <- ""
+    }
     if (!identical(tz1, tz2)) {
       stop("datetime1 and datetime2 must have the same timezone.")
     }

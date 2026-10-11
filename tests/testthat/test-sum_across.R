@@ -40,6 +40,12 @@ test_that("rb_sum_across errors if non-numeric columns are present", {
 
 test_that("rb_sum_across errors if start_name is not a single string", {
   df <- data.frame(id = 1:2, catch_cod = c(1, 2))
-  expect_error(rb_sum_across(df, start_name = NULL), "must be a single character string")
-  expect_error(rb_sum_across(df, start_name = c("catch_", "foo_")), "must be a single character string")
+  expect_error(
+    rb_sum_across(df, start_name = NULL),
+    "must be a single character string"
+  )
+  expect_error(
+    rb_sum_across(df, start_name = c("catch_", "foo_")),
+    "must be a single character string"
+  )
 })

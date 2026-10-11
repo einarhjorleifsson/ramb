@@ -23,6 +23,7 @@
 #' @export
 rb_calc_distance <- function(lon1, lat1, lon2, lat2) {
   k <- pi / 180
-  a <- sin((lat2 - lat1) * k / 2)^2 + cos(lat1 * k) * cos(lat2 * k) * sin((lon2 - lon1) * k / 2)^2
+  a <- sin((lat2 - lat1) * k / 2)^2 +
+    cos(lat1 * k) * cos(lat2 * k) * sin((lon2 - lon1) * k / 2)^2
   2 * 6371000 * asin(sqrt(pmin(1, a)))
 }

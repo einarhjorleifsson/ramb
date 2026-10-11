@@ -63,14 +63,19 @@ rb_calc_duration <- function(x, from, to, unit = "hours", name = "duration") {
     stop("column `", name, "` already exists; choose another `name`")
   }
   if (inherits(x, "tbl_lazy")) {
-    scale <- switch(unit,
-                    secs  = 1,
-                    mins  = 1 / 60,
-                    hours = 1 / 3600,
-                    days  = 1 / 86400,
-                    stop("`unit` must be one of 'secs', 'mins', 'hours', 'days'"))
+    scale <- switch(
+      unit,
+      secs = 1,
+      mins = 1 / 60,
+      hours = 1 / 3600,
+      days = 1 / 86400,
+      stop("`unit` must be one of 'secs', 'mins', 'hours', 'days'")
+    )
     dplyr::mutate(x, !!name := (epoch({{ to }}) - epoch({{ from }})) * scale)
   } else {
-    dplyr::mutate(x, !!name := rb_calc_duration({{ from }}, to = {{ to }}, unit = unit))
+    dplyr::mutate(
+      x,
+      !!name := rb_calc_duration({{ from }}, to = {{ to }}, unit = unit)
+    )
   }
 }

@@ -1,5 +1,5 @@
 #' Derive gear from metier 5 or 6
-#' 
+#'
 #' Obtain gear type (sometimes wrongly called metier 4?) from metier5 or  6
 #'
 #' @param x A character vector
@@ -13,7 +13,7 @@
 #' Derive target from metier 5 or 6
 #'
 #' Not to be confused with metier 5
-#' 
+#'
 #' @param x A character vector
 #'
 #' @return A vector
@@ -25,7 +25,7 @@
 #' Derive metier 5 from metier 6
 #'
 #' Not to be confused with target assemblage
-#' 
+#'
 #' @param x A character vector
 #'
 #' @return A vector
@@ -48,17 +48,19 @@
 .rb_get_ices_metier5 <- function(trim = TRUE, valid = TRUE) {
   .rb_need("icesVocab")
   res <- icesVocab::getCodeList("Metier5_FishingActivity")
-  if(trim) {
-    res <- 
-      res |> 
-      dplyr::select(metier5 = Key,
-                    description = Description,
-                    deprecated = Deprecated) |> 
+  if (trim) {
+    res <-
+      res |>
+      dplyr::select(
+        metier5 = Key,
+        description = Description,
+        deprecated = Deprecated
+      ) |>
       dplyr::as_tibble()
-    if(valid) {
+    if (valid) {
       res <-
-        res |> 
-        dplyr::filter(deprecated == FALSE) |> 
+        res |>
+        dplyr::filter(deprecated == FALSE) |>
         dplyr::select(-deprecated)
     }
   }
@@ -76,18 +78,22 @@
 .rb_get_ices_metier6 <- function(trim = TRUE, valid = TRUE) {
   .rb_need("icesVocab")
   res <- icesVocab::getCodeList("Metier6_FishingActivity")
-  if(trim == TRUE) {
-    res <- 
-      res |> 
-      dplyr::select(met6 = Key,
-                    description = Description,
-                    deprecated = Deprecated) |> 
-      dplyr::as_tibble() |> 
-      dplyr::mutate(description = stringr::str_remove(description, ", see.*device")) 
-    if(valid) {
+  if (trim == TRUE) {
+    res <-
+      res |>
+      dplyr::select(
+        met6 = Key,
+        description = Description,
+        deprecated = Deprecated
+      ) |>
+      dplyr::as_tibble() |>
+      dplyr::mutate(
+        description = stringr::str_remove(description, ", see.*device")
+      )
+    if (valid) {
       res <-
-        res |> 
-        dplyr::filter(deprecated == FALSE) |> 
+        res |>
+        dplyr::filter(deprecated == FALSE) |>
         dplyr::select(-deprecated)
     }
   }
@@ -105,17 +111,19 @@
 .rb_get_ices_gears <- function(trim = TRUE, valid = TRUE) {
   .rb_need("icesVocab")
   res <- icesVocab::getCodeList("GearType")
-  if(trim == TRUE) {
-    res <- 
-      res |> 
-      dplyr::select(target = Key,
-                    description = Description,
-                    deprecated = Deprecated) |> 
+  if (trim == TRUE) {
+    res <-
+      res |>
+      dplyr::select(
+        target = Key,
+        description = Description,
+        deprecated = Deprecated
+      ) |>
       dplyr::as_tibble()
-    if(valid) {
+    if (valid) {
       res <-
-        res |> 
-        dplyr::filter(deprecated == FALSE) |> 
+        res |>
+        dplyr::filter(deprecated == FALSE) |>
         dplyr::select(-deprecated)
     }
   }
@@ -134,17 +142,19 @@
 .rb_get_ices_target <- function(trim = TRUE, valid = TRUE) {
   .rb_need("icesVocab")
   res <- icesVocab::getCodeList("TargetAssemblage")
-  if(trim == TRUE) {
-    res <- 
-      res |> 
-      dplyr::select(target = Key,
-                    description = Description,
-                    deprecated = Deprecated) |> 
+  if (trim == TRUE) {
+    res <-
+      res |>
+      dplyr::select(
+        target = Key,
+        description = Description,
+        deprecated = Deprecated
+      ) |>
       dplyr::as_tibble()
-    if(valid) {
+    if (valid) {
       res <-
-        res |> 
-        dplyr::filter(deprecated == FALSE) |> 
+        res |>
+        dplyr::filter(deprecated == FALSE) |>
         dplyr::select(-deprecated)
     }
   }
@@ -152,7 +162,7 @@
 }
 
 #' Get a table matching metier 5 and benthis metier
-#' 
+#'
 #' Extracts key variables from https://raw.githubusercontent.com/ices-eg/RCGs/master/Metiers/Reference_lists/RDB_ISSG_Metier_list.csv
 #'
 #' @param trim Boolean (default TRUE), return only key variables
@@ -161,19 +171,18 @@
 #' @return A vector
 #' @noRd
 .rb_get_ices_metier5_benthis_lookup <- function(trim = TRUE, correct = TRUE) {
-  res <- 
-    "https://raw.githubusercontent.com/ices-eg/RCGs/master/Metiers/Reference_lists/RDB_ISSG_Metier_list.csv" |> 
+  res <-
+    "https://raw.githubusercontent.com/ices-eg/RCGs/master/Metiers/Reference_lists/RDB_ISSG_Metier_list.csv" |>
     utils::read.csv()
-  if(trim) {
-    res <- 
-      res |>  
-      dplyr::mutate(metier5 = .rb_met5_from6(Metier_level6)) |> 
-      dplyr::select(metier5, benthis_metier = Benthis_metiers) |> 
-      tibble::as_tibble() |> 
-      dplyr::filter(benthis_metier != "") |> 
+  if (trim) {
+    res <-
+      res |>
+      dplyr::mutate(metier5 = .rb_met5_from6(Metier_level6)) |>
+      dplyr::select(metier5, benthis_metier = Benthis_metiers) |>
+      tibble::as_tibble() |>
+      dplyr::filter(benthis_metier != "") |>
       dplyr::distinct()
-    if(correct) {
-    }
+    if (correct) {}
   }
   return(res)
 }
@@ -190,10 +199,12 @@
 #' rb_extract_metier("OTB_DEF_>=120_0_0", part = "metier5")
 rb_extract_metier <- function(x, part = c("gear", "target", "metier5")) {
   part <- match.arg(part)
-  switch(part,
-         gear    = .rb_gear_from_metier(x),
-         target  = .rb_target_from_metier(x),
-         metier5 = .rb_met5_from6(x))
+  switch(
+    part,
+    gear = .rb_gear_from_metier(x),
+    target = .rb_target_from_metier(x),
+    metier5 = .rb_met5_from6(x)
+  )
 }
 
 #' Get an ICES gear vocabulary table
@@ -203,12 +214,17 @@ rb_extract_metier <- function(x, part = c("gear", "target", "metier5")) {
 #'
 #' @return A tibble, fetched with icesVocab.
 #' @export
-rb_get_gear_vocabulary <- function(list = c("gears", "target", "metier5", "metier6", "metier5_benthis_lookup"), ...) {
+rb_get_gear_vocabulary <- function(
+  list = c("gears", "target", "metier5", "metier6", "metier5_benthis_lookup"),
+  ...
+) {
   list <- match.arg(list)
-  switch(list,
-         gears   = .rb_get_ices_gears(...),
-         target  = .rb_get_ices_target(...),
-         metier5 = .rb_get_ices_metier5(...),
-         metier6 = .rb_get_ices_metier6(...),
-         metier5_benthis_lookup = .rb_get_ices_metier5_benthis_lookup(...))
+  switch(
+    list,
+    gears = .rb_get_ices_gears(...),
+    target = .rb_get_ices_target(...),
+    metier5 = .rb_get_ices_metier5(...),
+    metier6 = .rb_get_ices_metier6(...),
+    metier5_benthis_lookup = .rb_get_ices_metier5_benthis_lookup(...)
+  )
 }

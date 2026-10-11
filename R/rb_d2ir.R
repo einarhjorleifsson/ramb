@@ -37,11 +37,13 @@
 #' rb_encode_ices_rectangle(-10.5, 62.5, method = "vmstools")
 #'
 #' @export
-rb_encode_ices_rectangle <- function(lon,
-                                     lat,
-                                     method = c("robust", "vmstools"),
-                                     safe = TRUE,
-                                     useI = FALSE) {
+rb_encode_ices_rectangle <- function(
+  lon,
+  lat,
+  method = c("robust", "vmstools"),
+  safe = TRUE,
+  useI = FALSE
+) {
   if (!is.numeric(lon) || !is.numeric(lat)) {
     stop("Both 'lon' and 'lat' must be numeric vectors.")
   }
@@ -89,10 +91,18 @@ rb_encode_ices_rectangle <- function(lon,
   # Calculate rectangle codes for inside points
   if (nrow(inside) > 0) {
     inside$y <- floor(inside$lat * 2) - 71
-    inside$y <- ifelse(inside$y < 10, paste0("0", inside$y), as.character(inside$y))
+    inside$y <- ifelse(
+      inside$y < 10,
+      paste0("0", inside$y),
+      as.character(inside$y)
+    )
     # x1: rectangle letter, based on longitude band
     ix1 <- suppressWarnings((inside$lon + 60) %/% 10)
-    inside$x1 <- ifelse(ix1 >= 1 & ix1 <= length(lettersUsed), lettersUsed[ix1], NA)
+    inside$x1 <- ifelse(
+      ix1 >= 1 & ix1 <= length(lettersUsed),
+      lettersUsed[ix1],
+      NA
+    )
     inside$x2 <- ifelse(
       inside$x1 == "A",
       floor(inside$lon %% 4),
@@ -120,14 +130,28 @@ rb_encode_ices_rectangle <- function(lon,
 # band boundaries; do not "fix".
 .rb_encode_ices_rectangle_vmstools <- function(lon, lat) {
   rectChar1n2 <- sprintf("%02i", as.integer(2 * (lat - 35.5)))
-  rectChar3 <- ifelse(lon > -50 & lon <= -40, "A",
-    ifelse(lon > -40 & lon <= -30, "B",
-      ifelse(lon > -30 & lon <= -20, "C",
-        ifelse(lon > -20 & lon <= -10, "D",
-          ifelse(lon > -10 & lon < 0, "E",
+  rectChar3 <- ifelse(
+    lon > -50 & lon <= -40,
+    "A",
+    ifelse(
+      lon > -40 & lon <= -30,
+      "B",
+      ifelse(
+        lon > -30 & lon <= -20,
+        "C",
+        ifelse(
+          lon > -20 & lon <= -10,
+          "D",
+          ifelse(
+            lon > -10 & lon < 0,
+            "E",
             # Note: at the 0 meridian the allocation of points switches
-            ifelse(lon >= 0 & lon < 10, "F",
-              ifelse(lon >= 10 & lon < 20, "G",
+            ifelse(
+              lon >= 0 & lon < 10,
+              "F",
+              ifelse(
+                lon >= 10 & lon < 20,
+                "G",
                 ifelse(lon >= 20 & lon < 30, "H", "J")
               )
             )

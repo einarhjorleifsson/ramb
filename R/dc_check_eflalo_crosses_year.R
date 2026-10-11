@@ -42,12 +42,18 @@
 #' @export
 rb_check_trip_crosses_year <- function(eflalo) {
   # Input checks
-  if (!is.data.frame(eflalo)) stop("'eflalo' must be a data.frame.")
+  if (!is.data.frame(eflalo)) {
+    stop("'eflalo' must be a data.frame.")
+  }
   required_cols <- c("FT_DDAT", "FT_DTIME", "FT_LDAT", "FT_LTIME")
   missing_cols <- setdiff(required_cols, colnames(eflalo))
-  if (length(missing_cols) > 0)
-    stop(sprintf("Missing required columns: %s", paste(missing_cols, collapse = ", ")))
-  
+  if (length(missing_cols) > 0) {
+    stop(sprintf(
+      "Missing required columns: %s",
+      paste(missing_cols, collapse = ", ")
+    ))
+  }
+
   # Add (if necessary) combined POSIXct columns using rb_create_timestamp
   if (!"FT_DDATIM" %in% colnames(eflalo)) {
     eflalo$FT_DDATIM <- rb_create_timestamp(eflalo$FT_DDAT, eflalo$FT_DTIME)
@@ -55,11 +61,13 @@ rb_check_trip_crosses_year <- function(eflalo) {
   if (!"FT_LDATIM" %in% colnames(eflalo)) {
     eflalo$FT_LDATIM <- rb_create_timestamp(eflalo$FT_LDAT, eflalo$FT_LTIME)
   }
-  
+
   # Check for trips that cross the year using rb_detect_crosses_year
   crosses_year <- rb_detect_crosses_year(eflalo$FT_DDATIM, eflalo$FT_LDATIM)
   if (any(crosses_year, na.rm = TRUE)) {
-    warning("There are trips that cross the year. This is not accounted for in splitAmongPings. Consider splitting those trips into half")
+    warning(
+      "There are trips that cross the year. This is not accounted for in splitAmongPings. Consider splitting those trips into half"
+    )
   }
   invisible(eflalo)
 }

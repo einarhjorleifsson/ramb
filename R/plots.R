@@ -7,46 +7,48 @@
 #' @param trip add trip path, default FALSE
 #'
 #' @return xxx
-#' 
+#'
 #' @export
 #'
 rb_plot_trip <- function(data, tid, radius = 10, col = "speed", trip = TRUE) {
   .rb_need("mapdeck")
-  
-  if(any(!class(data) %in% "sf")) {
-    data <- 
-      data |> 
-      sf::st_as_sf(coords = c("lon", "lat"),
-                   crs = 4326,
-                   remove = FALSE)
+
+  if (any(!class(data) %in% "sf")) {
+    data <-
+      data |>
+      sf::st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE)
   }
-  
+
   m <- mapdeck::mapdeck()
-  
-  if(trip) {
-    m <- 
-      m |> 
-      mapdeck::add_path(data = data |> 
-                          dplyr::group_by( {{tid}} ) |> 
-                          dplyr::summarise(do_union = FALSE) |>
-                          sf::st_cast("LINESTRING"),
-                        layer_id = "track",
-                        stroke_width = 1000,
-                        width_min_pixels = 5,
-                        width_max_pixels = 10,
-                        # NEED TO MAKE THIS DYNAMIC
-                        tooltip = "tid",
-                        auto_highlight = TRUE,
-                        highlight_colour = "#FF000095",
-                        update_view = FALSE,
-                        stroke_colour = "#E0FFFF80")
+
+  if (trip) {
+    m <-
+      m |>
+      mapdeck::add_path(
+        data = data |>
+          dplyr::group_by({{ tid }}) |>
+          dplyr::summarise(do_union = FALSE) |>
+          sf::st_cast("LINESTRING"),
+        layer_id = "track",
+        stroke_width = 1000,
+        width_min_pixels = 5,
+        width_max_pixels = 10,
+        # NEED TO MAKE THIS DYNAMIC
+        tooltip = "tid",
+        auto_highlight = TRUE,
+        highlight_colour = "#FF000095",
+        update_view = FALSE,
+        stroke_colour = "#E0FFFF80"
+      )
   }
-  
-  m <- 
-    m |> 
-    mapdeck::add_scatterplot(data = data,
-                             fill_colour = "speed",
-                             radius = radius,
-                             palette = "inferno")
+
+  m <-
+    m |>
+    mapdeck::add_scatterplot(
+      data = data,
+      fill_colour = "speed",
+      radius = radius,
+      palette = "inferno"
+    )
   return(m)
 }

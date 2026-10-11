@@ -25,7 +25,7 @@
 
 #' Vessel tracks and behaviour of some danish fishing vessels
 #'
-#' Example data of 14 vessels using 4 different gears with a median 
+#' Example data of 14 vessels using 4 different gears with a median
 #' time interval of 10 sec.
 #'
 #' @format A data frame with 395558 rows and 9 variables:
@@ -73,7 +73,7 @@
 #' Fictional vessel tracks - set 1
 #'
 #' Some simple dataset to test speed filters
-#' 
+#'
 #' @format A data frame with 46 rows and 7 variables:
 #' \describe{
 #'   \item{.rid}{row number}
@@ -89,21 +89,20 @@
 "whacks1"
 
 
-
 #' Benthis parameters
-#' 
-#' Gear “footprints” of 14 distinct towed gear groups (eight otter trawl groups, 
+#'
+#' Gear “footprints” of 14 distinct towed gear groups (eight otter trawl groups,
 #' three beam trawl groups, two demersal seine groups, and one dredge group).
-#' The footprint is defined as the relative contribution from individual larger 
-#' gear components, such as trawl doors, sweeps, and groundgear, to the total 
+#' The footprint is defined as the relative contribution from individual larger
+#' gear components, such as trawl doors, sweeps, and groundgear, to the total
 #' area and severity of the gear's impact.
-#' 
-#' For each gear group, a vessel size–gear size relationship parameters can 
-#' used to estimate gear width and sediment penetration from 
-#' vessel size (length or power). 
-#' 
+#'
+#' For each gear group, a vessel size–gear size relationship parameters can
+#' used to estimate gear width and sediment penetration from
+#' vessel size (length or power).
+#'
 #' https://doi.org/10.1093/icesjms/fsv099
-#' 
+#'
 #' @format A data frame with 14 observations (rows) and 12 variables (columns):
 #' \describe{
 #'   \item{benthis_metier}{Metier as defined in the Benthis project}
@@ -125,7 +124,7 @@
 
 
 #' Benthis metier lookup
-#' 
+#'
 #' @format A data frame with 41 observations (rows) and 2 variables (columns):
 #' \describe{
 #'   \item{metier5}{Metier as defined by ICES}
@@ -134,4 +133,3 @@
 #'
 #' @source https://doi.org/10.1093/icesjms/fsv099
 "metier5_benthis_lookup"
-

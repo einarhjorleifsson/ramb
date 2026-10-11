@@ -18,19 +18,38 @@
 # two of them never flag each other; nor do two pings of the same feed.
 #
 # Returns a logical vector, TRUE for the copy to drop, in input order.
-.rb_whack_duplicates <- function(vid, time, lon, lat, feed,
-                                 priority = c("stk", "astd", "astdB", "emodnet"),
-                                 max_dt_s = 10, kn_max = 25, n = 3) {
+.rb_whack_duplicates <- function(
+  vid,
+  time,
+  lon,
+  lat,
+  feed,
+  priority = c("stk", "astd", "astdB", "emodnet"),
+  max_dt_s = 10,
+  kn_max = 25,
+  n = 3
+) {
   max_m <- kn_max * 1852 / 3600 * max_dt_s
-  pr <- match(feed, priority); pr[is.na(pr)] <- length(priority) + 1L
-  t  <- as.numeric(time)
-  o  <- order(vid, t, pr, lon, lat)
-  v <- vid[o]; t <- t[o]; x <- lon[o]; y <- lat[o]; p <- pr[o]
-  m <- length(o); dup <- logical(m)
-  if (m < 2L) return(dup)
+  pr <- match(feed, priority)
+  pr[is.na(pr)] <- length(priority) + 1L
+  t <- as.numeric(time)
+  o <- order(vid, t, pr, lon, lat)
+  v <- vid[o]
+  t <- t[o]
+  x <- lon[o]
+  y <- lat[o]
+  p <- pr[o]
+  m <- length(o)
+  dup <- logical(m)
+  if (m < 2L) {
+    return(dup)
+  }
   for (k in seq_len(min(n, m - 1L))) {
-    i <- seq_len(m - k); j <- i + k
-    near <- v[i] == v[j] & abs(t[j] - t[i]) <= max_dt_s & rb_calc_distance(x[i], y[i], x[j], y[j]) <= max_m
+    i <- seq_len(m - k)
+    j <- i + k
+    near <- v[i] == v[j] &
+      abs(t[j] - t[i]) <= max_dt_s &
+      rb_calc_distance(x[i], y[i], x[j], y[j]) <= max_m
     near[is.na(near)] <- FALSE
     dup[j[near & p[i] < p[j]]] <- TRUE
     dup[i[near & p[j] < p[i]]] <- TRUE

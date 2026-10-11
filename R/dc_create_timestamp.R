@@ -20,22 +20,42 @@
 #' rb_create_timestamp("29/02/2023", "12:00:00")
 #'
 #' @export
-rb_create_timestamp <- function(date, time, tz = "GMT", format = "%d/%m/%Y %H:%M:%S") {
+rb_create_timestamp <- function(
+  date,
+  time,
+  tz = "GMT",
+  format = "%d/%m/%Y %H:%M:%S"
+) {
   # Input checks
-  if (missing(date) || missing(time)) stop("Both 'date' and 'time' must be provided.", call. = FALSE)
-  if (!is.character(date)) stop("'date' must be a character vector.", call. = FALSE)
-  if (!is.character(time)) stop("'time' must be a character vector.", call. = FALSE)
-  if (length(date) != length(time)) stop("'date' and 'time' must be the same length.", call. = FALSE)
-  if (!is.character(tz) || length(tz) != 1) stop("'tz' must be a single character string.", call. = FALSE)
-  if (!is.character(format) || length(format) != 1) stop("'format' must be a single character string.", call. = FALSE)
-  
+  if (missing(date) || missing(time)) {
+    stop("Both 'date' and 'time' must be provided.", call. = FALSE)
+  }
+  if (!is.character(date)) {
+    stop("'date' must be a character vector.", call. = FALSE)
+  }
+  if (!is.character(time)) {
+    stop("'time' must be a character vector.", call. = FALSE)
+  }
+  if (length(date) != length(time)) {
+    stop("'date' and 'time' must be the same length.", call. = FALSE)
+  }
+  if (!is.character(tz) || length(tz) != 1) {
+    stop("'tz' must be a single character string.", call. = FALSE)
+  }
+  if (!is.character(format) || length(format) != 1) {
+    stop("'format' must be a single character string.", call. = FALSE)
+  }
+
   x <- paste(date, time)
   ts <- as.POSIXct(x, tz = tz, format = format)
-  
+
   # Leap day check (for format "%d/%m/%Y" or similar)
   leap_day_issues <- rep(FALSE, length(date))
   if (grepl("%d/%m/%Y", format, fixed = TRUE)) {
-    day_month_year <- regmatches(date, regexec("^(\\d{2})/(\\d{2})/(\\d{4})$", date))
+    day_month_year <- regmatches(
+      date,
+      regexec("^(\\d{2})/(\\d{2})/(\\d{4})$", date)
+    )
     for (i in seq_along(day_month_year)) {
       dmy <- day_month_year[[i]]
       if (length(dmy) == 4) {
@@ -53,12 +73,19 @@ rb_create_timestamp <- function(date, time, tz = "GMT", format = "%d/%m/%Y %H:%M
       }
     }
     if (any(leap_day_issues)) {
-      warning("Some dates had 29/02 on non-leap years and were set to NA.", call. = FALSE)
+      warning(
+        "Some dates had 29/02 on non-leap years and were set to NA.",
+        call. = FALSE
+      )
     }
   }
-  
+
   if (any(is.na(ts))) {
-    warning("Some date-time combinations could not be converted. Check your format: ", format, call. = FALSE)
+    warning(
+      "Some date-time combinations could not be converted. Check your format: ",
+      format,
+      call. = FALSE
+    )
   }
   ts
 }

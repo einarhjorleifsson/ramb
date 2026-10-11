@@ -10,10 +10,14 @@
 .rb_in_sql <- function(x, con) .rb_sql(.rb_as_lazy(x, con))
 .rb_out <- function(con, sql, lazy_in, by = NULL) {
   out <- dplyr::tbl(con, dplyr::sql(sql))
-  if (lazy_in) return(out)
+  if (lazy_in) {
+    return(out)
+  }
   out <- dplyr::collect(out)
   .rb_unregister(con)
-  if (!is.null(by)) out <- out[do.call(base::order, unname(as.list(out[by]))), ]
+  if (!is.null(by)) {
+    out <- out[do.call(base::order, unname(as.list(out[by]))), ]
+  }
   tibble::as_tibble(out)
 }
 
@@ -29,23 +33,47 @@
 #' @return `records` with `<duration>_raw` (the value as given), `duration_source` (`data`, `missing` or
 #'   `implausible`) and `<duration>` set to `NA` where implausible.
 #' @export
-rb_limit_record_duration <- function(records, limits, gear = gid, duration = duration_m) {
+rb_limit_record_duration <- function(
+  records,
+  limits,
+  gear = gid,
+  duration = duration_m
+) {
   g <- rlang::as_name(rlang::enquo(gear))
   d <- rlang::as_name(rlang::enquo(duration))
-  stopifnot(all(c(g, d) %in% colnames(records)), all(c(g, "dur_max_min") %in% names(limits)))
-  lim <- dplyr::distinct(dplyr::select(limits, dplyr::all_of(c(g, "dur_max_min"))), .data[[g]], .keep_all = TRUE)
-  if (inherits(records, "tbl_lazy")) lim <- dplyr::copy_to(dbplyr::remote_con(records), lim,
-                                                           name = paste0("rb_lim_", sample(1e9, 1)), overwrite = TRUE)
+  stopifnot(
+    all(c(g, d) %in% colnames(records)),
+    all(c(g, "dur_max_min") %in% names(limits))
+  )
+  lim <- dplyr::distinct(
+    dplyr::select(limits, dplyr::all_of(c(g, "dur_max_min"))),
+    .data[[g]],
+    .keep_all = TRUE
+  )
+  if (inherits(records, "tbl_lazy")) {
+    lim <- dplyr::copy_to(
+      dbplyr::remote_con(records),
+      lim,
+      name = paste0("rb_lim_", sample(1e9, 1)),
+      overwrite = TRUE
+    )
+  }
   raw <- paste0(d, "_raw")
   records |>
     dplyr::left_join(lim, by = g) |>
     dplyr::mutate(
       !!raw := .data[[d]],
       duration_source = dplyr::case_when(
-        is.na(.data[[d]])                                     ~ "missing",
-        !is.na(dur_max_min) & .data[[d]] > dur_max_min        ~ "implausible",
-        .default                                              = "data"),
-      !!d := dplyr::if_else(duration_source == "implausible", NA_real_, .data[[d]])) |>
+        is.na(.data[[d]]) ~ "missing",
+        !is.na(dur_max_min) & .data[[d]] > dur_max_min ~ "implausible",
+        .default = "data"
+      ),
+      !!d := dplyr::if_else(
+        duration_source == "implausible",
+        NA_real_,
+        .data[[d]]
+      )
+    ) |>
     dplyr::select(-dur_max_min)
 }
 
@@ -70,18 +98,39 @@ rb_limit_record_duration <- function(records, limits, gear = gid, duration = dur
 #' @return The windows: the record's columns (without `date`), `phase`, `w_start`, `w_end`, `win_basis`,
 #'   `win_closed_by`, `n_events` and `events` (which of `t1`-`t4` the record has).
 #' @export
-rb_build_record_windows <- function(records, key = c(".sid", "schema"), min_hauls = 50) {
-  need <- c(key, "vid", "gear", "gear_class", "set_max_min", "t1", "t2", "t3", "t4", "duration_m", "date")
+rb_build_record_windows <- function(
+  records,
+  key = c(".sid", "schema"),
+  min_hauls = 50
+) {
+  need <- c(
+    key,
+    "vid",
+    "gear",
+    "gear_class",
+    "set_max_min",
+    "t1",
+    "t2",
+    "t3",
+    "t4",
+    "duration_m",
+    "date"
+  )
   miss <- setdiff(need, colnames(records))
-  if (length(miss)) stop("records lacks: ", paste(miss, collapse = ", "), call. = FALSE)
+  if (length(miss)) {
+    stop("records lacks: ", paste(miss, collapse = ", "), call. = FALSE)
+  }
   lazy_in <- inherits(records, "tbl_lazy")
   con <- .rb_con_for(records)
   in_sql <- .rb_in_sql(records, con)
   k <- .rb_q(con, key)
   kr <- paste0("r.", k, collapse = ", ")
-  k_eq <- function(a, b) paste(sprintf("%s.%s = %s.%s", a, k, b, k), collapse = " AND ")
+  k_eq <- function(a, b) {
+    paste(sprintf("%s.%s = %s.%s", a, k, b, k), collapse = " AND ")
+  }
   mins <- function(x) sprintf("to_minutes(CAST(round(%s) AS BIGINT))", x)
-  sql <- .rb_fill("
+  sql <- .rb_fill(
+    "
   WITH b0 AS ({in_sql}),
   th AS (
     SELECT gear, median(epoch(t4 - t3) / 60.0) AS haul_min FROM b0
@@ -151,7 +200,8 @@ rb_build_record_windows <- function(records, key = c(".sid", "schema"), min_haul
      + CASE WHEN r.t3 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN r.t4 IS NOT NULL THEN 1 ELSE 0 END)::TINYINT AS n_events,
     concat_ws('+', CASE WHEN r.t1 IS NOT NULL THEN 't1' END, CASE WHEN r.t2 IS NOT NULL THEN 't2' END,
               CASE WHEN r.t3 IS NOT NULL THEN 't3' END, CASE WHEN r.t4 IS NOT NULL THEN 't4' END) AS events
-  FROM win0 r LEFT JOIN nxt n ON {k_eq('n', 'r')} AND n.phase = r.phase")
+  FROM win0 r LEFT JOIN nxt n ON {k_eq('n', 'r')} AND n.phase = r.phase"
+  )
   .rb_out(con, sql, lazy_in, by = c("vid", "w_start"))
 }
 
@@ -174,22 +224,37 @@ rb_build_record_windows <- function(records, key = c(".sid", "schema"), min_haul
 #'   (how far into the window, NA for a fallback window), `w_start`, `w_end` and `fishing` (the ping's speed
 #'   is in the range of a phase that can be fishing; NA when the speed or range is missing).
 #' @export
-rb_link_record_pings <- function(pings, windows, key = c(".sid", "schema"), carry = character(0),
-                                 fallback = "day", phase_rank = c("haul", "tow", "jig", "set", "day"),
-                                 not_fishing = "set", speed = "speed", speed_min = "speed_min",
-                                 speed_max = "speed_max") {
+rb_link_record_pings <- function(
+  pings,
+  windows,
+  key = c(".sid", "schema"),
+  carry = character(0),
+  fallback = "day",
+  phase_rank = c("haul", "tow", "jig", "set", "day"),
+  not_fishing = "set",
+  speed = "speed",
+  speed_min = "speed_min",
+  speed_max = "speed_max"
+) {
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
-  p_sql <- .rb_in_sql(dplyr::select(pings, dplyr::all_of(c("vid", "time", speed))), con)
+  p_sql <- .rb_in_sql(
+    dplyr::select(pings, dplyr::all_of(c("vid", "time", speed))),
+    con
+  )
   w_sql <- .rb_in_sql(windows, con)
   q <- function(x) .rb_q(con, x)
   lst <- function(x) paste0("'", x, "'", collapse = ", ")
   wcols <- unique(c(key, carry, speed_min, speed_max))
   wsel <- paste0("w.", q(wcols), collapse = ", ")
-  rank <- paste(sprintf("WHEN '%s' THEN %d", phase_rank, seq_along(phase_rank)), collapse = " ")
+  rank <- paste(
+    sprintf("WHEN '%s' THEN %d", phase_rank, seq_along(phase_rank)),
+    collapse = " "
+  )
   part <- paste(q(c("vid", "time", key)), collapse = ", ")
   out_cols <- paste(q(unique(c(key, carry))), collapse = ", ")
-  sql <- .rb_fill("
+  sql <- .rb_fill(
+    "
   WITH w AS (SELECT *, CASE phase {rank} ELSE {length(phase_rank) + 1} END AS prank FROM ({w_sql})),
   m0 AS (
     SELECT p.vid, p.time, p.{q(speed)} AS rb_speed, {wsel}, w.phase, w.w_start, w.w_end, w.prank,
@@ -206,7 +271,8 @@ rb_link_record_pings <- function(pings, windows, key = c(".sid", "schema"), carr
          {paste(q(setdiff(c(speed_min, speed_max), c(key, carry))), collapse = ', ')}{if (length(setdiff(c(speed_min, speed_max), c(key, carry)))) ',' else ''}
          w_start, w_end,
          (phase NOT IN ({lst(not_fishing)}) AND rb_speed BETWEEN {q(speed_min)} AND {q(speed_max)}) AS fishing
-  FROM m")
+  FROM m"
+  )
   .rb_out(con, sql, lazy_in, by = c("vid", "time"))
 }
 
@@ -221,20 +287,33 @@ rb_link_record_pings <- function(pings, windows, key = c(".sid", "schema"), carr
 #' @param key,carry The record key and the columns to carry, as in the matches.
 #' @return `pings` with `n_records`, the key, the carried columns, `phase` and `phase_frac`.
 #' @export
-rb_assign_record <- function(pings, matches, key = c(".sid", "schema"), carry = character(0)) {
+rb_assign_record <- function(
+  pings,
+  matches,
+  key = c(".sid", "schema"),
+  carry = character(0)
+) {
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
   p_sql <- .rb_in_sql(pings, con)
   m_sql <- .rb_in_sql(matches, con)
   q <- function(x) .rb_q(con, x)
   cols <- unique(c(key, carry, "phase", "phase_frac"))
-  agg <- paste(sprintf("any_value(%s) AS %s", q(cols), q(cols)), collapse = ", ")
-  one <- paste(sprintf("CASE WHEN a.n_records = 1 THEN a.%s END AS %s", q(cols), q(cols)), collapse = ",\n ")
-  sql <- .rb_fill("
+  agg <- paste(
+    sprintf("any_value(%s) AS %s", q(cols), q(cols)),
+    collapse = ", "
+  )
+  one <- paste(
+    sprintf("CASE WHEN a.n_records = 1 THEN a.%s END AS %s", q(cols), q(cols)),
+    collapse = ",\n "
+  )
+  sql <- .rb_fill(
+    "
   WITH a AS (SELECT vid, time, count(*) AS n_records, {agg} FROM ({m_sql}) GROUP BY vid, time)
   SELECT p.*, coalesce(a.n_records, 0) AS n_records,
          {one}
-  FROM ({p_sql}) p LEFT JOIN a ON a.vid = p.vid AND a.time = p.time")
+  FROM ({p_sql}) p LEFT JOIN a ON a.vid = p.vid AND a.time = p.time"
+  )
   .rb_out(con, sql, lazy_in, by = c("vid", "time"))
 }
 
@@ -252,8 +331,15 @@ rb_assign_record <- function(pings, matches, key = c(".sid", "schema"), carry = 
 #' @param not_fishing,speed,speed_min,speed_max As in [rb_link_record_pings()].
 #' @return `pings` with `fishing`.
 #' @export
-rb_assign_fishing <- function(pings, matches, method = "window", not_fishing = "set", speed = "speed",
-                              speed_min = "speed_min", speed_max = "speed_max") {
+rb_assign_fishing <- function(
+  pings,
+  matches,
+  method = "window",
+  not_fishing = "set",
+  speed = "speed",
+  speed_min = "speed_min",
+  speed_max = "speed_max"
+) {
   method <- match.arg(method)
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
@@ -261,8 +347,11 @@ rb_assign_fishing <- function(pings, matches, method = "window", not_fishing = "
   m_sql <- .rb_in_sql(matches, con)
   q <- function(x) .rb_q(con, x)
   lst <- paste0("'", not_fishing, "'", collapse = ", ")
-  lo <- q(speed_min); hi <- q(speed_max); sp <- q(speed)
-  sql <- .rb_fill("
+  lo <- q(speed_min)
+  hi <- q(speed_max)
+  sp <- q(speed)
+  sql <- .rb_fill(
+    "
   WITH m AS (SELECT m.vid, m.time, m.phase, m.{lo} AS lo, m.{hi} AS hi, p.{sp} AS sp
              FROM ({m_sql}) m JOIN ({p_sql}) p ON p.vid = m.vid AND p.time = m.time),
   a AS (
@@ -273,6 +362,7 @@ rb_assign_fishing <- function(pings, matches, method = "window", not_fishing = "
            ELSE FALSE END AS fishing
     FROM m GROUP BY vid, time)
   SELECT p.*, CASE WHEN a.vid IS NULL THEN FALSE ELSE a.fishing END AS fishing
-  FROM ({p_sql}) p LEFT JOIN a ON a.vid = p.vid AND a.time = p.time")
+  FROM ({p_sql}) p LEFT JOIN a ON a.vid = p.vid AND a.time = p.time"
+  )
   .rb_out(con, sql, lazy_in, by = c("vid", "time"))
 }

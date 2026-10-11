@@ -6,7 +6,8 @@
 two_feeds <- function() {
   a <- head(dplyr::filter(dansk, vessel_id == dansk$vessel_id[2]), 400) |>
     dplyr::transmute(vid = 1L, time = time_stamp, lon, lat, provider = "stk")
-  b <- a[seq(1, nrow(a), by = 3), ] |> dplyr::mutate(time = time + 1, lon = lon + 1e-6, provider = "astd")
+  b <- a[seq(1, nrow(a), by = 3), ] |>
+    dplyr::mutate(time = time + 1, lon = lon + 1e-6, provider = "astd")
   bad <- a[c(50, 200), ] |> dplyr::mutate(lon = lat, time = time + 2)
   jump <- a[c(100, 300), ] |> dplyr::mutate(lon = lon + 2, time = time + 3)
   d <- dplyr::bind_rows(a, b, bad, jump)
@@ -18,11 +19,16 @@ two_feeds <- function() {
 old_procedure <- function(d, priority) {
   bad <- d$lon == d$lat
   dup <- logical(nrow(d))
-  dup[!bad] <- with(d[!bad, ], .rb_whack_duplicates(vid, time, lon, lat, provider, priority = priority))
+  dup[!bad] <- with(
+    d[!bad, ],
+    .rb_whack_duplicates(vid, time, lon, lat, provider, priority = priority)
+  )
   keep <- !bad & !dup
-  out <- dplyr::bind_rows(.whack_clean_df(d[keep, ]),
-                          d[bad, ] |> dplyr::mutate(whack_stage = "invalid"),
-                          d[dup, ] |> dplyr::mutate(whack_stage = "duplicate"))
+  out <- dplyr::bind_rows(
+    .whack_clean_df(d[keep, ]),
+    d[bad, ] |> dplyr::mutate(whack_stage = "invalid"),
+    d[dup, ] |> dplyr::mutate(whack_stage = "duplicate")
+  )
   out[order(out$rid), c("rid", "whack_stage")]
 }
 
@@ -55,42 +61,88 @@ test_that("a lazy DuckDB table gives the same labels as a data frame", {
   expect_equal(lz$ping_flag[order(lz$rid)], df$ping_flag[order(df$rid)])
   for (m in c("sda", "forward", "fwdbwd", "sequential")) {
     a <- rb_flag_ping_impossible(d, method = m)
-    b <- dplyr::collect(rb_flag_ping_impossible(duckdbfs::as_dataset(d), method = m))
+    b <- dplyr::collect(rb_flag_ping_impossible(
+      duckdbfs::as_dataset(d),
+      method = m
+    ))
     expect_equal(b$ping_flag[order(b$rid)], a$ping_flag[order(a$rid)], info = m)
   }
 })
 
 test_that("flags already set are kept, rows are never dropped, other column names work", {
-  d <- data.frame(vid = 1, time = as.POSIXct("2024-01-01", tz = "UTC") + 60 * 0:5,
-                  lon = c(-20, 64, -20.01, 5, -20.02, -20.03), lat = 64)
+  d <- data.frame(
+    vid = 1,
+    time = as.POSIXct("2024-01-01", tz = "UTC") + 60 * 0:5,
+    lon = c(-20, 64, -20.01, 5, -20.02, -20.03),
+    lat = 64
+  )
   d$ping_flag <- c(NA, NA, "mine", NA, NA, NA)
   r <- rb_flag_ping_impossible(rb_flag_ping_invalid(d))
   expect_equal(nrow(r), nrow(d))
   expect_equal(r$ping_flag[2:3], c("invalid", "mine"))
   e <- dplyr::rename(d, vessel_id = vid, time_stamp = time, x = lon, y = lat)
-  r2 <- rb_flag_ping_impossible(rb_flag_ping_invalid(e, lon = x, lat = y), vid = vessel_id, time = time_stamp, lon = x, lat = y)
+  r2 <- rb_flag_ping_impossible(
+    rb_flag_ping_invalid(e, lon = x, lat = y),
+    vid = vessel_id,
+    time = time_stamp,
+    lon = x,
+    lat = y
+  )
   expect_equal(names(r2), names(e))
   expect_equal(r2$ping_flag, r$ping_flag)
 })
 
 test_that("the flag chain does not warn", {
-  d <- data.frame(vid = 1, time = as.POSIXct("2024-01-01", tz = "UTC") + 60 * 0:3, lon = -20 - 0:3 / 100, lat = 64)
+  d <- data.frame(
+    vid = 1,
+    time = as.POSIXct("2024-01-01", tz = "UTC") + 60 * 0:3,
+    lon = -20 - 0:3 / 100,
+    lat = 64
+  )
   expect_no_warning(rb_flag_ping_impossible(d))
 })
 
 test_that("the port tag: data frame = lazy table, one row per ping, the smaller of two polygons wins", {
   skip_if_not_installed("duckdbfs")
-  sq <- function(x0, y0, w) sf::st_polygon(list(rbind(c(x0, y0), c(x0 + w, y0), c(x0 + w, y0 + w), c(x0, y0 + w), c(x0, y0))))
-  h <- sf::st_sf(port_id = c("big", "small", "far"), code = c("B", "S", "F"),
-                 geometry = sf::st_sfc(sq(0, 0, 1), sq(0.2, 0.2, 0.1), sq(5, 5, 1), crs = 4326))
-  d <- data.frame(vid = 1L, time = as.POSIXct("2024-01-01", tz = "UTC") + 60 * 0:3,
-                  lon = c(0.25, 0.8, 5.5, 9), lat = c(0.25, 0.8, 5.5, 9))
+  sq <- function(x0, y0, w) {
+    sf::st_polygon(list(rbind(
+      c(x0, y0),
+      c(x0 + w, y0),
+      c(x0 + w, y0 + w),
+      c(x0, y0 + w),
+      c(x0, y0)
+    )))
+  }
+  h <- sf::st_sf(
+    port_id = c("big", "small", "far"),
+    code = c("B", "S", "F"),
+    geometry = sf::st_sfc(
+      sq(0, 0, 1),
+      sq(0.2, 0.2, 0.1),
+      sq(5, 5, 1),
+      crs = 4326
+    )
+  )
+  d <- data.frame(
+    vid = 1L,
+    time = as.POSIXct("2024-01-01", tz = "UTC") + 60 * 0:3,
+    lon = c(0.25, 0.8, 5.5, 9),
+    lat = c(0.25, 0.8, 5.5, 9)
+  )
   a <- rb_flag_ping_port(d, h, keep = "code")
   expect_equal(nrow(a), nrow(d))
   expect_equal(a$port_id[order(a$time)], c("small", "big", "far", NA))
   expect_equal(a$code[order(a$time)], c("S", "B", "F", NA))
-  b <- dplyr::collect(rb_flag_ping_port(duckdbfs::as_dataset(d), h, keep = "code"))
-  expect_equal(as.data.frame(b[order(b$time), ]), as.data.frame(a[order(a$time), ]), ignore_attr = TRUE)
+  b <- dplyr::collect(rb_flag_ping_port(
+    duckdbfs::as_dataset(d),
+    h,
+    keep = "code"
+  ))
+  expect_equal(
+    as.data.frame(b[order(b$time), ]),
+    as.data.frame(a[order(a$time), ]),
+    ignore_attr = TRUE
+  )
   e <- dplyr::rename(d, x = lon, y = lat)
   r <- rb_flag_ping_port(e, h, lon = x, lat = y)
   expect_equal(names(r), c(names(e), "port_id"))

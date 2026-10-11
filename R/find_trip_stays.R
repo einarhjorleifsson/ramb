@@ -5,7 +5,9 @@
 # stay. Runs in DuckDB (tier 2): a data frame is registered and the result collected; a lazy table stays lazy.
 
 .rb_con_for <- function(x) {
-  if (inherits(x, "tbl_lazy")) return(dbplyr::remote_con(x))
+  if (inherits(x, "tbl_lazy")) {
+    return(dbplyr::remote_con(x))
+  }
   duckdbfs::cached_connection()
 }
 # Data frames registered for one call. A call on data frames releases them once it has collected its
@@ -24,7 +26,9 @@
   }
 }
 .rb_as_lazy <- function(x, con) {
-  if (inherits(x, "tbl_lazy")) return(x)
+  if (inherits(x, "tbl_lazy")) {
+    return(x)
+  }
   dplyr::tbl(con, .rb_register(con, x))
 }
 .rb_sql <- function(x) as.character(dbplyr::sql_render(dplyr::ungroup(x)))
@@ -65,42 +69,76 @@
 #'   frame input, a lazy table for lazy input.
 #' @family trip
 #' @export
-rb_find_trip_stays <- function(pings, ports, min_stay_h = 4, min_stay = NULL, radius_in = 2000,
-                               events = NULL, t_in_window = NULL, crs_m = 3575,
-                               vid = vid, time = time, lon = lon, lat = lat) {
-  map <- .rb_cols(vid = {{ vid }}, time = {{ time }}, lon = {{ lon }}, lat = {{ lat }})
+rb_find_trip_stays <- function(
+  pings,
+  ports,
+  min_stay_h = 4,
+  min_stay = NULL,
+  radius_in = 2000,
+  events = NULL,
+  t_in_window = NULL,
+  crs_m = 3575,
+  vid = vid,
+  time = time,
+  lon = lon,
+  lat = lat
+) {
+  map <- .rb_cols(
+    vid = {{ vid }},
+    time = {{ time }},
+    lon = {{ lon }},
+    lat = {{ lat }}
+  )
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
-  tryCatch(DBI::dbExecute(con, "LOAD spatial"), error = function(e) DBI::dbExecute(con, "INSTALL spatial; LOAD spatial"))
-  p <- .rb_as_lazy(.rb_std_in(pings, map), con) |> dplyr::select(vid, time, lon, lat)
+  tryCatch(DBI::dbExecute(con, "LOAD spatial"), error = function(e) {
+    DBI::dbExecute(con, "INSTALL spatial; LOAD spatial")
+  })
+  p <- .rb_as_lazy(.rb_std_in(pings, map), con) |>
+    dplyr::select(vid, time, lon, lat)
 
   # ports: polygon and the two buffers, as WKT, registered on the connection
   hb <- sf::st_make_valid(ports)
-  r_out <- if ("radius_out" %in% names(hb)) hb$radius_out else rep(radius_in, nrow(hb))
+  r_out <- if ("radius_out" %in% names(hb)) {
+    hb$radius_out
+  } else {
+    rep(radius_in, nrow(hb))
+  }
   r_out <- pmax(dplyr::coalesce(r_out, radius_in), radius_in)
-  buf <- function(d) sf::st_transform(sf::st_buffer(sf::st_transform(hb, crs_m), d), 4326)
-  hw <- data.frame(port_id = hb$port_id,
-                   poly = sf::st_as_text(sf::st_geometry(hb), digits = 15),
-                   near_in = sf::st_as_text(sf::st_geometry(buf(radius_in)), digits = 15),
-                   near_out = sf::st_as_text(sf::st_geometry(buf(r_out)), digits = 15))
+  buf <- function(d) {
+    sf::st_transform(sf::st_buffer(sf::st_transform(hb, crs_m), d), 4326)
+  }
+  hw <- data.frame(
+    port_id = hb$port_id,
+    poly = sf::st_as_text(sf::st_geometry(hb), digits = 15),
+    near_in = sf::st_as_text(sf::st_geometry(buf(radius_in)), digits = 15),
+    near_out = sf::st_as_text(sf::st_geometry(buf(r_out)), digits = 15)
+  )
   hw_nm <- .rb_register(con, hw, "rb_hw_")
-  hg <- if (is.null(min_stay)) data.frame(port_id = character(0), g_h = numeric(0)) else
+  hg <- if (is.null(min_stay)) {
+    data.frame(port_id = character(0), g_h = numeric(0))
+  } else {
     data.frame(port_id = min_stay$port_id, g_h = min_stay$min_stay_h)
+  }
   hg_nm <- .rb_register(con, hg, "rb_hg_")
 
   win_p <- win_e <- "TRUE"
   if (!is.null(t_in_window)) {
-    f <- format(t_in_window[1], "%Y-%m-%d %H:%M:%S", tz = "UTC"); t <- format(t_in_window[2], "%Y-%m-%d %H:%M:%S", tz = "UTC")
+    f <- format(t_in_window[1], "%Y-%m-%d %H:%M:%S", tz = "UTC")
+    t <- format(t_in_window[2], "%Y-%m-%d %H:%M:%S", tz = "UTC")
     win_p <- sprintf("t_in >= TIMESTAMP '%s' AND t_in < TIMESTAMP '%s'", f, t)
     win_e <- sprintf("time >= TIMESTAMP '%s' AND time < TIMESTAMP '%s'", f, t)
   }
   ev_sql <- if (is.null(events)) {
     "SELECT NULL::INTEGER AS vid, NULL::TIMESTAMP AS time, NULL::VARCHAR AS io, NULL::VARCHAR AS port_id, NULL::BOOLEAN AS good WHERE false"
   } else {
-    .rb_sql(.rb_as_lazy(events, con) |> dplyr::select(vid, time, io, port_id, good))
+    .rb_sql(
+      .rb_as_lazy(events, con) |> dplyr::select(vid, time, io, port_id, good)
+    )
   }
   G <- min_stay_h
-  sql <- sprintf("
+  sql <- sprintf(
+    "
 WITH seq AS (SELECT vid, time, lon, lat, row_number() OVER (PARTITION BY vid ORDER BY time) AS rn FROM (%s)),
 harb AS (SELECT port_id AS pid, ST_GeomFromText(poly) AS g, ST_GeomFromText(near_in) AS gi, ST_GeomFromText(near_out) AS go FROM %s),
 hg AS (SELECT port_id AS pid, g_h FROM %s),
@@ -154,10 +192,24 @@ SELECT vid, pid AS port_id, T_in, T_out, epoch(T_out - T_in) / 3600 AS dur_h,
             ELSE 'gap_near_port' END AS rule,
        evidence, T_in_ping, T_out_ping, T_in_ev, T_out_ev, 'reconstructed' AS basis
 FROM st",
-    .rb_sql(p), hw_nm, hg_nm, G, G, ev_sql, G, win_e, win_p)
+    .rb_sql(p),
+    hw_nm,
+    hg_nm,
+    G,
+    G,
+    ev_sql,
+    G,
+    win_e,
+    win_p
+  )
   out <- dplyr::tbl(con, dplyr::sql(sql))
-  out <- dplyr::rename(out, !!!stats::setNames(rlang::syms("vid"), map[["vid"]]))
-  if (lazy_in) return(out)
+  out <- dplyr::rename(
+    out,
+    !!!stats::setNames(rlang::syms("vid"), map[["vid"]])
+  )
+  if (lazy_in) {
+    return(out)
+  }
   out <- dplyr::collect(out)
   .rb_unregister(con)
   out[order(out[[map[["vid"]]]], out$T_in), ]
@@ -165,14 +217,30 @@ FROM st",
 
 # A Suggests package, checked where a function needs it.
 .rb_need <- function(pkg) {
-  if (!requireNamespace(pkg, quietly = TRUE))
-    stop(sprintf("This function needs the package '%s'. Install it with install.packages(\"%s\").", pkg, pkg), call. = FALSE)
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    stop(
+      sprintf(
+        "This function needs the package '%s'. Install it with install.packages(\"%s\").",
+        pkg,
+        pkg
+      ),
+      call. = FALSE
+    )
+  }
 }
 
 # glue::glue() for SQL templates, in base R: each {expr} is evaluated in the caller's frame.
 .rb_fill <- function(template, env = parent.frame()) {
   m <- gregexpr("\\{[^{}]+\\}", template)
-  regmatches(template, m) <- list(vapply(regmatches(template, m)[[1]], function(e)
-    paste(as.character(eval(parse(text = substr(e, 2, nchar(e) - 1)), env)), collapse = ""), character(1)))
+  regmatches(template, m) <- list(vapply(
+    regmatches(template, m)[[1]],
+    function(e) {
+      paste(
+        as.character(eval(parse(text = substr(e, 2, nchar(e) - 1)), env)),
+        collapse = ""
+      )
+    },
+    character(1)
+  ))
   template
 }

@@ -9,12 +9,18 @@
 # With `stay_id` in the stays, the ping also takes the stay's key, so a ping can carry the key and not the
 # stay's values (fishycode plan 014).
 .rb_ping_stay_sql <- function(p_sql, s_sql, by_year, stay_id = FALSE) {
-  sprintf("
+  sprintf(
+    "
 WITH p AS (SELECT *, row_number() OVER (PARTITION BY vid ORDER BY time) AS rb_rid FROM (%s)),
 s AS (SELECT vid, port_id, T_in, T_out, %s AS stay_id FROM (%s)),
 ps AS (SELECT p.*, s.port_id AS stay_port_id, s.stay_id FROM p LEFT JOIN s ON s.vid = p.vid AND p.time BETWEEN s.T_in AND s.T_out
        QUALIFY row_number() OVER (PARTITION BY p.vid, p.rb_rid ORDER BY s.T_in NULLS LAST, s.port_id) = 1)
-SELECT *, %s AS rb_year FROM ps", p_sql, if (stay_id) "stay_id" else "NULL::BIGINT", s_sql, if (by_year) "year(time)" else "0")
+SELECT *, %s AS rb_year FROM ps",
+    p_sql,
+    if (stay_id) "stay_id" else "NULL::BIGINT",
+    s_sql,
+    if (by_year) "year(time)" else "0"
+  )
 }
 
 #' Cut vessel tracks into voyages between port stays
@@ -48,26 +54,63 @@ SELECT *, %s AS rb_year FROM ps", p_sql, if (stay_id) "stay_id" else "NULL::BIGI
 #'   `port_to`, `n_pings`. A data frame for data frame input, a lazy table for lazy input.
 #' @family trip
 #' @export
-rb_cut_trip_voyages <- function(pings, stays = NULL, method = c("stays", "runs", "jepol"), min_pings = NULL,
-                                by_year = TRUE, min_dur_h = 0.5, max_dur_h = 72, split = TRUE, batch_pings = 5e7,
-                                vid = vid, time = time, port_id = port_id) {
+rb_cut_trip_voyages <- function(
+  pings,
+  stays = NULL,
+  method = c("stays", "runs", "jepol"),
+  min_pings = NULL,
+  by_year = TRUE,
+  min_dur_h = 0.5,
+  max_dur_h = 72,
+  split = TRUE,
+  batch_pings = 5e7,
+  vid = vid,
+  time = time,
+  port_id = port_id
+) {
   method <- match.arg(method)
-  if (is.null(min_pings)) min_pings <- if (method == "stays") 10 else 1
-  if (method == "stays" && is.null(stays)) stop("Method \"stays\" needs `stays`.", call. = FALSE)
+  if (is.null(min_pings)) {
+    min_pings <- if (method == "stays") 10 else 1
+  }
+  if (method == "stays" && is.null(stays)) {
+    stop("Method \"stays\" needs `stays`.", call. = FALSE)
+  }
   map <- .rb_cols(vid = {{ vid }}, time = {{ time }}, port_id = {{ port_id }})
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
-  p <- .rb_as_lazy(.rb_std_in(pings, if (method == "stays") map[c("vid", "time")] else map), con)
+  p <- .rb_as_lazy(
+    .rb_std_in(pings, if (method == "stays") map[c("vid", "time")] else map),
+    con
+  )
   if (method == "jepol") {
-    return(.rb_cut_jepol(p, con, lazy_in, map, min_pings, by_year, min_dur_h, max_dur_h, split, batch_pings))
+    return(.rb_cut_jepol(
+      p,
+      con,
+      lazy_in,
+      map,
+      min_pings,
+      by_year,
+      min_dur_h,
+      max_dur_h,
+      split,
+      batch_pings
+    ))
   }
   ps <- if (method == "stays") {
-    .rb_ping_stay_sql(.rb_sql(dplyr::select(p, vid, time)), .rb_sql(.rb_as_lazy(stays, con)), by_year)
+    .rb_ping_stay_sql(
+      .rb_sql(dplyr::select(p, vid, time)),
+      .rb_sql(.rb_as_lazy(stays, con)),
+      by_year
+    )
   } else {
-    sprintf("SELECT *, port_id AS stay_port_id, row_number() OVER (PARTITION BY vid ORDER BY time) AS rb_rid, %s AS rb_year FROM (%s)",
-            if (by_year) "year(time)" else "0", .rb_sql(dplyr::select(p, vid, time, port_id)))
+    sprintf(
+      "SELECT *, port_id AS stay_port_id, row_number() OVER (PARTITION BY vid ORDER BY time) AS rb_rid, %s AS rb_year FROM (%s)",
+      if (by_year) "year(time)" else "0",
+      .rb_sql(dplyr::select(p, vid, time, port_id))
+    )
   }
-  sql <- sprintf("
+  sql <- sprintf(
+    "
 WITH ps AS (%s),
 f AS (SELECT *, stay_port_id IS NOT NULL AS in_h,
              lag(stay_port_id IS NOT NULL) OVER w AS p_in, lag(stay_port_id) OVER w AS p_h
@@ -82,10 +125,18 @@ t AS (SELECT *, CASE WHEN NOT in_h THEN lag(h) OVER w END AS port_from,
       FROM runs WINDOW w AS (PARTITION BY vid, rb_year ORDER BY T1)),
 v AS (SELECT *, row_number() OVER (PARTITION BY vid, rb_year ORDER BY T1) AS voyage_id FROM t WHERE NOT in_h)
 SELECT vid, %s voyage_id, T1, T2, port_from, port_to, n_pings FROM v WHERE n_pings >= %d",
-    ps, if (by_year) "rb_year AS year," else "", as.integer(min_pings))
+    ps,
+    if (by_year) "rb_year AS year," else "",
+    as.integer(min_pings)
+  )
   out <- dplyr::tbl(con, dplyr::sql(sql))
-  out <- dplyr::rename(out, !!!stats::setNames(rlang::syms("vid"), map[["vid"]]))
-  if (lazy_in) return(out)
+  out <- dplyr::rename(
+    out,
+    !!!stats::setNames(rlang::syms("vid"), map[["vid"]])
+  )
+  if (lazy_in) {
+    return(out)
+  }
   out <- dplyr::collect(out)
   .rb_unregister(con)
   out[order(out[[map[["vid"]]]], out$T1), ]
@@ -110,30 +161,61 @@ SELECT vid, %s voyage_id, T1, T2, port_from, port_to, n_pings FROM v WHERE n_pin
 #'   type, the same rows.
 #' @family trip
 #' @export
-rb_assign_trip <- function(pings, voyages, stays = NULL, by_year = TRUE, vid = vid, time = time) {
+rb_assign_trip <- function(
+  pings,
+  voyages,
+  stays = NULL,
+  by_year = TRUE,
+  vid = vid,
+  time = time
+) {
   map <- .rb_cols(vid = {{ vid }}, time = {{ time }})
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
   p <- .rb_as_lazy(.rb_std_in(pings, map), con)
   v <- .rb_as_lazy(voyages, con)
   base <- if (is.null(stays)) {
-    sprintf("SELECT *, NULL::VARCHAR AS stay_port_id, NULL::BIGINT AS stay_id, row_number() OVER (PARTITION BY vid ORDER BY time) AS rb_rid FROM (%s)", .rb_sql(p))
+    sprintf(
+      "SELECT *, NULL::VARCHAR AS stay_port_id, NULL::BIGINT AS stay_id, row_number() OVER (PARTITION BY vid ORDER BY time) AS rb_rid FROM (%s)",
+      .rb_sql(p)
+    )
   } else {
-    sprintf("SELECT * EXCLUDE (rb_year) FROM (%s)", .rb_ping_stay_sql(.rb_sql(p), .rb_sql(.rb_as_lazy(stays, con)), by_year,
-                                                                   stay_id = "stay_id" %in% colnames(stays)))
+    sprintf(
+      "SELECT * EXCLUDE (rb_year) FROM (%s)",
+      .rb_ping_stay_sql(
+        .rb_sql(p),
+        .rb_sql(.rb_as_lazy(stays, con)),
+        by_year,
+        stay_id = "stay_id" %in% colnames(stays)
+      )
+    )
   }
   yr <- if (by_year) "AND v.year = year(b.time)" else ""
-  drop <- if (is.null(stays)) "rb_rid, stay_port_id, stay_id" else if ("stay_id" %in% colnames(stays)) "rb_rid" else "rb_rid, stay_id"
-  sql <- sprintf("
+  drop <- if (is.null(stays)) {
+    "rb_rid, stay_port_id, stay_id"
+  } else if ("stay_id" %in% colnames(stays)) {
+    "rb_rid"
+  } else {
+    "rb_rid, stay_id"
+  }
+  sql <- sprintf(
+    "
 WITH b AS (%s), v AS (%s),
 j AS (SELECT b.*, v.voyage_id FROM b LEFT JOIN v ON v.vid = b.vid %s AND b.time BETWEEN v.T1 AND v.T2
       QUALIFY row_number() OVER (PARTITION BY b.vid, b.rb_rid ORDER BY v.T1) = 1)
 SELECT * EXCLUDE (%s), voyage_id AS trip_id,
        CASE WHEN voyage_id IS NULL THEN 'none' ELSE 'reconstructed' END AS trip_basis
-FROM j", base, .rb_sql(v), yr, drop)
+FROM j",
+    base,
+    .rb_sql(v),
+    yr,
+    drop
+  )
   out <- dplyr::tbl(con, dplyr::sql(sql))
   out <- .rb_std_out(out, map)
-  if (lazy_in) return(out)
+  if (lazy_in) {
+    return(out)
+  }
   out <- as.data.frame(dplyr::collect(out))
   .rb_unregister(con)
   out
@@ -159,7 +241,13 @@ FROM j", base, .rb_sql(v), yr, drop)
 #'   (`"ais_overlap"`). A data frame for data frame input, a lazy table for lazy input.
 #' @family trip
 #' @export
-rb_link_trip_voyages <- function(trips, voyages, keys, t2_fix = c("end_of_t1_day", "none"), vid = vid) {
+rb_link_trip_voyages <- function(
+  trips,
+  voyages,
+  keys,
+  t2_fix = c("end_of_t1_day", "none"),
+  vid = vid
+) {
   t2_fix <- match.arg(t2_fix)
   map <- .rb_cols(vid = {{ vid }})
   lazy_in <- inherits(trips, "tbl_lazy")
@@ -168,8 +256,13 @@ rb_link_trip_voyages <- function(trips, voyages, keys, t2_fix = c("end_of_t1_day
   v <- .rb_as_lazy(voyages, con)
   kq <- paste(sprintf('"%s"', keys), collapse = ", ")
   kl <- paste(sprintf('lb."%s"', keys), collapse = ", ")
-  fix <- if (t2_fix == "end_of_t1_day") "greatest(T2, date_trunc('day', T1) + INTERVAL 1 DAY - INTERVAL 1 SECOND)" else "T2"
-  sql <- sprintf("
+  fix <- if (t2_fix == "end_of_t1_day") {
+    "greatest(T2, date_trunc('day', T1) + INTERVAL 1 DAY - INTERVAL 1 SECOND)"
+  } else {
+    "T2"
+  }
+  sql <- sprintf(
+    "
 WITH lb AS (SELECT %s, vid, T1, T2, %s AS T2_fix FROM (%s) WHERE vid IS NOT NULL AND T1 IS NOT NULL),
 v AS (SELECT vid, year, voyage_id, T1, T2, port_from, port_to, n_pings FROM (%s)),
 ov AS (SELECT %s, lb.vid, v.year, v.voyage_id, v.T1 AS T1_voyage, v.T2 AS T2_voyage, v.port_from, v.port_to, v.n_pings,
@@ -182,48 +275,123 @@ ranked AS (SELECT *, row_number() OVER (PARTITION BY %s ORDER BY overlap_s DESC,
 SELECT %s, vid, year, voyage_id, T1_voyage, T2_voyage, port_from, port_to, n_pings, overlap_s, trip_span_s,
        round(overlap_s::DOUBLE / nullif(trip_span_s, 0), 4) AS overlap_frac, n_candidates, 'ais_overlap' AS basis
 FROM ranked WHERE rn = 1",
-    kq, fix, .rb_sql(tr), .rb_sql(v), kl, kq, kq, kq)
+    kq,
+    fix,
+    .rb_sql(tr),
+    .rb_sql(v),
+    kl,
+    kq,
+    kq,
+    kq
+  )
   out <- dplyr::tbl(con, dplyr::sql(sql))
-  out <- dplyr::rename(out, !!!stats::setNames(rlang::syms("vid"), map[["vid"]]))
-  if (lazy_in) return(out)
+  out <- dplyr::rename(
+    out,
+    !!!stats::setNames(rlang::syms("vid"), map[["vid"]])
+  )
+  if (lazy_in) {
+    return(out)
+  }
   out <- as.data.frame(dplyr::collect(out))
   .rb_unregister(con)
   out
 }
 
 # The "jepol" method: whole vessels collected in batches, the rule applied in R (R/trip_jepol.R), one voyage table.
-.rb_cut_jepol <- function(p, con, lazy_in, map, min_pings, by_year, min_dur_h, max_dur_h, split, batch_pings) {
+.rb_cut_jepol <- function(
+  p,
+  con,
+  lazy_in,
+  map,
+  min_pings,
+  by_year,
+  min_dur_h,
+  max_dur_h,
+  split,
+  batch_pings
+) {
   vn <- p |> dplyr::count(vid) |> dplyr::collect()
   vn <- vn[order(-vn$n, vn$vid), ]
-  batches <- if (nrow(vn)) split(vn$vid, cumsum(as.numeric(vn$n)) %/% batch_pings) else list()
+  batches <- if (nrow(vn)) {
+    split(vn$vid, cumsum(as.numeric(vn$n)) %/% batch_pings)
+  } else {
+    list()
+  }
   out <- lapply(batches, function(g) {
-    d <- p |> dplyr::filter(vid %in% g) |> dplyr::select(vid, time, port_id) |> dplyr::collect()
+    d <- p |>
+      dplyr::filter(vid %in% g) |>
+      dplyr::select(vid, time, port_id) |>
+      dplyr::collect()
     d <- d[order(d$vid, d$time, d$port_id, na.last = TRUE), ]
     yr <- as.numeric(format(d$time, "%Y", tz = "UTC"))
     k <- if (by_year) paste(d$vid, yr) else as.character(d$vid)
-    tr <- .rb_jepol(k, d$time, as.integer(!is.na(d$port_id)), min_dur_h, max_dur_h, split)$trip
+    tr <- .rb_jepol(
+      k,
+      d$time,
+      as.integer(!is.na(d$port_id)),
+      min_dur_h,
+      max_dur_h,
+      split
+    )$trip
     f <- which(!is.na(tr))
-    if (!length(f)) return(NULL)
+    if (!length(f)) {
+      return(NULL)
+    }
     id <- unique(tr[f])
     first <- f[match(id, tr[f])]
     last <- f[length(f) + 1 - match(id, rev(tr[f]))]
     prev <- pmax(first - 1, 1)
-    v <- data.frame(vid = d$vid[first], year = yr[first], k = k[first], T1 = d$time[first], T2 = d$time[last],
-                    port_from = ifelse(first > 1 & k[prev] == k[first], d$port_id[prev], NA),
-                    port_to = d$port_id[last], n_pings = as.numeric(tabulate(match(tr[f], id), length(id))))
+    v <- data.frame(
+      vid = d$vid[first],
+      year = yr[first],
+      k = k[first],
+      T1 = d$time[first],
+      T2 = d$time[last],
+      port_from = ifelse(first > 1 & k[prev] == k[first], d$port_id[prev], NA),
+      port_to = d$port_id[last],
+      n_pings = as.numeric(tabulate(match(tr[f], id), length(id)))
+    )
     v <- v[order(v$k, v$T1), ]
-    v$voyage_id <- as.numeric(stats::ave(seq_len(nrow(v)), v$k, FUN = seq_along))
+    v$voyage_id <- as.numeric(stats::ave(
+      seq_len(nrow(v)),
+      v$k,
+      FUN = seq_along
+    ))
     v
   })
   out <- do.call(rbind, out)
-  if (is.null(out)) out <- data.frame(vid = vector(class(vn$vid)[1], 0), year = numeric(0), k = character(0),
-                                      T1 = as.POSIXct(character(0), tz = "UTC"), T2 = as.POSIXct(character(0), tz = "UTC"),
-                                      port_from = character(0), port_to = character(0), n_pings = numeric(0),
-                                      voyage_id = numeric(0))
-  out <- out[out$n_pings >= min_pings, c("vid", if (by_year) "year", "voyage_id", "T1", "T2", "port_from", "port_to", "n_pings")]
+  if (is.null(out)) {
+    out <- data.frame(
+      vid = vector(class(vn$vid)[1], 0),
+      year = numeric(0),
+      k = character(0),
+      T1 = as.POSIXct(character(0), tz = "UTC"),
+      T2 = as.POSIXct(character(0), tz = "UTC"),
+      port_from = character(0),
+      port_to = character(0),
+      n_pings = numeric(0),
+      voyage_id = numeric(0)
+    )
+  }
+  out <- out[
+    out$n_pings >= min_pings,
+    c(
+      "vid",
+      if (by_year) "year",
+      "voyage_id",
+      "T1",
+      "T2",
+      "port_from",
+      "port_to",
+      "n_pings"
+    )
+  ]
   out <- out[order(out$vid, out$T1), ]
   rownames(out) <- NULL
   names(out)[1] <- map[["vid"]]
-  if (!lazy_in) { .rb_unregister(con); return(out) }
+  if (!lazy_in) {
+    .rb_unregister(con)
+    return(out)
+  }
   dplyr::tbl(con, .rb_register(con, out, "rb_voy_"))
 }

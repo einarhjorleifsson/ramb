@@ -1,4 +1,3 @@
-
 #' A wrapper around approx
 #'
 #' @param x A vector, nomally time

@@ -1,6 +1,6 @@
 #' Binning Data to Midpoints
 #'
-#' \code{rb_grade} assigns each value in a numeric vector to the midpoint 
+#' \code{rb_grade} assigns each value in a numeric vector to the midpoint
 #' of its bin, given a user-specified bin width.
 #'
 #' @param x Numeric vector to be binned (e.g., longitude, latitude, or any continuous variable).
@@ -26,5 +26,5 @@
 rb_grade <- function(x, dx) {
   # Input validation
   stopifnot(is.numeric(x), length(dx) == 1, is.numeric(dx), dx > 0)
-  x %/% dx * dx + dx/2
+  x %/% dx * dx + dx / 2
 }

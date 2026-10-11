@@ -9,14 +9,14 @@
 #' @export
 #'
 #'
-rb_calc_step_time <- function(time, units = "secs")  {
-  difftime(time, dplyr::lag(time), units = units) |> 
+rb_calc_step_time <- function(time, units = "secs") {
+  difftime(time, dplyr::lag(time), units = units) |>
     as.numeric()
 }
 
 #' Calculate step acceleration
-#' 
-#' To use this on multiple vessels or trips, use a grouped data frame with tidyverse code like ... 
+#'
+#' To use this on multiple vessels or trips, use a grouped data frame with tidyverse code like ...
 #'
 #' @param lon longitude
 #' @param lat latitude

@@ -1,6 +1,12 @@
-t1 <- as.POSIXct(c("2007-06-04 14:03:36", "2007-06-08 07:40:43", NA), tz = "UTC")
-t2 <- as.POSIXct(c("2007-06-07 05:25:45", "2007-06-09 10:02:21", NA), tz = "UTC")
-secs <- as.numeric(difftime(t2, t1, units = "secs"))   # 228129, 94898, NA
+t1 <- as.POSIXct(
+  c("2007-06-04 14:03:36", "2007-06-08 07:40:43", NA),
+  tz = "UTC"
+)
+t2 <- as.POSIXct(
+  c("2007-06-07 05:25:45", "2007-06-09 10:02:21", NA),
+  tz = "UTC"
+)
+secs <- as.numeric(difftime(t2, t1, units = "secs")) # 228129, 94898, NA
 
 test_that("vector form returns plain numeric in the requested unit", {
   expect_equal(rb_calc_duration(t1, t2), secs / 3600)
@@ -36,7 +42,8 @@ test_that("lazy table form computes in the database", {
   d <- dplyr::copy_to(con, tibble::tibble(T1 = t1, T2 = t2), "duration_test")
   out <- rb_calc_duration(d, T1, T2) |> dplyr::collect()
   expect_equal(out$duration, secs / 3600)
-  out <- rb_calc_duration(d, T1, T2, unit = "days", name = "dr_days") |> dplyr::collect()
+  out <- rb_calc_duration(d, T1, T2, unit = "days", name = "dr_days") |>
+    dplyr::collect()
   expect_equal(out$dr_days, secs / 86400)
 })
 

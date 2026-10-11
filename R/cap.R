@@ -1,27 +1,30 @@
 #' Calculate the upper IQR multiplier value
-#' 
+#'
 #' @param x A numeric vector
 #' @param multiplier Default is 1.5
 #'
 #' @return The upper limit value
-#' 
+#'
 rb_iqr <- function(x, multiplier = 1.5) {
   y <- log(x)
-  upper <- min(max(y, na.rm = TRUE), stats::quantile(y, 0.75, na.rm = TRUE) + (IQR(y, na.rm = TRUE) * multiplier))
+  upper <- min(
+    max(y, na.rm = TRUE),
+    stats::quantile(y, 0.75, na.rm = TRUE) + (IQR(y, na.rm = TRUE) * multiplier)
+  )
   upper <- exp(upper)
   return(upper)
 }
 
 #' Cap value to the upper multiplier of the IQR range
-#' 
-#' Replace extreme values by less extreme using interquartile range multiplier 
+#'
+#' Replace extreme values by less extreme using interquartile range multiplier
 #'
 #' @param x A numeric vector
 #' @param multiplier Default is 1.5
 #'
 #' @return A vector of same length as x
 #' @noRd
-#' 
+#'
 .rb_cap_iqr <- function(x, multiplier = 1.5) {
   upper <- rb_iqr(x, multiplier)
   x[x > upper] <- upper
@@ -29,18 +32,18 @@ rb_iqr <- function(x, multiplier = 1.5) {
 }
 
 #' Calculate the upper Winsor value
-#' 
+#'
 #' @param x A numeric vector
 #' @param probs Default is 0.99
 #'
 #' @return The value corresponding to the percentile
-#'  
+#'
 rb_winsor <- function(x, probs = 0.99) {
   stats::quantile(x = x, probs = probs, na.rm = FALSE)
 }
 
 #' Winsorize
-#' 
+#'
 #' Replace extreme values by less extreme ones. Default is just to cap the higher
 #' values, but if arguement p is of length 2, lower values can also be substituted.
 #'
@@ -51,19 +54,17 @@ rb_winsor <- function(x, probs = 0.99) {
 #' @noRd
 #'
 .rb_cap_winsorize <- function(x, probs = 0.99) {
-  
-  if(length(probs) > 1) {
+  if (length(probs) > 1) {
     message("Cap vector can only be of length 1 (upper value)")
   }
-  if(probs < 0 | probs > 1) {
+  if (probs < 0 | probs > 1) {
     message("Value should be between 0 and 1")
   }
 
   limit <- rb_winsor(x, probs)
   x[x > limit] <- limit
-  
+
   return(x)
-  
 }
 
 #' Calculate the Miller limit
@@ -77,7 +78,7 @@ rb_winsor <- function(x, probs = 0.99) {
 rb_miller <- function(x, step_limit = 1.5) {
   w <- x |> unique() |> sort()
   w <- w[w > 0]
-  
+
   # A: If non-zero values
   if (length(w) > 0) {
     log_w <- log10(w)
@@ -94,20 +95,22 @@ rb_miller <- function(x, step_limit = 1.5) {
       }
     }
   }
-  
+
   # B: If only zero values
-  if(length(w) == 0) {
+  if (length(w) == 0) {
     lmit <- 0
   }
-  
+
   # Hail Mary - should really deal with this above
-  if(!exists("limit")) limit <- max(w, na.rm = TRUE)
-  
+  if (!exists("limit")) {
+    limit <- max(w, na.rm = TRUE)
+  }
+
   return(limit)
 }
 
 #' Cap value to highest sequential 1.5 log step
-#' 
+#'
 #' Replaces extreme values by less extreme ones.
 #'
 #' @param x A numeric vector
@@ -118,10 +121,9 @@ rb_miller <- function(x, step_limit = 1.5) {
 #' @noRd
 #'
 .rb_cap_miller <- function(x, step_limit = 1.5) {
-
   limit <- rb_miller(x, step_limit)
-  
-  x[x > limit]  <- limit
+
+  x[x > limit] <- limit
   return(x)
 }
 
@@ -136,8 +138,10 @@ rb_miller <- function(x, step_limit = 1.5) {
 #' @export
 rb_cap_outliers <- function(x, method = c("iqr", "miller", "winsorize"), ...) {
   method <- match.arg(method)
-  switch(method,
-         iqr       = .rb_cap_iqr(x, ...),
-         miller    = .rb_cap_miller(x, ...),
-         winsorize = .rb_cap_winsorize(x, ...))
+  switch(
+    method,
+    iqr = .rb_cap_iqr(x, ...),
+    miller = .rb_cap_miller(x, ...),
+    winsorize = .rb_cap_winsorize(x, ...)
+  )
 }
