@@ -20,7 +20,7 @@ fishing-activity flow. Functions are typically drafted in fishycode
 - Internal functions are dot-prefixed (`.rb_*`, `.whack_*`), are not
   exported, and carry no roxygen docs — explain them in plain comments.
 
-## What belongs here
+## What belongs here — and what does not
 
 - Generic track / spatial / time tools: yes.
 - ICES-domain workflow steps (the WGSFD one-flow): yes.
@@ -28,6 +28,15 @@ fishing-activity flow. Functions are typically drafted in fishycode
   kept, but only in clearly-named files (`*_mfri`, `logbook_mfri.R`) with
   their packages in Suggests. A future split into a separate package should
   be mechanical — do not add MFRI-only functions to generic files.
+- Multibeam/bathymetry rasters and rayshading: NO — that is the sibling
+  package `omb` (`~/R/Pakkar/omb`, functions `om_*`), split out 2026-10-11
+  with the terra/rayshader/scales dependencies.
+- Movement-behaviour models (Gaussian mixtures, EMbC, HMM step/turn):
+  NO — that is the sibling package `fishymodel`
+  (`~/R/Pakkar/fishymodel`, functions `fm_*`), resurrected 2026-10-11.
+
+Keep dependencies light: heavy or single-purpose packages go in Suggests
+with an `.rb_need()` guard, never in Imports.
 
 ## Compatibility policy
 
@@ -41,9 +50,15 @@ fishing-activity flow. Functions are typically drafted in fishycode
 ## Working on the package
 
 - `devtools::test()`, `devtools::document()`, `devtools::check()`.
+- Format with `air format .` (binary at `~/.local/bin/air`; the repo was
+  normalised on 2026-10-11 — keep diffs free of formatting noise). Note:
+  the CRAN package called `air` is an unrelated OpenAI client.
 - Re-running `devtools::test()` in the same R session can fail on leftover
   tables in duckdbfs's cached connection; run
   `duckdbfs::close_connection()` first.
 - Every user-facing change gets a bullet in NEWS.md.
 - Open work is tracked in fishycode `curate/plans/013-ramb-one-flow.md`,
   not in this repo's TODO.md.
+- Known stale corners (do not "fix" blindly): `vignettes/articles/` are
+  unevaluated historical sketches that reference removed functions;
+  `TOPSECRET.R` and `zgarbage/` sit in the repo root, build-ignored.
