@@ -1,5 +1,9 @@
 # ramb (development version)
 
+## Old model functions resurrected in fishymodel (2026-10-11)
+
+The trip-model wrappers removed on 2025-09-10 (commit f9d4039) — `rb_gaussian()`, `rb_gaussian_binary_clustering()`, `rb_hidden_markov_step()` and `rb_hidden_markov_step_and_turn()`, plus the `tidy_*` wrappers — now live in the sister package `fishymodel` (`../fishymodel`), renamed with an `fm_` prefix.
+
 ## Raster and rayshade functions move to omb (2026-10-11)
 
 The multibeam-bathymetry family is now its own package, `omb`, renamed with an `om_` prefix: `rb_create_base_raster()` → `omb::om_create_base_raster()`, `rb_create_bbox()` → `om_create_bbox()`, `rb_calc_xyz_extent()` → `om_calc_xyz_extent()`, `rb_rasterize_xyz()` → `om_rasterize_xyz()`, `rb_rayshade_raster()` → `om_rayshade_raster()`, `rb_rayshade_raster_rgb()` → `om_rayshade_raster_rgb()`, `rb_rayshade_xyz_dynamic()` → `om_rayshade_xyz_dynamic()`, `rb_convert_rayshade_to_rgb()` → `om_convert_rayshade_to_rgb()`. Nothing called these functions in fishycode or the other packages. With them go the `terra`, `rayshader` and `scales` dependencies; the never-used `ggnewscale` leaves Suggests too.
