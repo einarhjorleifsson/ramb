@@ -1,14 +1,13 @@
 url: https://heima.hafro.is/~einarhj/ramb
 
 articles:
-- title: "Worked examples"
+- title: "Articles"
   contents:
+  - ramb
   - trips
-  - benthis
-  - case_example01
-- title: "Implementation notes"
-  contents:
-  - technicalities
+  - gear
+  - catch
+  - tools
 
 reference:
 - title: "Ping (step 0): flag pings"

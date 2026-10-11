@@ -1,0 +1,92 @@
+---
+title: "ramb and the fishing-activity flow"
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  message = FALSE,
+  warning = FALSE,
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+{ramb} provides tools for vessel-track (AIS/VMS) data and the steps of
+the ICES fishing-activity flow (WGSFD). Two promises hold everywhere:
+everything returns a tibble for downstream tidyverse processing, and a
+data frame and a lazy DuckDB table give the same result — so code
+prototyped on a data frame runs unchanged on parquet files many times
+larger than memory.
+
+## The flow
+
+The flow takes a vessel's raw track to fishing activity, effort and
+catch. Each step takes the best source available for a ping, falls back
+when it is missing, labels the ping with a *basis*, and accounts for
+every ping. The function names mark where they sit:
+`rb_<verb>_<stage>`.
+
+```{r echo = FALSE}
+tibble::tribble(
+  ~Step, ~Stage, ~Question, ~`Key functions`,
+  "0", "ping", "Which pings are usable?",
+  "`rb_flag_ping_invalid()`, `rb_flag_ping_duplicate()`, `rb_flag_ping_impossible()`, `rb_flag_ping_port()`",
+  "1", "trip", "Which trip does the ping belong to?",
+  "`rb_find_trip_stays()`, `rb_cut_trip_voyages()`, `rb_assign_trip()`, `rb_link_trip_logbook()`",
+  "2", "record", "Which logbook record covers the ping?",
+  "`rb_build_record_windows()`, `rb_link_record_pings()`, `rb_assign_record()`",
+  "3", "gear", "What gear, and how wide?",
+  "`rb_extract_metier()`, `rb_predict_gear_width()`",
+  "4", "fishing", "Is the ping fishing?",
+  "`rb_assign_fishing()`",
+  "5", "effort", "How much effort (hours, kW-hours, swept area)?",
+  "`rb_cap_effort()`",
+  "6", "catch", "How is the catch shared over the fishing pings?",
+  "`rb_share_catch()`"
+) |>
+  knitr::kable()
+```
+
+Steps 0 and 1 are covered in the
+[trips article](trips.html), step 3 in the
+[gear article](gear.html) and step 6 in the
+[catch article](catch.html). Steps 2, 4 and 5 depend on how a country's
+logbook records resolve onto tracks; their functions are documented in
+the reference.
+
+Alongside the flow sits a **step-independent toolbox** — track
+calculations, spatial tests, ICES rectangles, binning, capping,
+timestamps — named `rb_<verb>_<object>` and covered in the
+[tools article](tools.html).
+
+## Conventions
+
+A few conventions make the package predictable:
+
+* **Grammar column names.** Inputs default to `vid`, `time`, `lon`,
+  `lat`, `speed`; every one is overridable per call
+  (`rb_flag_ping_impossible(d, vid = vessel_id, time = time_stamp)`).
+  Columns added by the flow use the flow's names: `trip_id`,
+  `record_id`, `fishing`, `port_id`, `<stage>_basis`.
+* **One task, one function.** Variants are a `method` argument, never a
+  new name: `rb_flag_ping_impossible(method = "sda")`,
+  `rb_encode_ices_rectangle(method = "vmstools")`.
+* **Grouping is a `by` argument**, not a new function.
+* **Basis values** say where a value came from:
+  `recorded | derived | reconstructed | synthesised | none` — recorded
+  in a logbook, computed from recorded values, rebuilt from the track,
+  model-predicted, or not found.
+* **Nothing is dropped silently.** Flag functions set a column
+  (`ping_flag`), they do not remove rows.
+
+## Where things live
+
+{ramb} is deliberately narrow. Movement-behaviour models (Gaussian
+mixtures, hidden Markov models) live in the sister package
+{fishymodel} (`fm_*` functions), and multibeam-bathymetry rasters and
+rayshading in {omb} (`om_*` functions). Long-form walkthroughs that
+dig deeper than these articles — the Icelandic AIS/logbook pipeline,
+data-quality case studies — live in the fishyweb book.

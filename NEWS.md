@@ -1,5 +1,17 @@
 # ramb (development version)
 
+## Articles reorganised (2026-10-11)
+
+The articles are now a small user-facing set explaining the essence of the package, all self-contained (package data only, no undeclared dependencies):
+
+- `ramb`: the fishing-activity flow, the naming conventions and the basis vocabulary — the get-started article.
+- `trips`: extended with step 0 (flagging invalid and impossible pings, tagging port pings with `rb_flag_ping_port()`) and closes with `rb_assign_trip()`.
+- `gear`: the former `benthis` article, now self-contained (no `vmstools` needed for example data) and widened to métier extraction and the BENTHIS lookup; the hotlinked journal figure is gone.
+- `catch`: new — sharing catch and value over fishing pings with `rb_share_catch()`.
+- `tools`: new — the step-independent toolbox (track calculations, interpolation, polygons, ICES rectangles, binning, capping, timestamps, MMSI).
+- `case_example01` moved to fishymodel (`vignettes/articles/mendo2019.Rmd`), where the `fm_*` models it demonstrates live.
+- `technicalities` removed — a developer note on `rb_bin_midpoint()`'s floating-point floor; the user-facing fact (works on DuckDB lazy tables) is now in the `tools` article and the implementation note survives in git history.
+
 ## Renames for consistency with the verb glossary (2026-10-11)
 
 - `dc_spread_cash_and_catch()` is now `rb_share_catch()` — "share" is the glossary verb for distributing a quantity while conserving the total, and the last export without the `rb_` prefix is gone. The placeholder arguments `ignore_Einstein` and `go_nuclear` are now `raise_unallocated = FALSE` and `raise_unmatched = FALSE` (still reserved, not yet implemented).

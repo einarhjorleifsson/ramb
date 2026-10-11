@@ -1,0 +1,95 @@
+---
+title: "Sharing catch over fishing pings"
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  message = FALSE,
+  warning = FALSE,
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+Step 6 of the fishing-activity flow. Catch and value are recorded per
+logbook event — a day, a haul, sometimes only a trip — while the
+activity lives on the pings. `rb_share_catch()` spreads each event's
+weight (`LE_KG`) and value (`LE_EURO`) over the fishing pings it
+covers, conserving the total.
+
+The column names follow the ICES VMS/Logbook datacall convention:
+`VE_COU`, `VE_REF` (vessel country and id), `FT_REF` (fishing trip id),
+`LE_RECT` (ICES rectangle), `LE_KG`, `LE_EURO`. The pings (`trails`)
+add a timestamp, the ICES rectangle of the position (`ir`) and a
+`state` that is `1` for fishing pings — only those receive catch.
+
+## How the sharing works
+
+Events rarely resolve to the same level as the pings, so allocation is
+hierarchical, finest first:
+
+1. **trip + rectangle + day** — events with a date and a rectangle are
+   shared over the fishing pings of that trip, rectangle and day;
+2. **trip + rectangle** — events without a date go to the remaining
+   fishing pings of that trip and rectangle;
+3. **trip** — events with only a trip id go to any remaining fishing
+   pings of the trip.
+
+Within a level the event total is split evenly over the pings. A ping
+allocated at a finer level is not reallocated, and each ping's `.how`
+column records which level served it.
+
+## A worked example
+
+One vessel, one trip, twelve pings over two days and two rectangles —
+with one non-fishing ping (`state = 0`) that must receive nothing:
+
+```{r}
+library(ramb)
+library(dplyr)
+
+trails <-
+  tibble(
+    .pid = 1:12L,
+    VE_COU = "IS", VE_REF = "1234", FT_REF = "T1",
+    time = as.POSIXct("2024-06-01 06:00", tz = "UTC") + (0:11) * 3600 * 3,
+    ir = rep(rep(c("54D9", "54E0"), each = 2), 3),
+    state = rep(c(1L, 1L, 0L, 1L), 3)
+  )
+```
+
+Four events: two fully resolved (date and rectangle), one with date
+only, one with rectangle only:
+
+```{r}
+events <-
+  tibble(
+    .eid = 1:4L,
+    VE_COU = "IS", VE_REF = "1234", FT_REF = "T1",
+    date = as.Date(c("2024-06-01", "2024-06-01", "2024-06-02", NA)),
+    LE_RECT = c("54D9", "54E0", "54D9", "54E0"),
+    LE_KG = c(100, 300, 200, 500),
+    LE_EURO = c(150, 450, 300, 750)
+  )
+
+out <- rb_share_catch(trails, events)
+out |> select(.pid, time, ir, state, LE_KG, .how)
+```
+
+The 2024-06-01 events land at level 1, split over that day and
+rectangle's fishing pings; the dateless `54E0` event falls through to
+level 2 and is split over the remaining `54E0` pings; the `state = 0`
+ping stays empty. The total is conserved:
+
+```{r}
+sum(events$LE_KG)
+sum(out$LE_KG, na.rm = TRUE)
+```
+
+Two refinements are reserved but not yet implemented:
+`raise_unallocated` (share the remainder of events that were only
+partly allocated) and `raise_unmatched` (share events whose trip has no
+match in the trails at a broader level, e.g. vessel by month).
