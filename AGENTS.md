@@ -54,6 +54,10 @@ with an `.rb_need()` guard, never in Imports.
 ## Working on the package
 
 - `devtools::test()`, `devtools::document()`, `devtools::check()`.
+- Keep chatty builds quiet: `pkgdown::build_site()` and friends relay a
+  subprocess stream that `capture.output()` does not catch. Sink both
+  streams to a file (`sink(f); sink(f, type = "message")`) and report
+  only the pass/fail lines, or run via `callr::r(..., show = FALSE)`.
 - Format with `air format .` (binary at `~/.local/bin/air`; settings are
   the committed `air.toml`, i.e. explicit defaults — keep diffs free of
   formatting noise). Note: the CRAN package called `air` is an unrelated

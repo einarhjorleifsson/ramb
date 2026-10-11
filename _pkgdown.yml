@@ -1,13 +1,16 @@
 url: https://heima.hafro.is/~einarhj/ramb
 
+template:
+  bootstrap: 5
+
 articles:
 - title: "Articles"
   contents:
-  - ramb
-  - trips
-  - gear
-  - catch
-  - tools
+  - articles/flow
+  - articles/trips
+  - articles/gear
+  - articles/catch
+  - articles/tools
 
 reference:
 - title: "Ping (step 0): flag pings"
@@ -26,6 +29,10 @@ reference:
   - rb_pad_harbour
 - title: "Record (step 2)"
   contents:
+  - rb_build_record_windows
+  - rb_link_record_pings
+  - rb_assign_record
+  - rb_limit_record_duration
   - rb_interpolate_track
   - rb_cap_effort
 - title: "Gear (step 3)"
@@ -35,6 +42,9 @@ reference:
   - rb_predict_gear_width
   - rb_fill_gear_width
   - rb_standardise_gear_meshsize
+- title: "Fishing (step 4)"
+  contents:
+  - rb_assign_fishing
 - title: "Catch (step 6)"
   contents:
   - rb_share_catch

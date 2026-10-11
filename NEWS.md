@@ -4,7 +4,7 @@
 
 The articles are now a small user-facing set explaining the essence of the package, all self-contained (package data only, no undeclared dependencies):
 
-- `ramb`: the fishing-activity flow, the naming conventions and the basis vocabulary — the get-started article.
+- `flow`: the fishing-activity flow, the naming conventions and the basis vocabulary — the get-started article (named `flow`, not `ramb`: pkgdown reserves the package name for a root vignette).
 - `trips`: extended with step 0 (flagging invalid and impossible pings, tagging port pings with `rb_flag_ping_port()`) and closes with `rb_assign_trip()`.
 - `gear`: the former `benthis` article, now self-contained (no `vmstools` needed for example data) and widened to métier extraction and the BENTHIS lookup; the hotlinked journal figure is gone.
 - `catch`: new — sharing catch and value over fishing pings with `rb_share_catch()`.

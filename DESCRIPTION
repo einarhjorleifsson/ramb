@@ -12,6 +12,8 @@ Description: Tools for vessel-track (AIS/VMS) data and the steps of the ICES
     Everything returns tibbles for downstream tidyverse processing, and data
     frames and lazy DuckDB tables give the same result.
 License: GPL (>= 3)
+URL: https://heima.hafro.is/~einarhj/ramb,
+    https://github.com/einarhjorleifsson/ramb
 Encoding: UTF-8
 LazyData: true
 LazyDataCompression: xz
