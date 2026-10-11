@@ -19,6 +19,10 @@ fishing-activity flow. Functions are typically drafted in fishycode
   argument.
 - Internal functions are dot-prefixed (`.rb_*`, `.whack_*`), are not
   exported, and carry no roxygen docs — explain them in plain comments.
+- Source files are named after their stage or function, without the `rb_`
+  prefix (`trip.R`, `track.R`, `gear.R`, `bin_midpoint.R`); one family per
+  file, no grab-bags (the old `toolbox.R` was dissolved). Test files mirror
+  them (`test-trip.R` tests `trip.R`).
 
 ## What belongs here — and what does not
 
@@ -50,15 +54,19 @@ with an `.rb_need()` guard, never in Imports.
 ## Working on the package
 
 - `devtools::test()`, `devtools::document()`, `devtools::check()`.
-- Format with `air format .` (binary at `~/.local/bin/air`; the repo was
-  normalised on 2026-10-11 — keep diffs free of formatting noise). Note:
-  the CRAN package called `air` is an unrelated OpenAI client.
+- Format with `air format .` (binary at `~/.local/bin/air`; settings are
+  the committed `air.toml`, i.e. explicit defaults — keep diffs free of
+  formatting noise). Note: the CRAN package called `air` is an unrelated
+  OpenAI client.
 - Re-running `devtools::test()` in the same R session can fail on leftover
   tables in duckdbfs's cached connection; run
   `duckdbfs::close_connection()` first.
 - Every user-facing change gets a bullet in NEWS.md.
 - Open work is tracked in fishycode `curate/plans/013-ramb-one-flow.md`,
   not in this repo's TODO.md.
-- Known stale corners (do not "fix" blindly): `vignettes/articles/` are
-  unevaluated historical sketches that reference removed functions;
-  `TOPSECRET.R` and `zgarbage/` sit in the repo root, build-ignored.
+- Articles are for package users: they must run against the public API,
+  with no local paths, internal (`:::`) calls, or credentials. The six
+  developer-note sketches that violated this moved to fishycode
+  `curate/ramb-articles/` on 2026-10-11.
+- Known stale corners (do not "fix" blindly): `TOPSECRET.R` and
+  `zgarbage/` sit in the repo root, build-ignored.
