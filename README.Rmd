@@ -22,6 +22,8 @@ knitr::opts_chunk$set(
 
 The goal of {ramb} is to return various "move"-objects to tibbles for further downstream processing using the tidyverse lingo. The focus has been on AIS vessel data and has only been tested on limited dataset.
 
+The multibeam-bathymetry raster and rayshading functions that used to live here moved to the sister package {omb} (`../omb`, functions prefixed `om_`) in 2026-10.
+
 ## Installation
 
 You can install the development version of {ramb} from [GitHub](https://github.com/einarhjorleifsson/ramb) with:
@@ -34,32 +36,16 @@ devtools::install_github("einarhjorleifsson/ramb")
 ## Example
 
 ```{r}
-library(tidyverse)
-```
-
-Basic example of workflow:
-
-```{r}
-ramb::creel %>% 
-  ramb::rb_gaussian() %>% 
-  dplyr::glimpse()
+library(ramb)
 ```
 
 ```{r}
-ramb::creel %>% 
-  ramb::rb_gaussian_binary_clustering() %>% 
-  dplyr::glimpse()
+# great-circle distance in metres
+rb_calc_distance(-21.93, 64.15, -23.93, 65.65)
 ```
 
 ```{r}
-ramb::creel %>% 
-  ramb::rb_hidden_markov_step() %>% 
-  dplyr::glimpse()
-```
-
-```{r}
-ramb::creel %>% 
-  ramb::rb_hidden_markov_step_and_turn() %>% 
-  dplyr::glimpse()
+# the ICES statistical rectangle of a position
+rb_encode_ices_rectangle(c(-10.5, 15.2), c(62.5, 54.9))
 ```
 
