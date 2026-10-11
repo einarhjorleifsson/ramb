@@ -1,5 +1,27 @@
 # ramb (development version)
 
+## Aliases removed, filters internal, one rectangle encoder (2026-10-11)
+
+The old names kept on 2026-10-08 are removed, three days after they were introduced; the package exports only the current names. This breaks old code loudly (`could not find function`), not silently.
+
+- `rb_encode_ices_rectangle()` gains `method`: `"robust"` (default, the algorithm to date) and `"vmstools"`, a faithful reproduction of `vmstools::icesRectangle()` kept for compatibility with vmstools-based workflows; the two diverge on exact 10-degree longitudes (e.g. `lon = -10`: `54E0` vs `54D9`). The unexported `rb_d2ir_vmstools()` is absorbed and deleted.
+- Fixed a load-time bug: the `stopifnot` block embedded in `R/rb_d2ir.R` expected wrong rectangles (`43E1` for a position whose rectangle is `54D9`) and failed package load in interactive sessions. It is replaced by `tests/testthat/test-rb_d2ir.R`, which covers both methods and the 10-degree boundaries.
+- The ping filters are now internal engines of `rb_flag_ping_impossible(method = ...)` and `rb_flag_ping_duplicate()`: `rb_whack_clean()`, `rb_whack_sda()`, `rb_whack_forward()`, `rb_whack_fwdbwd()`, `rb_whack_sequential_fast()`, `rb_whack_duplicates()` and the bare `whack_*` names are no longer exported, and the originals `rb_whacky_speed()`, `rb_whacky_speed_mendo()`, `rb_whacky_speed_trip()` and `rb_whacky_distance()` are gone.
+- `rb_trip()` and `rb_trip_jepol()` are removed; `rb_cut_trip_voyages(method = "runs" | "jepol")` is the function.
+- The 46 rename aliases of 2026-10-08 (`rb_speed()`, `rb_d2ir()`, `dc_*()`, `mb_*()`, `read_is_*()`, `rb_flag_ping_harbour()`, and the rest) are removed.
+- `rb_rms_tbl()` and `rb_st_remove()` are removed; `geo` leaves Suggests.
+- `R/rb_workflow.R` was misnamed, not trial code: it holds the MFRI logbook reader and curation helpers and is now `R/logbook_mfri.R`.
+
+Fix list for fishycode (all calls found there on 2026-10-11):
+
+- `products/exports/astd_iseez.R:201`: `ramb::rb_trip()` → `rb_cut_trip_voyages(method = "runs")`.
+- `curate/checks/` (~110 calls in 13 files): `rb_whack_clean()` / `rb_whack_forward()` / `rb_whack_fwdbwd()` / `rb_whack_sda()` → `rb_flag_ping_impossible(method = "clean" / "forward" / "fwdbwd" / "sda")`.
+- `vignettes/articles/` (ais-workflow, interpolation, trips) still references removed names; these are unevaluated historical sketches, left as-is for now.
+
+## rb_calc_duration (2026-10-11)
+
+- `rb_calc_duration()`: the elapsed time between two datetimes as plain numeric in a chosen `unit` (`"secs"`, `"mins"`, `"hours"`, `"days"`). One function for three inputs: a lazy table (computed in the database via `epoch()`), a data frame, or a `POSIXt` vector inside `mutate()`. On tables it adds a column and refuses to overwrite an existing one.
+
 ## "port", not "harbour" (2026-10-09)
 
 The place a trip starts and ends is a port throughout (fishycode plan 014, decision 075).

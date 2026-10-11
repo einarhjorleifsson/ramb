@@ -17,8 +17,8 @@
 #' predict, classify, lookup, cap, standardise, sum, check, get, read, plot, register).
 #'
 #' A method is never part of a name; it is the \code{method} argument. A grouping is never part of
-#' a method; it is the \code{by} argument. Old names stay as aliases that warn they will be removed.
-#' The rename plan is fishycode's \code{curate/plans/013-ramb-one-flow.md}.
+#' a method; it is the \code{by} argument. The rename plan is fishycode's
+#' \code{curate/plans/013-ramb-one-flow.md}; the pre-2026-10-08 names were removed on 2026-10-11.
 #' @keywords internal
 "_PACKAGE"
 

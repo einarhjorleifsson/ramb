@@ -24,11 +24,16 @@ rb_flag_ping_impossible(
 \item{method}{The rule:
 \itemize{
 \item \code{"clean"} (default): the recommended two-stage filter: speed-distance-angle ("vmask", "spike"),
-then a forward scan against the last kept ping ("forward"). See \code{\link[=rb_whack_clean]{rb_whack_clean()}}.
-\item \code{"sda"}: the speed-distance-angle stage alone ("vmask", "spike"). See \code{\link[=rb_whack_sda]{rb_whack_sda()}}.
-\item \code{"forward"}: the forward scan alone ("forward"). See \code{\link[=rb_whack_forward]{rb_whack_forward()}}.
-\item \code{"fwdbwd"}: a ping too fast both from the previous and to the next ("fwdbwd"). See \code{\link[=rb_whack_fwdbwd]{rb_whack_fwdbwd()}}.
-\item \code{"sequential"}: the cluster-aware sequential filter ("sequential"). See \code{\link[=rb_whack_sequential_fast]{rb_whack_sequential_fast()}}.
+which judges each ping from both sides, then a forward scan against the last kept ping
+("forward"), which resolves runs and interleaved streams.
+\item \code{"sda"}: the speed-distance-angle stage alone ("vmask", "spike"); the algorithm of
+\code{argosfilter::sdafilter()} (Freitas et al. 2008), re-implemented in C++.
+\item \code{"forward"}: the forward scan alone ("forward"): each ping is judged against the last
+\emph{retained} ping, so consecutive clusters are caught.
+\item \code{"fwdbwd"}: a ping too fast both from the previous and to the next ("fwdbwd"): isolated
+spikes only; consecutive clusters pass.
+\item \code{"sequential"}: the cluster-aware sequential filter ("sequential"): iteratively removes
+the first too-fast segment and recomputes, in-memory only.
 }}
 
 \item{kn_max}{Speed threshold, knots.}

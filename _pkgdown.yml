@@ -33,20 +33,19 @@ reference:
   contents:
   - rb_calc_speed
   - rb_calc_distance
+  - rb_calc_duration
   - rb_calc_step_time
   - rb_calc_step_acceleration
   - rb_calc_track_time
   - rb_number_runs
   - rb_convert_speed
   - rb_interpolate
-  - rb_rms_tbl
   - rb_summarise_track
 - title: "Tools: space and grids"
   contents:
   - rb_detect_in_polygons
   - rb_keep_in_polygons
   - rb_drop_in_polygons
-  - rb_st_remove
   - rb_encode_ices_rectangle
   - rb_bin_midpoint
   - rb_grade
@@ -89,20 +88,3 @@ reference:
   - whacks1
   - benthis_parameters
   - metier5_benthis_lookup
-- title: "Superseded (old bodies kept, to be removed)"
-  contents:
-  - rb_trip
-  - rb_trip_jepol
-  - rb_whack_clean
-  - rb_whack_sda
-  - rb_whack_forward
-  - rb_whack_fwdbwd
-  - rb_whack_sequential_fast
-  - rb_whack_duplicates
-  - rb_whacky_speed
-  - rb_whacky_speed_mendo
-  - rb_whacky_speed_trip
-- title: "Old names"
-  contents:
-  - ramb-renamed
-  - whack-deprecated

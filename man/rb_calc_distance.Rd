@@ -16,7 +16,7 @@ Numeric vector of distances in metres; \code{NA} where any coordinate is \code{N
 }
 \description{
 Haversine distance, in metres, on a sphere of radius 6,371,000 m: the radius the
-whacky-position filters (\code{\link[=rb_whack_clean]{rb_whack_clean()}} and friends) use, so a distance computed here
+impossible-position filters (\code{\link[=rb_flag_ping_impossible]{rb_flag_ping_impossible()}}) use, so a distance computed here
 agrees with theirs. Vectorised, and the four arguments recycle to a common length, so it
 works inside \code{mutate()} with \code{dplyr::lag()} and \code{dplyr::lead()}.
 }

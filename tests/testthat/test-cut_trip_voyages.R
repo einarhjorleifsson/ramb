@@ -54,11 +54,21 @@ test_that("method jepol reproduces rb_trip_jepol(), with and without splits", {
   expect_true(all(v$port_from == "h" | is.na(v$port_from)))
 })
 
-test_that("method runs numbers the sea runs as rb_trip() did, vessel by vessel", {
+test_that("method runs numbers the sea runs as the old rb_trip() did, vessel by vessel", {
+  # reference: the body of the removed rb_trip()
+  rb_trip_ref <- function(x) {
+    tibble::tibble(x = x) |>
+      dplyr::mutate(tid = dplyr::if_else(x != dplyr::lag(x), 1L, 0L, 1L),
+                    tid = ifelse(x, -tid, tid)) |>
+      dplyr::group_by(x) |>
+      dplyr::mutate(tid = cumsum(tid)) |>
+      dplyr::ungroup() |>
+      dplyr::pull(tid)
+  }
   v <- rb_cut_trip_voyages(tagged, method = "runs", by_year = FALSE)
   a <- rb_assign_trip(tagged, v, by_year = FALSE)
   a <- a[order(a$vid, a$time), ]
-  r <- unlist(lapply(split(!is.na(a$port_id), a$vid), function(x) suppressWarnings(rb_trip(x))))
+  r <- unlist(lapply(split(!is.na(a$port_id), a$vid), rb_trip_ref))
   expect_equal(ifelse(r > 0, r, NA), a$voyage_id, ignore_attr = TRUE)
 })
 

@@ -1,7 +1,7 @@
 #' Great-circle distance between two points
 #'
 #' Haversine distance, in metres, on a sphere of radius 6,371,000 m: the radius the
-#' whacky-position filters ([rb_whack_clean()] and friends) use, so a distance computed here
+#' impossible-position filters ([rb_flag_ping_impossible()]) use, so a distance computed here
 #' agrees with theirs. Vectorised, and the four arguments recycle to a common length, so it
 #' works inside `mutate()` with `dplyr::lag()` and `dplyr::lead()`.
 #'

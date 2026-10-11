@@ -18,9 +18,9 @@ two_feeds <- function() {
 old_procedure <- function(d, priority) {
   bad <- d$lon == d$lat
   dup <- logical(nrow(d))
-  dup[!bad] <- with(d[!bad, ], rb_whack_duplicates(vid, time, lon, lat, provider, priority = priority))
+  dup[!bad] <- with(d[!bad, ], .rb_whack_duplicates(vid, time, lon, lat, provider, priority = priority))
   keep <- !bad & !dup
-  out <- dplyr::bind_rows(rb_whack_clean(d[keep, ]),
+  out <- dplyr::bind_rows(.whack_clean_df(d[keep, ]),
                           d[bad, ] |> dplyr::mutate(whack_stage = "invalid"),
                           d[dup, ] |> dplyr::mutate(whack_stage = "duplicate"))
   out[order(out$rid), c("rid", "whack_stage")]
@@ -73,13 +73,9 @@ test_that("flags already set are kept, rows are never dropped, other column name
   expect_equal(r2$ping_flag, r$ping_flag)
 })
 
-test_that("a superseded function warns from user code, not from ramb's own", {
-  .rb_reset_renamed()
+test_that("the flag chain does not warn", {
   d <- data.frame(vid = 1, time = as.POSIXct("2024-01-01", tz = "UTC") + 60 * 0:3, lon = -20 - 0:3 / 100, lat = 64)
-  expect_warning(evalq(rb_whack_clean(d), list(d = d, rb_whack_clean = rb_whack_clean), globalenv()), "superseded")
-  .rb_reset_renamed()
   expect_no_warning(rb_flag_ping_impossible(d))
-  .rb_reset_renamed()
 })
 
 test_that("the port tag: data frame = lazy table, one row per ping, the smaller of two polygons wins", {

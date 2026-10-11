@@ -138,8 +138,8 @@ rb_flag_ping_duplicate <- function(x, priority, feed = provider, max_dt_s = 10, 
   fun <- function(d) {
     i <- which(is.na(d$ping_flag))
     if (length(i)) {
-      dup <- rb_whack_duplicates(d$vid[i], d$time[i], d$lon[i], d$lat[i], d$feed[i], priority = priority,
-                                 max_dt_s = max_dt_s, kn_max = kn_max, n = n)
+      dup <- .rb_whack_duplicates(d$vid[i], d$time[i], d$lon[i], d$lat[i], d$feed[i], priority = priority,
+                                  max_dt_s = max_dt_s, kn_max = kn_max, n = n)
       d$ping_flag[i[dup]] <- "duplicate"
     }
     d
@@ -162,11 +162,16 @@ rb_flag_ping_duplicate <- function(x, priority, feed = provider, max_dt_s = 10, 
 #' @param x A data frame or a lazy DuckDB table with `vid`, `time`, `lon` and `lat`.
 #' @param method The rule:
 #'   * `"clean"` (default): the recommended two-stage filter: speed-distance-angle ("vmask", "spike"),
-#'     then a forward scan against the last kept ping ("forward"). See [rb_whack_clean()].
-#'   * `"sda"`: the speed-distance-angle stage alone ("vmask", "spike"). See [rb_whack_sda()].
-#'   * `"forward"`: the forward scan alone ("forward"). See [rb_whack_forward()].
-#'   * `"fwdbwd"`: a ping too fast both from the previous and to the next ("fwdbwd"). See [rb_whack_fwdbwd()].
-#'   * `"sequential"`: the cluster-aware sequential filter ("sequential"). See [rb_whack_sequential_fast()].
+#'     which judges each ping from both sides, then a forward scan against the last kept ping
+#'     ("forward"), which resolves runs and interleaved streams.
+#'   * `"sda"`: the speed-distance-angle stage alone ("vmask", "spike"); the algorithm of
+#'     `argosfilter::sdafilter()` (Freitas et al. 2008), re-implemented in C++.
+#'   * `"forward"`: the forward scan alone ("forward"): each ping is judged against the last
+#'     *retained* ping, so consecutive clusters are caught.
+#'   * `"fwdbwd"`: a ping too fast both from the previous and to the next ("fwdbwd"): isolated
+#'     spikes only; consecutive clusters pass.
+#'   * `"sequential"`: the cluster-aware sequential filter ("sequential"): iteratively removes
+#'     the first too-fast segment and recomputes, in-memory only.
 #' @param kn_max Speed threshold, knots.
 #' @param min_dt_s A time step shorter than this counts as this many seconds.
 #' @param max_gap_h For `"clean"` and `"forward"`: after a gap longer than this the scan restarts.
@@ -195,22 +200,22 @@ rb_flag_ping_impossible <- function(x, method = c("clean", "sda", "forward", "fw
         stats::setNames(o$whack_stage, o$.rb_i)
       },
       sda = {
-        o <- do.call(rb_whack_sda, c(list(s, kn_max = kn_max, min_dt_s = min_dt_s), dots))
+        o <- do.call(.rb_whack_sda, c(list(s, kn_max = kn_max, min_dt_s = min_dt_s), dots))
         stats::setNames(o$whack_sda, o$.rb_i)
       },
       forward = {
-        o <- rb_whack_forward(s, kn_max = kn_max, max_gap_h = max_gap_h, min_dt_s = min_dt_s)
+        o <- .rb_whack_forward(s, kn_max = kn_max, max_gap_h = max_gap_h, min_dt_s = min_dt_s)
         stats::setNames(ifelse(o$whack2, "forward", NA_character_), o$.rb_i)
       },
       fwdbwd = {
-        o <- rb_whack_fwdbwd(s, kn_max = kn_max, min_dt_s = min_dt_s)
+        o <- .rb_whack_fwdbwd(s, kn_max = kn_max, min_dt_s = min_dt_s)
         stats::setNames(ifelse(o$whack, "fwdbwd", NA_character_), o$.rb_i)
       },
       sequential = {
         o <- s |>
           dplyr::arrange(vid, time) |>
           dplyr::group_by(vid) |>
-          dplyr::mutate(.w = rb_whack_sequential_fast(lon, lat, time, kn_max = kn_max, min_dt_s = min_dt_s)) |>
+          dplyr::mutate(.w = .rb_whack_sequential_fast(lon, lat, time, kn_max = kn_max, min_dt_s = min_dt_s)) |>
           dplyr::ungroup()
         stats::setNames(ifelse(o$.w, "sequential", NA_character_), o$.rb_i)
       })

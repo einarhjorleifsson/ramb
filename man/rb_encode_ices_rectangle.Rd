@@ -4,36 +4,55 @@
 \alias{rb_encode_ices_rectangle}
 \title{Get ICES rectangles from coordinates}
 \usage{
-rb_encode_ices_rectangle(lon, lat, safe = TRUE, useI = FALSE)
+rb_encode_ices_rectangle(
+  lon,
+  lat,
+  method = c("robust", "vmstools"),
+  safe = TRUE,
+  useI = FALSE
+)
 }
 \arguments{
 \item{lon}{Numeric vector of longitudes (decimal degrees, -44 < lon <= 69).}
 
 \item{lat}{Numeric vector of latitudes (decimal degrees, 36 <= lat < 85).}
 
-\item{safe}{Logical, default TRUE. If TRUE, coordinates are rounded to bin midpoints before rectangle calculation, reducing edge effects.}
+\item{method}{Character, default \code{"robust"}. \code{"robust"} uses consistent
+band boundaries, domain validation and optional midpoint snapping.
+\code{"vmstools"} reproduces the legacy \code{vmstools::icesRectangle()} algorithm
+for compatibility with vmstools-based workflows; its longitude bands have
+inconsistent boundaries (right-inclusive for bands A-D, right-exclusive
+for E-H, no upper bound on J), so the two methods diverge for positions
+exactly on 10-degree longitudes (e.g. \code{lon = -10}, \code{lon = -20}).}
 
-\item{useI}{Logical, default FALSE. If TRUE, allows rectangles to use the letter 'I' in x1 (rarely used).}
+\item{safe}{Logical, default \code{TRUE}. If \code{TRUE}, coordinates are snapped to
+bin midpoints before rectangle calculation, reducing edge effects.
+Only used when \code{method = "robust"}.}
+
+\item{useI}{Logical, default \code{FALSE}. If \code{TRUE}, allows rectangles to use
+the letter 'I' in the longitude band (rarely used). Only used when
+\code{method = "robust"}.}
 }
 \value{
-A character vector of ICES rectangles (or NA for positions outside the ICES region), same length as input.
+A character vector of ICES rectangles (or \code{NA} for positions
+outside the ICES region under \code{method = "robust"}), same length as input.
 }
 \description{
-Returns the ICES statistical rectangle for given longitude and latitude coordinates.
-If a position is outside the ICES region, returns \code{NA}.
+Returns the ICES statistical rectangle for given longitude and latitude
+coordinates. If a position is outside the ICES region, returns \code{NA}.
 }
 \details{
-The ICES statistical rectangle system is a spatial reference grid for marine data.
-Positions outside the valid ICES region will return NA. Longitude and latitude must be decimal degrees.
+The ICES statistical rectangle system is a spatial reference grid for
+marine data. Longitude and latitude must be decimal degrees.
 }
 \examples{
-# Example 1: Standard position inside ICES area
+# Standard position inside ICES area
 rb_encode_ices_rectangle(-10.5, 62.5)
-# Example 2: Vectorized input
+# Vectorized input
 rb_encode_ices_rectangle(c(-10.5, 15.2), c(62.5, 54.9))
-# Example 3: Position outside ICES area
+# Position outside ICES area
 rb_encode_ices_rectangle(100, 10)
-# Example 4: With safe = FALSE (no midpoint rounding)
-rb_encode_ices_rectangle(-10.5, 62.5, safe = FALSE)
+# Legacy vmstools reproduction
+rb_encode_ices_rectangle(-10.5, 62.5, method = "vmstools")
 
 }

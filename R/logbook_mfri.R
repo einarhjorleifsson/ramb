@@ -1,4 +1,6 @@
-# 2022-10-15 This is still trial and errror - not part of the workflow
+# logbook_mfri.R — MFRI logbook reader and the logbook curation helpers
+# (effort capping, mesh-size standardisation, gear-width filling, gear
+# lumping). Iceland-specific: gear ids (gid) are the Icelandic ones.
 
 #' Read in logbooks
 #' 

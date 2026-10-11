@@ -1,10 +1,10 @@
-test_that("rb_whack_forward matches the labelled fixture whacks1", {
+test_that("the forward filter matches the labelled fixture whacks1", {
   d <- whacks1[order(whacks1$vid, whacks1$time), ]
-  out <- rb_whack_forward(d, kn_max = 25)
+  out <- .rb_whack_forward(d, kn_max = 25)
   expect_equal(out$whack2, d$whacks)
 })
 
-test_that("rb_whack_forward's compiled core matches the original R loop", {
+test_that("the forward filter's compiled core matches the original R loop", {
   # Pre-2026-09-23 reference implementation of .fwd() (time-step floor min_dt since
   # 2026-10-08, as in the port), kept here only to
   # verify the Rcpp port (src/whack_forward.cpp) is byte-identical, including
@@ -65,12 +65,12 @@ test_that("rb_whack_forward's compiled core matches the original R loop", {
   )
 })
 
-test_that("rb_whack_forward handles degenerate inputs", {
+test_that("the forward filter handles degenerate inputs", {
   empty <- whacks1[0, ]
-  expect_equal(nrow(rb_whack_forward(empty)), 0)
+  expect_equal(nrow(.rb_whack_forward(empty)), 0)
 
   one <- whacks1[1, ]
-  out <- rb_whack_forward(one)
+  out <- .rb_whack_forward(one)
   expect_equal(out$whack2, FALSE)
 })
 
@@ -79,7 +79,7 @@ test_that("a second report in the same second is judged by its distance", {
   d <- data.frame(vid = 1, time = t0 + 60 * c(0, 1, 1, 2, 3),
                   lon = -23 + 0.0003 * c(0, 1, 1, 2, 3), lat = 64 + 0.0002 * c(0, 1, 1, 2, 3))
   d$lon[3] <- d$lon[3] + 0.00001                      # duplicate, about 0.5 m away
-  expect_false(any(rb_whack_forward(d)$whack2))
+  expect_false(any(.rb_whack_forward(d)$whack2))
   d$lon[3] <- d$lon[3] + 0.1                          # same second, 5 km away
-  expect_equal(which(rb_whack_forward(d)$whack2), 3L)
+  expect_equal(which(.rb_whack_forward(d)$whack2), 3L)
 })
