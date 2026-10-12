@@ -50,6 +50,17 @@ with an `.rb_need()` guard, never in Imports.
   list.
 - Data frames and lazy DuckDB tables should give the same result; the tests
   check that they do.
+- One distance sphere: Haversine on R = 6,371,000 m is the canonical distance
+  basis; `rb_calc_distance()` ([R/track.R](R/track.R)) is the reference of
+  record and the same formula is hand-copied into `src/whack_forward.cpp`,
+  `src/whack_sda.cpp` and the SQL of `.rb_whack_fwdbwd()` (each backend needs
+  it in its own inner loop — do not "deduplicate" these). Keep all four in
+  sync; the tests pin them to each other. `method = "geodesic"` (Vincenty)
+  exists only in R and can never be a SQL macro (it is iterative), so the
+  filters and any lazy path stay Haversine-only.
+- DuckDB's `LEAST()`/`GREATEST()` ignore NULLs: never use them as an
+  `ASIN`-domain clamp in SQL — NULL coordinates would silently become the
+  antipodal distance. Unclamped, NULL propagates correctly.
 
 ## Working on the package
 
@@ -67,6 +78,9 @@ with an `.rb_need()` guard, never in Imports.
 - Re-running `devtools::test()` in the same R session can fail on leftover
   tables in duckdbfs's cached connection; run
   `duckdbfs::close_connection()` first.
+- `devtools::check()` shows one known, harmless warning from R's own
+  `Boolean.h` (`-Wfixed-enum-extension`, toolchain artifact) — not ours.
+- `docs/` is gitignored; `pkgdown::build_site()` output is not committed.
 - Every user-facing change gets a bullet in NEWS.md.
 - Open work is tracked in fishycode `curate/plans/013-ramb-one-flow.md`,
   not in this repo's TODO.md.
