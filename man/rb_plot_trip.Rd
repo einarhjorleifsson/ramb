@@ -14,7 +14,7 @@ an sf object.}
 
 \item{radius}{The point radius in metres, default 10.}
 
-\item{col}{Reserved; the points are coloured by \code{speed}.}
+\item{col}{The column the points are coloured by, default \code{speed}.}
 
 \item{trip}{Logical; if \code{TRUE} (default), a path per trip is drawn.}
 }

@@ -11,9 +11,9 @@ rb_summarise_track(d)
 for the counts, \code{tid} and \code{hid}.}
 }
 \value{
-A tibble with one row per group: \code{pings}, \code{t.min}, \code{t.max},
-\code{s.min}, \code{s.med}, \code{s.max}, \code{di.min}, \code{di.med}, \code{di.max}, \code{du.min},
-\code{du.med}, \code{du.max}, \code{n.tips} and \code{n.harb}.
+A tibble with one row per group: \code{pings}, \code{t_min}, \code{t_max},
+\code{s_min}, \code{s_med}, \code{s_max}, \code{di_min}, \code{di_med}, \code{di_max}, \code{du_min},
+\code{du_med}, \code{du_max}, \code{n_trips} and \code{n_harbours}.
 }
 \description{
 A one-row summary per group of a track table: the number of pings, the

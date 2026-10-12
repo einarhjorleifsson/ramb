@@ -87,7 +87,7 @@ rb_plot_trail <-
 #'   an sf object.
 #' @param tid The trip id column.
 #' @param radius The point radius in metres, default 10.
-#' @param col Reserved; the points are coloured by `speed`.
+#' @param col The column the points are coloured by, default `speed`.
 #' @param trip Logical; if `TRUE` (default), a path per trip is drawn.
 #'
 #' @return A [mapdeck::mapdeck()] map.
@@ -95,6 +95,7 @@ rb_plot_trail <-
 #'
 rb_plot_trip <- function(data, tid, radius = 10, col = "speed", trip = TRUE) {
   .rb_need("mapdeck")
+  tid_chr <- rlang::as_name(rlang::ensym(tid))
 
   if (any(!class(data) %in% "sf")) {
     data <-
@@ -116,8 +117,7 @@ rb_plot_trip <- function(data, tid, radius = 10, col = "speed", trip = TRUE) {
         stroke_width = 1000,
         width_min_pixels = 5,
         width_max_pixels = 10,
-        # NEED TO MAKE THIS DYNAMIC
-        tooltip = "tid",
+        tooltip = tid_chr,
         auto_highlight = TRUE,
         highlight_colour = "#FF000095",
         update_view = FALSE,
@@ -129,7 +129,7 @@ rb_plot_trip <- function(data, tid, radius = 10, col = "speed", trip = TRUE) {
     m |>
     mapdeck::add_scatterplot(
       data = data,
-      fill_colour = "speed",
+      fill_colour = col,
       radius = radius,
       palette = "inferno"
     )

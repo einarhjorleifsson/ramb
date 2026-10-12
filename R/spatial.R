@@ -35,7 +35,7 @@ rb_detect_in_polygons <- function(points, polygons) {
 #'   `points`.
 #'
 #' @return For an sf data frame, the rows inside a polygon; for an sfc, the
-#'   logical vector from [rb_detect_in_polygons()].
+#'   geometries inside a polygon.
 #' @export
 rb_keep_in_polygons <- function(points, polygons) {
   i <- rb_detect_in_polygons(points, polygons)
@@ -47,7 +47,7 @@ rb_keep_in_polygons <- function(points, polygons) {
   }
 
   if (inherits(points, "sfc")) {
-    return(i)
+    return(points[i])
   }
 }
 
@@ -60,7 +60,7 @@ rb_keep_in_polygons <- function(points, polygons) {
 #'   `points`.
 #'
 #' @return For an sf data frame, the rows outside every polygon; for an sfc,
-#'   the negated logical vector from [rb_detect_in_polygons()].
+#'   the geometries outside every polygon.
 #' @export
 rb_drop_in_polygons <- function(points, polygons) {
   i <- rb_detect_in_polygons(points, polygons)
@@ -73,6 +73,6 @@ rb_drop_in_polygons <- function(points, polygons) {
   }
 
   if (inherits(points, "sfc")) {
-    return(i)
+    return(points[i])
   }
 }

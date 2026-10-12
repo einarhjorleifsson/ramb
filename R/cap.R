@@ -16,12 +16,14 @@
   return(x)
 }
 
-# The probs percentile of x, used as the winsorizing limit
+# The probs percentile of x, used as the winsorizing limit (NAs ignored,
+# as in .rb_iqr above — with na.rm = FALSE one NA made the limit NA and
+# capped the whole vector to NA)
 .rb_winsor <- function(x, probs = 0.99) {
-  stats::quantile(x = x, probs = probs, na.rm = FALSE)
+  stats::quantile(x = x, probs = probs, na.rm = TRUE)
 }
 
-# Cap x at the probs percentile (upper tail only; an NA in x gives an NA limit)
+# Cap x at the probs percentile (upper tail only)
 .rb_cap_winsorize <- function(x, probs = 0.99) {
   if (length(probs) > 1) {
     message("Cap vector can only be of length 1 (upper value)")

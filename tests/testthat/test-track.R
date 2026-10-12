@@ -178,3 +178,38 @@ test_that("track distance, time and speed match traipse", {
   )
   expect_length(.rb_track_distance(numeric(0), numeric(0)), 0)
 })
+
+test_that("rb_summarise_track() returns one snake_case row per group", {
+  d <- tibble::tibble(
+    time = as.POSIXct("2022-01-01 00:00:00") + c(0, 600, 1200),
+    speed = c(0, 5, 10),
+    dist = c(NA, 100, 200),
+    dura = c(NA, 600, 600),
+    tid = c(1, 1, 2),
+    hid = c(1, 1, 2)
+  )
+  out <- rb_summarise_track(d)
+  expect_named(
+    out,
+    c(
+      "pings",
+      "t_min",
+      "t_max",
+      "s_min",
+      "s_med",
+      "s_max",
+      "di_min",
+      "di_med",
+      "di_max",
+      "du_min",
+      "du_med",
+      "du_max",
+      "n_trips",
+      "n_harbours"
+    )
+  )
+  expect_equal(out$pings, 3)
+  expect_equal(out$n_trips, 2)
+  expect_equal(out$n_harbours, 2)
+  expect_equal(out$s_med, 5)
+})

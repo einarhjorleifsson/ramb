@@ -1,5 +1,17 @@
 # ramb (development version)
 
+## Review fixes (2026-10-12)
+
+From the flagged-issues review; behaviour changes are characterised exactly:
+
+- `rb_plot_trip()`: the `col` argument is now honoured (the points are coloured by it, default `speed`), and the trip-path tooltip follows the `tid` argument instead of the hardcoded `"tid"`.
+- `rb_cap_outliers(method = "winsorize")`: an `NA` in `x` no longer turns the whole vector `NA` — the limit is now computed with `na.rm = TRUE`, matching `method = "iqr"`. Output is unchanged when `x` has no `NA`. (fishycode's `products/exports/buseful_2025-05-05.R` caps `effort` this way; affected only if `effort` contains `NA`.)
+- `rb_link_trip_logbook()`: the unconditional "Departure and arrival columns will be removed" warning is gone (the drop is documented in `@return`); the function now warns only when `ve` itself has columns named like the departure/arrival columns — a collision dplyr resolves by suffixing (`.x`/`.y`), so the logbook side then survives the drop.
+- `rb_keep_in_polygons()` and `rb_drop_in_polygons()`: for an `sfc` input they now return the filtered geometries (inside / outside) instead of a logical mask; `rb_detect_in_polygons()` remains the mask function. `sf` data-frame input is unchanged.
+- `rb_summarise_track()`: output columns renamed to snake_case and the `n.tips` typo fixed — `pings`, `t_min`, `t_max`, `s_min`, `s_med`, `s_max`, `di_min`, `di_med`, `di_max`, `du_min`, `du_med`, `du_max`, `n_trips`, `n_harbours`; the values are unchanged.
+- `rb_pad_harbour()`: documentation only — the padded id is a port id (e.g. the `port_id` column from `rb_flag_ping_port()`); the name and arguments are kept, as plan 013 recorded.
+- Deliberately left alone: `rb_calc_step_acceleration()` stays distance/dt² (documented as such; no consumer in ramb, fishycode or fishymodel), and `.rb_get_ices_gears()` keeps its misnamed `target` column for now.
+
 ## Argument renames (2026-10-12)
 
 Sixteen argument names across twelve functions, for consistency and against base-name shadowing — hard renames, no aliases:

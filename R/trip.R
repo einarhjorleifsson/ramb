@@ -864,27 +864,30 @@ rb_link_trip_logbook <- function(
     )
   }
 
-  # Warn about dropped columns
-  warning(
-    "Departure and arrival columns (",
-    departure_chr,
-    ", ",
-    arrival_chr,
-    ") will be removed from the output."
-  )
+  # Warn only on a name collision: dplyr then suffixes (.x/.y) and the
+  # logbook's departure/arrival columns survive the drop in the join above
+  clash <- intersect(c(departure_chr, arrival_chr), names(ve))
+  if (length(clash) > 0) {
+    warning(
+      "Column(s) ",
+      paste(clash, collapse = ", "),
+      " occur in both 've' and the logbook's departure/arrival columns; ",
+      "the join suffixes them (.x/.y) instead of dropping the logbook side."
+    )
+  }
 
   return(out)
 }
 
 
-#' Pad the harbour id onto the ends of a trip
+#' Pad the port id onto the ends of a trip
 #'
 #' The first ping of a trip (a positive `tid` different from the previous
-#' row's) gets the previous row's harbour id, and the last ping gets the next
+#' row's) gets the previous row's port id, and the last ping gets the next
 #' row's, so a trip's end pings carry the ports it sailed between.
 #'
 #' @param tid A trip id, e.g. from [rb_assign_trip()].
-#' @param hid A harbour id, e.g. from [rb_flag_ping_port()].
+#' @param hid A port id, e.g. the `port_id` column from [rb_flag_ping_port()].
 #'
 #' @return The `hid` vector, padded.
 #' @export

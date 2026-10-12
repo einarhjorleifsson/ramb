@@ -15,7 +15,7 @@ geometry.}
 }
 \value{
 For an sf data frame, the rows inside a polygon; for an sfc, the
-logical vector from \code{\link[=rb_detect_in_polygons]{rb_detect_in_polygons()}}.
+geometries inside a polygon.
 }
 \description{
 Keep the points inside polygons

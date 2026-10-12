@@ -278,10 +278,10 @@ test_that("rb_add_trips assigns trip ids correctly with robust defaults and warn
     ))
   )
 
-  # Run function (should not throw warnings for missing columns)
+  # Run function (no warning expected: nothing missing, no name collision)
   expect_warning(
-    out <- suppressWarnings(rb_link_trip_logbook(ve, le)),
-    regexp = NA # No warning expected for missing columns here
+    out <- rb_link_trip_logbook(ve, le),
+    regexp = NA
   )
 
   # Join should assign tid 101 to first two, tid 102 to third, tid 201 to fourth
@@ -305,22 +305,23 @@ test_that("rb_add_trips assigns trip ids correctly with robust defaults and warn
     "Missing the following columns in logbook data"
   )
 
-  # Test warning if no trip ids matched. rb_link_trip_logbook() also unconditionally
-  # warns about the dropped departure/arrival columns on every successful
-  # call; muffle that one so this test isolates the warning it's checking.
+  # Test warning if no trip ids matched
   ve_nomatch <- tibble::tibble(
     vid = "C",
     time = as.POSIXct("2022-01-01 10:00:00")
   )
   expect_warning(
-    withCallingHandlers(
-      rb_link_trip_logbook(ve_nomatch, le),
-      warning = function(w) {
-        if (grepl("^Departure and arrival columns", conditionMessage(w))) {
-          invokeRestart("muffleWarning")
-        }
-      }
-    ),
+    rb_link_trip_logbook(ve_nomatch, le),
     "No trip IDs were matched to the VMS data"
   )
+
+  # A ve column named like the departure/arrival columns collides: the join
+  # suffixes (.x/.y) and the logbook side survives the drop, with a warning
+  ve_clash <- dplyr::mutate(ve, T1 = 1)
+  expect_warning(
+    out_clash <- rb_link_trip_logbook(ve_clash, le),
+    "occur in both"
+  )
+  expect_true("T1.x" %in% names(out_clash))
+  expect_true("T1.y" %in% names(out_clash))
 })

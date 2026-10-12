@@ -15,7 +15,7 @@ geometry.}
 }
 \value{
 For an sf data frame, the rows outside every polygon; for an sfc,
-the negated logical vector from \code{\link[=rb_detect_in_polygons]{rb_detect_in_polygons()}}.
+the geometries outside every polygon.
 }
 \description{
 Drop the points inside polygons

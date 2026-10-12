@@ -18,3 +18,14 @@ test_that("rb_cap_outliers caps by iqr and winsorize", {
     as.numeric(quantile(x, 0.99))
   )
 })
+
+test_that("rb_cap_outliers(method = \"winsorize\") ignores NA when setting the limit", {
+  # with na.rm = FALSE one NA made the limit NA and capped everything to NA
+  x <- c(1:10, NA)
+  out <- rb_cap_outliers(x, method = "winsorize", probs = 0.9)
+  expect_equal(
+    out[1:10],
+    rb_cap_outliers(1:10, method = "winsorize", probs = 0.9)
+  )
+  expect_true(is.na(out[11]))
+})

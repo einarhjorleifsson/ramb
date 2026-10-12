@@ -385,28 +385,28 @@ rb_number_runs <- function(x) {
 #' @param d A (grouped) data frame with `time`, `speed`, `dist`, `dura` and,
 #'   for the counts, `tid` and `hid`.
 #'
-#' @return A tibble with one row per group: `pings`, `t.min`, `t.max`,
-#'   `s.min`, `s.med`, `s.max`, `di.min`, `di.med`, `di.max`, `du.min`,
-#'   `du.med`, `du.max`, `n.tips` and `n.harb`.
+#' @return A tibble with one row per group: `pings`, `t_min`, `t_max`,
+#'   `s_min`, `s_med`, `s_max`, `di_min`, `di_med`, `di_max`, `du_min`,
+#'   `du_med`, `du_max`, `n_trips` and `n_harbours`.
 #' @export
 #'
 rb_summarise_track <- function(d) {
   d |>
     dplyr::summarise(
       pings = dplyr::n(),
-      t.min = min(time),
-      t.max = max(time),
-      s.min = min(speed),
-      s.med = median(speed),
-      s.max = max(speed),
-      di.min = min(dist, na.rm = TRUE),
-      di.med = median(dist, na.rm = TRUE),
-      di.max = max(dist, na.rm = TRUE),
-      du.min = min(dura, na.rm = TRUE),
-      du.med = median(dura, na.rm = TRUE),
-      du.max = max(dura, na.rm = TRUE),
-      n.tips = dplyr::n_distinct(tid, na.rm = TRUE),
-      n.harb = dplyr::n_distinct(hid, na.rm = TRUE)
+      t_min = min(time),
+      t_max = max(time),
+      s_min = min(speed),
+      s_med = median(speed),
+      s_max = max(speed),
+      di_min = min(dist, na.rm = TRUE),
+      di_med = median(dist, na.rm = TRUE),
+      di_max = max(dist, na.rm = TRUE),
+      du_min = min(dura, na.rm = TRUE),
+      du_med = median(dura, na.rm = TRUE),
+      du_max = max(dura, na.rm = TRUE),
+      n_trips = dplyr::n_distinct(tid, na.rm = TRUE),
+      n_harbours = dplyr::n_distinct(hid, na.rm = TRUE)
     )
 }
 
