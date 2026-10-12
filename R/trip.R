@@ -280,9 +280,9 @@ SELECT *, %s AS rb_year FROM ps",
 #'   however short. This is what `rb_trip()` numbered.
 #' * `"jepol"`: the ICES VMS datacall rule (`define_trips_pol`, was `rb_trip_jepol()`): a voyage runs from the
 #'   first ping at sea to the first ping back in port; voyages of `min_dur_h` hours or less are dropped, and
-#'   with `split` one over `max_dur_h` hours is cut at a long gap between its pings. It reproduces the old
-#'   function exactly, including where it cuts (one ping before the longest gap); a long voyage with fewer than
-#'   two pings inside it, where the old function stopped, is left whole.
+#'   with `split` one over `max_dur_h` hours is cut at its longest gap between pings. Note the cut moved on
+#'   2026-10-12: the old function (and this one before that date) cut one ping before the longest gap; a long
+#'   voyage with fewer than two pings inside it, where the old function stopped, is left whole.
 #'
 #' @param pings A data frame or lazy DuckDB table with `vid` and `time`, and `port_id` for `"runs"` and
 #'   `"jepol"` (NA at sea).
@@ -645,11 +645,13 @@ FROM ranked WHERE rn = 1",
 # data.table body (plan 013: recoded, not copied). Sequential (the split loop), so tier 4: one vessel at a time.
 #
 # A trip runs from the first ping at sea to the first ping back in harbour. Trips of min_dur hours or less are
-# dropped; with split, a trip over max_dur hours is cut at a long gap between its pings, again and again. Two
-# defects of the original are kept so that it is reproduced exactly; they are logic questions in fishycode's
-# plan 013: the cut falls one ping before the longest gap, and the "gap under 3 minutes" test reads the gap
-# before that ping. Where the original stopped with an error (a long trip with fewer than two pings inside it),
-# the trip is left whole, as the original does for a gap under 3 minutes.
+# dropped; with split, a trip over max_dur hours is cut at its longest gap between pings, again and again.
+# The original cut one ping before the longest gap (which.max over INTV[2:.N] indexes from the first row) and
+# read the gap before that ping in its 3-minute test; the recode kept both defects so the port could be
+# verified against the old function, and the fix of 2026-10-12 (plan 013's logic table) removed them, so the
+# output no longer matches rb_trip_jepol() where a voyage is split. Where the original stopped with an error
+# (a long trip with fewer than two pings inside it), the trip is left whole, as the original does for a gap
+# under 3 minutes.
 
 .rb_jepol_one <- function(time, inh, vessel, min_dur, max_dur, split) {
   o <- order(time)
@@ -697,7 +699,7 @@ FROM ranked WHERE rn = 1",
     while (any(tr$dur > max_dur)) {
       i <- which(tr$dur > max_dur)[1]
       inside <- which(time > tr$depart[i] & time < tr$arrival[i])
-      j <- if (length(inside) >= 2) which.max(intv[inside][-1]) else integer(0)
+      j <- if (length(inside) >= 2) which.max(intv[inside]) else integer(0)
       g <- inside[j]
       if (!length(g) || intv[g] < 3) {
         tr$dur[i] <- max_dur

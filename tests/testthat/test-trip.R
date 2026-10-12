@@ -126,7 +126,22 @@ same_partition <- function(a, b) {
   expect_false(any(duplicated(pairs$a)) || any(duplicated(pairs$b)))
 }
 
-test_that("method jepol reproduces rb_trip_jepol(), with and without splits", {
+test_that("method jepol reproduces rb_trip_jepol() except at the fixed off-by-one cut", {
+  # The fixtures pin the old function, which cut a split voyage one ping before its longest
+  # gap. The 2026-10-12 fix moves only those cuts: on dansk none at max_dur_h = 72, two at 48
+  # and three at 24; no voyage is gained or lost. At 24 the moved cut also re-times two
+  # segments across the min_dur_h threshold, flipping two pings' at-sea status. Compare ping
+  # sets per voyage, not id labels (voyage numbers shift after a moved cut).
+  class_sets <- function(id) {
+    lapply(split(tagged$rid, id), sort)
+  }
+  n_moved <- function(old_id, new_id) {
+    new_keys <- vapply(class_sets(new_id), paste, character(1), collapse = ",")
+    sum(
+      !vapply(class_sets(old_id), paste, character(1), collapse = ",") %in%
+        new_keys
+    )
+  }
   for (md in c(72, 48, 24)) {
     v <- suppressWarnings(rb_cut_trip_voyages(
       tagged,
@@ -136,11 +151,24 @@ test_that("method jepol reproduces rb_trip_jepol(), with and without splits", {
     ))
     a <- rb_assign_trip(tagged, v, by_year = FALSE)
     a <- a[order(a$rid), ]
-    same_partition(
-      old[[paste0("jepol_", md)]],
-      ifelse(is.na(a$voyage_id), NA, paste(a$vid, a$voyage_id))
+    old_id <- old[[paste0("jepol_", md)]]
+    new_id <- ifelse(is.na(a$voyage_id), NA, paste(a$vid, a$voyage_id))
+    # at-sea status changes only where the moved cut crosses the min_dur_h threshold
+    expect_equal(
+      sum(is.na(old_id) != is.na(new_id)),
+      c("72" = 0, "48" = 0, "24" = 2)[as.character(md)],
+      ignore_attr = TRUE
+    )
+    # the same number of voyages
+    expect_equal(length(class_sets(new_id)), length(class_sets(old_id)))
+    # and only the counted cuts moved
+    expect_equal(
+      n_moved(old_id, new_id),
+      c("72" = 0, "48" = 2, "24" = 3)[as.character(md)],
+      ignore_attr = TRUE
     )
   }
+  # without splits the reproduction is still exact
   v <- rb_cut_trip_voyages(
     tagged,
     method = "jepol",
@@ -155,6 +183,21 @@ test_that("method jepol reproduces rb_trip_jepol(), with and without splits", {
     ifelse(is.na(a$voyage_id), NA, paste(a$vid, a$voyage_id))
   )
   expect_true(all(v$port_from == "h" | is.na(v$port_from)))
+})
+
+test_that("method jepol splits a long voyage at its longest gap", {
+  # one voyage, at sea from hour 0 to hour 15, longest gap 10 h between hours 2 and 12
+  base <- as.POSIXct("2023-06-01", tz = "UTC")
+  d <- data.frame(
+    vid = 1,
+    time = base + c(-1, 0, 1, 2, 12, 13, 14, 15) * 3600,
+    port_id = c("h", NA, NA, NA, NA, NA, NA, "h")
+  )
+  v <- rb_cut_trip_voyages(d, method = "jepol", by_year = FALSE, max_dur_h = 5)
+  expect_equal(nrow(v), 2)
+  # the cut falls at the gap: the first voyage ends at hour 2, the second starts at hour 12
+  expect_equal(v$T2[1], base + 2 * 3600)
+  expect_equal(v$T1[2], base + 12 * 3600)
 })
 
 test_that("method runs numbers the sea runs as the old rb_trip() did, vessel by vessel", {

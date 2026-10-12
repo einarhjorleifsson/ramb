@@ -55,9 +55,9 @@ becomes a voyage, from the port of the stay before it to the port of the stay af
 however short. This is what \code{rb_trip()} numbered.
 \item \code{"jepol"}: the ICES VMS datacall rule (\code{define_trips_pol}, was \code{rb_trip_jepol()}): a voyage runs from the
 first ping at sea to the first ping back in port; voyages of \code{min_dur_h} hours or less are dropped, and
-with \code{split} one over \code{max_dur_h} hours is cut at a long gap between its pings. It reproduces the old
-function exactly, including where it cuts (one ping before the longest gap); a long voyage with fewer than
-two pings inside it, where the old function stopped, is left whole.
+with \code{split} one over \code{max_dur_h} hours is cut at its longest gap between pings. Note the cut moved on
+2026-10-12: the old function (and this one before that date) cut one ping before the longest gap; a long
+voyage with fewer than two pings inside it, where the old function stopped, is left whole.
 }
 }
 \seealso{
