@@ -56,8 +56,9 @@ with an `.rb_need()` guard, never in Imports.
   `src/whack_sda.cpp` and the SQL of `.rb_whack_fwdbwd()` (each backend needs
   it in its own inner loop — do not "deduplicate" these). Keep all four in
   sync; the tests pin them to each other. `method = "geodesic"` (Vincenty)
-  exists only in R and can never be a SQL macro (it is iterative), so the
-  filters and any lazy path stay Haversine-only.
+  exists only in R. A lazy geodesic is possible — DuckDB spatial's
+  `ST_Distance_Spheroid` (plan 013 measured 0.12 s per million legs) — but is
+  not built; the filters and every lazy path stay Haversine-only for now.
 - DuckDB's `LEAST()`/`GREATEST()` ignore NULLs: never use them as an
   `ASIN`-domain clamp in SQL — NULL coordinates would silently become the
   antipodal distance. Unclamped, NULL propagates correctly.
