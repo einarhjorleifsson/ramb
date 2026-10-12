@@ -45,5 +45,10 @@ Authors:
   \item Einar Hjörleifsson \email{einar.hjorleifsson@gmail.com}
 }
 
+Other contributors:
+\itemize{
+  \item Charles Karney (GeographicLib-C geodesic.c/h, vendored unchanged in src/ (MIT/X11); see inst/COPYRIGHTS) [contributor]
+}
+
 }
 \keyword{internal}

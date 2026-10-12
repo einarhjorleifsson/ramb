@@ -14,8 +14,8 @@ rb_calc_step_acceleration(lon, lat, time, method = c("haversine", "geodesic"))
 \item{time}{time in POSIXct}
 
 \item{method}{The distance method. The default \code{"haversine"} is the sphere of
-\code{\link[=rb_flag_ping_impossible]{rb_flag_ping_impossible()}} and much the faster of the two; \code{"geodesic"} (WGS84
-Vincenty) is the more accurate — see \code{\link[=rb_calc_distance]{rb_calc_distance()}} for guidance.}
+\code{\link[=rb_flag_ping_impossible]{rb_flag_ping_impossible()}} and much the faster of the two; \code{"geodesic"} (WGS84,
+Karney) is the more accurate — see \code{\link[=rb_calc_distance]{rb_calc_distance()}} for guidance.}
 }
 \value{
 A numerical vector

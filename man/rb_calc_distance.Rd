@@ -35,16 +35,15 @@ Two methods:
 \item \code{"haversine"} (default): on a sphere of radius 6,371,000 m — the radius the
 impossible-position filters (\code{\link[=rb_flag_ping_impossible]{rb_flag_ping_impossible()}}) use, so a distance computed
 here agrees with theirs.
-\item \code{"geodesic"}: Vincenty's inverse formula on the WGS84 ellipsoid. Vincenty's formula
-may not converge for nearly antipodal points; those pairs fall back to the Haversine
-value, with a warning.
+\item \code{"geodesic"}: Karney's algorithm on the WGS84 ellipsoid (vendored GeographicLib C,
+see \code{inst/COPYRIGHTS}). Exact everywhere, including nearly antipodal points.
 }
 }
 \details{
 Which method: use the default for anything measured against the impossible-position
 filters (a speed computed on the ellipsoid can disagree with a filter threshold purely
-from the sphere mismatch) and for large data — Haversine is about 12x faster and is the
-only method expressible in SQL. Use \code{"geodesic"} when the absolute distance itself
+from the sphere mismatch) and for large data — Haversine is about 40-50x faster and is
+the only method expressible in SQL. Use \code{"geodesic"} when the absolute distance itself
 matters, e.g. distance-steamed totals: the Haversine error is systematic, up to ~0.6 \%
 depending on latitude and bearing, so it does not cancel in sums.
 
