@@ -1,0 +1,201 @@
+---
+title: "Distance in ramb: one sphere, two methods, and the road to Karney"
+---
+
+::: {.callout-note}
+This report was generated using AI under general human direction. At the time of generation, the contents have not been comprehensively reviewed by a human analyst.
+
+<!--
+To indicate human review: Delete the line above about contents not being reviewed, and replace this comment with:
+The contents have been reviewed and validated by [Your Name], [Your Role] on [Date].
+-->
+:::
+
+# Background
+
+A review of the `ramb` package on 2026-10-12 found that distance between two points was computed
+in five places, on two different definitions of the Earth:
+
+| Implementation | Location | Definition | Used by |
+|---|---|---|---|
+| `rb_calc_distance()` | `R/track.R` | Haversine, sphere R = 6,371,000 m | users, `.rb_whack_fwdbwd()` (data frames), `.rb_whack_duplicates()` |
+| `.rb_geodesic()` | `R/track.R` | Vincenty inverse, WGS84 ellipsoid | `rb_calc_speed()`, `rb_calc_step_acceleration()` |
+| C++ Haversine | `src/whack_forward.cpp`, `src/whack_sda.cpp` | Haversine, same sphere | the impossible-position filters |
+| Inline SQL Haversine | `R/whack.R` | Haversine, same sphere | `.rb_whack_fwdbwd()` on lazy DuckDB tables |
+| `ST_Distance` | `R/trip.R` (trip stays) | planar, in degrees | nearest-port ranking |
+
+Two consequences followed. Speeds were computed on the ellipsoid while the impossible-position
+filters judged them on the sphere, so a ping could pass a `kn_max` filter yet compute as
+over-threshold. And `rb_calc_distance()` — the user-facing distance function — exposed only one
+of the two definitions.
+
+This report records what was changed in the session of 2026-10-12, the measurements behind the
+choice of default method, the DuckDB macro exploration, and the reconciliation with the earlier
+design direction in fishycode plan 013.
+
+# What was built
+
+Committed as `3afe1f2` (implementation) and `96182b0` (contributor notes):
+
+- `rb_calc_distance()` gained `method = c("haversine", "geodesic")`. The default Haversine path
+  is bit-identical to before; `"geodesic"` routes to the WGS84 engine.
+- Vincenty's formula now tracks per-pair convergence: nearly antipodal pairs warn and fall back
+  to Haversine instead of silently returning the 200th iterate.
+- A data-frame form: the first argument may be a data frame, with tidy-eval coordinate columns.
+- `rb_calc_speed()` and `rb_calc_step_acceleration()` gained the same `method` argument, with
+  the default flipped from geodesic to haversine — one sphere across distance, speed and the
+  filters.
+- Each Haversine copy (R, two C++, the SQL) now carries a comment naming `rb_calc_distance()`
+  as the reference of record.
+
+The package is loaded from its development sources for the examples below:
+
+```{r}
+#| label: load-packages
+devtools::load_all("/Users/einarhj/R/Pakkar/ramb", quiet = TRUE)
+```
+
+```{r}
+#| label: api-demo
+# the vector form (positional or named), unchanged
+rb_calc_distance(-21.93, 64.15, -23.93, 65.65)
+
+# the data-frame form: distance from each ping to a fixed port
+d <- data.frame(
+  lon = c(-21.93, -22.50),
+  lat = c(64.15, 63.90),
+  port_lon = -21.94,
+  port_lat = 64.15
+)
+rb_calc_distance(d, lon2 = port_lon, lat2 = port_lat)
+rb_calc_distance(d, lon2 = port_lon, lat2 = port_lat, method = "geodesic")
+```
+
+# Choosing the default method
+
+## The error surface
+
+The relative difference between the Haversine sphere and the WGS84 ellipsoid was measured on
+north–south and east–west legs at several latitudes:
+
+```{r}
+#| label: error-surface
+rel_diff <- function(lat, km, bearing = c("N", "E")) {
+  bearing <- match.arg(bearing)
+  deg_per_km <- 1 / 111.32
+  if (bearing == "N") {
+    lon1 <- 0; lat1 <- lat; lon2 <- 0; lat2 <- lat + km * deg_per_km
+  } else {
+    lon1 <- 0; lat1 <- lat; lon2 <- km * deg_per_km; lat2 <- lat
+  }
+  h <- rb_calc_distance(lon1, lat1, lon2, lat2)
+  g <- rb_calc_distance(lon1, lat1, lon2, lat2, method = "geodesic")
+  (h - g) / g * 100
+}
+
+lat <- c(0, 30, 55, 64, 70, 80)
+grid <- expand.grid(lat = lat, km = 1)
+data.frame(
+  lat = grid$lat,
+  north = mapply(rel_diff, grid$lat, grid$km, bearing = "N"),
+  east  = mapply(rel_diff, grid$lat, grid$km, bearing = "E")
+) |> round(3)
+```
+
+The error is essentially independent of leg length (it is a radius mismatch, not noise) and is
+systematic: bounded within about ±0.6 % everywhere — worst at the equator going north–south
+(`{r} rel_diff(0, 1, "N") |> round(2)` %) and at 80° N (`{r} rel_diff(80, 1, "N") |> round(2)` %)
+— and roughly ±0.1–0.3 % at mid-to-high latitudes. Being systematic, it does not cancel in
+summed distances such as track kilometres or effort.
+
+## Execution speed
+
+On ten million point pairs:
+
+```{r}
+#| label: benchmark
+set.seed(6421)
+n <- 1e7
+lon1 <- runif(n, -180, 180)
+lat1 <- runif(n, -85, 85)
+lon2 <- lon1 + rnorm(n, 0, 0.05)
+lat2 <- pmin(85, pmax(-85, lat1 + rnorm(n, 0, 0.05)))
+
+t_hav <- system.time(.rb_haversine(lon1, lat1, lon2, lat2))[["elapsed"]]
+t_geo <- system.time(.rb_geodesic(lon1, lat1, lon2, lat2))[["elapsed"]]
+c(haversine = t_hav, geodesic = t_geo, ratio = t_geo / t_hav)
+```
+
+Haversine ran in `{r} round(t_hav, 2)` s against `{r} round(t_geo, 2)` s for the ellipsoid —
+about `{r} round(t_geo / t_hav)` times slower. Haversine is one closed-form vectorised
+expression; the ellipsoid method is iterative and runs until every pair converges. Haversine is
+also the only method that exists in all three backends (R, C++, SQL).
+
+## The decision
+
+The default is `"haversine"` everywhere: one sphere (R = 6,371,000 m) across distance, speed
+and the impossible-position filters. The ellipsoid error at track-step sizes sits below AIS
+position noise (~10 m on a 1 km step is 1 %), while consistency with the filters is exact and
+free. `method = "geodesic"` remains for when the absolute distance itself matters — the
+systematic bias does not cancel in sums.
+
+# The SQL macro exploration
+
+A natural next question was whether a DuckDB SQL macro (registered per connection) should carry
+the vectorised functions into `tbl_lazy` queries. A proof of concept worked mechanically, but
+surfaced a semantic trap worth recording:
+
+```{r}
+#| label: duckdb-least-null
+con <- DBI::dbConnect(duckdb::duckdb())
+DBI::dbGetQuery(con, "SELECT LEAST(1, NULL) AS least_ignores_null")
+DBI::dbDisconnect(con, shutdown = TRUE)
+```
+
+DuckDB's `LEAST()` and `GREATEST()` ignore NULLs. A Haversine macro clamped with
+`LEAST(1, ...)` — the guard R needs against floating-point overshoot — would silently turn a
+NULL coordinate into the antipodal distance (~20,015 km) instead of NULL. The existing inline
+SQL in the filters is unclamped, so NULL propagates correctly there.
+
+The advice in session was to not build the macro: one SQL call site, per-connection registration
+bookkeeping, and Haversine-only (an iterative method is not a SQL expression). That advice was
+later retracted in part — see the next section.
+
+# Reconciliation with plan 013
+
+After the build, the fishycode tracker `curate/plans/013-ramb-one-flow.md` was re-read. Its
+"One distance function" section (maintainer's direction, 2026-10-09, written before anything
+was built) prescribes a design that differs from what was built:
+
+| Plan 013 direction (2026-10-09) | Built 2026-10-12 |
+|---|---|
+| `method = c("geodesic", "andoyer", "haversine")`, geodesic default | two methods, haversine default |
+| Karney via vendored GeographicLib C (Rcpp), replacing Vincenty, which was ruled out for failing silently near the antipode | Vincenty kept, with warning + Haversine fallback |
+| `rb_register_macros(con)` + a `rb_calc_distance` DuckDB macro; lazy geodesic via `ST_Distance_Spheroid`; mechanics already designed and measured | not built; lazy input errors clearly |
+| filters switch to exact after a counted-change study | filters stay Haversine; speed moved to the filters' sphere instead |
+
+A decision record (080) was drafted for fishycode recording what was built, the deviations and
+their session rationale, and what remains open — deferred, not cancelled:
+
+- the Karney engine (the real fix for the antipode; re-opens if distance-steamed totals become
+  a published product, since the sphere's bias does not cancel in sums);
+- the `"andoyer"` method and `rb_register_macros()`;
+- the counted filter switch to exact distances;
+- the trip-stays nearest-port ranking, still planar `ST_Distance` in degrees (already a row in
+  plan 013's logic-question table).
+
+# Next steps
+
+The agreed next step within ramb is the Karney engine: vendor GeographicLib-C v2.2's
+`geodesic.c`/`geodesic.h` unchanged into `src/` (MIT/X11, attribution in DESCRIPTION and
+`inst/COPYRIGHTS`), expose `geod_inverse()` through one Rcpp entry point, and swap
+`.rb_geodesic()` over — removing Vincenty and the fallback machinery. The plan also covers
+verification against `traipse` (including the antipode and the near-antipodal pair where
+Vincenty was measured 7,059 m short), a scale test on the June 2023 legs from the fishycode
+parquet store, and the test/docs/NEWS updates. After that, the `jepol` voyage-cutting
+off-by-one, which plan 013 assigns to ramb as its own commit.
+
+Two smaller loose ends remain on the fishycode side, for when it next updates ramb: the local
+`hav()` copy in `curate/checks/whack_floor_measure.R` can be replaced by `rb_calc_distance()`,
+and the `speed` column in `curate/ais_ping_union.R` shifts ~0.1–0.3 % with the new haversine
+default — pin `method = "geodesic"` there or re-run, by decision.
