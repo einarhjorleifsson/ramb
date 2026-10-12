@@ -89,6 +89,17 @@ with an `.rb_need()` guard, never in Imports.
 - Every user-facing change gets a bullet in NEWS.md.
 - Open work is tracked in fishycode `curate/plans/013-ramb-one-flow.md`,
   not in this repo's TODO.md.
+- fishycode (`~/stasi/fishycode`) is read-only: read its plans, checks and
+  shims freely, but deliver anything meant for it (decision records, plan
+  annotations) in chat for the maintainer to place. The parquet store under
+  `$FISHYDATA` (`~/stasi/fishydata`, set in fishycode's `.Renviron`) may be
+  read — never written — for scale tests against real data.
+- Fixture tests pin pre-recode outputs (`tests/testthat/fixtures/`). When a
+  deliberate logic fix deviates from the pinned output, do not drop the
+  fixture: pin the counted difference instead, with the count in the test
+  comment and in NEWS.md (the `jepol` block in `test-trip.R` is the model —
+  the port was verified against `pre_jepol.rds`, then the off-by-one fix
+  moved 0/2/3 cuts at `max_dur_h` 72/48/24, and the test pins exactly that).
 - Articles are for package users: they must run against the public API,
   with no local paths, internal (`:::`) calls, or credentials. The six
   developer-note sketches that violated this moved to fishycode
