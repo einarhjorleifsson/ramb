@@ -1,15 +1,17 @@
-#' Plot trails
+#' Plot a vessel track on an interactive map
 #'
-#' @param d a tibble containing trails
-#' @param col the variable that controls colour
-#' @param tooltip the variable to show as tooltip
-#' @param no_lines plot track as lines (default = TRUE)
-#' @param radius the radius of the points (default 400 m)
-#' @param highlight_colour colour of track (default black)
-#' @param stroke_colour stroke colour of track (default cyan)
+#' The pings as points coloured by a variable, optionally with the track as
+#' a path underneath.
 #'
+#' @param d A track tibble with `lon` and `lat` (WGS 84), or an sf object.
+#' @param col The column that controls the point colour, default `"speed"`.
+#' @param tooltip The column shown as the tooltip, default `"speed"`.
+#' @param path Logical; if `TRUE`, the track is drawn as a path under the
+#'   points (default `FALSE`).
+#' @param radius The point radius in metres, default 400.
+#' @param highlight_colour,stroke_colour The colours of the path.
 #'
-#' @return a mapdeck map
+#' @return A [mapdeck::mapdeck()] map.
 #' @export
 #'
 rb_plot_trail <-
@@ -76,16 +78,19 @@ rb_plot_trail <-
         legend = TRUE
       )
   }
-#' rb_plot_trip
+#' Plot a vessel's trips on an interactive map
 #'
-#' @param data A tibble containing variable names lon and lat (crs 4326)
-#' @param tid Trip id variable name, default tid
-#' @param radius Radius (in meters) of the point size (default 10)
-#' @param col What variable to be used for colour scale (default speed)
-#' @param trip add trip path, default FALSE
+#' The pings as points (coloured by `speed`), with a path per trip
+#' underneath.
 #'
-#' @return xxx
+#' @param data A track tibble with `lon` and `lat` (WGS 84) and `speed`, or
+#'   an sf object.
+#' @param tid The trip id column.
+#' @param radius The point radius in metres, default 10.
+#' @param col Reserved; the points are coloured by `speed`.
+#' @param trip Logical; if `TRUE` (default), a path per trip is drawn.
 #'
+#' @return A [mapdeck::mapdeck()] map.
 #' @export
 #'
 rb_plot_trip <- function(data, tid, radius = 10, col = "speed", trip = TRUE) {

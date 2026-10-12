@@ -1,23 +1,22 @@
-#' rb_read_harbours_mfri
+#' Read Icelandic harbour polygons
 #'
-#' A conenient wrapper that read a dataframe of Icelandic harbours (hid) with
-#' associated polygon geometry from an open ftp-site.
+#' Harbour polygons with harbour ids (`hid`), read from MFRI's public FTP
+#' site.
 #'
-#' @return An sf-tibble
+#' @return An sf tibble with `hid` and `geometry`.
 #' @export
 #'
 rb_read_harbours_mfri <- function() {
   sf::read_sf("ftp://ftp.hafro.is/pub/data/shapes/harbours.gpkg")
 }
 
-#' rb_read_survey_tracks_mfri
+#' Read MFRI survey tracks
 #'
-#' A conenient wrapper that read a dataframe of Icelandic trawl vessel ais/vms
-#' data. The variables are \code{vid} (vessel idendification numner), \code{cruise_id}
-#' (cruise identification number) and the usual ais/vms variables (\code{time},
-#' \code{lon}, \code{lat}, \code{speed}, \code{heading}).
+#' AIS/VMS tracks of the Icelandic trawl survey vessels, read from MFRI's
+#' public FTP site: `vid` (vessel id), `cruise_id` (cruise id) and the usual
+#' track variables (`time`, `lon`, `lat`, `speed`, `heading`).
 #'
-#' @return A tibble
+#' @return A tibble.
 #' @export
 #'
 rb_read_survey_tracks_mfri <- function() {
@@ -28,19 +27,16 @@ rb_read_survey_tracks_mfri <- function() {
 }
 
 
-#' rb_read_survey_stations_mfri
+#' Read MFRI survey stations
 #'
-#' A conenient wrapper that read a dataframe of Icelandic trawl vessel survey
-#' tow data. The variables are \code{cruise_id} (cruise identification number),
-#' \code{station_id} (unique station identification numner), \code{station_nr}
-#' (a non-unique station number), \code{date} (date the tow was taken),
-#' \code{vid} (vessel identification number), \code{sclass} (sample class, 30
-#' is the annual spring survey, 35 the annual fall survey) and time-space
-#' informations: start (\code{lon1}, \code{lat1}, \code{t1}) and end
-#' (\code{lon2}, \code{lat2}, \code{t2}) of towing as reported by the vessel
-#' captain.
+#' The tows of the Icelandic trawl surveys, read from MFRI's public FTP site:
+#' `cruise_id` (cruise id), `station_id` (unique station id), `station_nr`
+#' (a non-unique station number), `date`, `vid` (vessel id), `sclass` (sample
+#' class: 30 the spring survey, 35 the autumn survey) and the start (`lon1`,
+#' `lat1`, `t1`) and end (`lon2`, `lat2`, `t2`) of each tow as reported by
+#' the captain.
 #'
-#' @return A tibble
+#' @return A tibble.
 #' @export
 #'
 rb_read_survey_stations_mfri <- function() {
@@ -80,12 +76,17 @@ rb_read_survey_stations_mfri <- function() {
     )
 }
 
-#' Read vessel trails
+#' Read vessel position trails from the MFRI database
 #'
-#' @param con oracle connection
-#' @param vid vessel id, if missing the function returns all trails
+#' Decoded positions from the `stk.trail` table (longitude, latitude and
+#' heading in degrees, speed in knots), for all vessels or, via the
+#' mobile-id–vessel mapping, a given set.
 #'
-#' @return a tibble
+#' @param con An Oracle connection (see the `omar` package).
+#' @param vid Vessel ids; if missing, all trails.
+#'
+#' @return A lazy table with `mid`, `time`, `lon`, `lat`, `speed`, `heading`,
+#'   `hid`, `io`, `rectime`, and `vid` where `vid` was given.
 #' @export
 #'
 rb_read_trail_mfri <- function(con, vid) {

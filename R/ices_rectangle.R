@@ -12,10 +12,10 @@
 #'   inconsistent boundaries (right-inclusive for bands A-D, right-exclusive
 #'   for E-H, no upper bound on J), so the two methods diverge for positions
 #'   exactly on 10-degree longitudes (e.g. `lon = -10`, `lon = -20`).
-#' @param safe Logical, default `TRUE`. If `TRUE`, coordinates are snapped to
-#'   bin midpoints before rectangle calculation, reducing edge effects.
-#'   Only used when `method = "robust"`.
-#' @param useI Logical, default `FALSE`. If `TRUE`, allows rectangles to use
+#' @param snap_to_midpoint Logical, default `TRUE`. If `TRUE`, coordinates are
+#'   snapped to bin midpoints before rectangle calculation, reducing edge
+#'   effects. Only used when `method = "robust"`.
+#' @param use_i Logical, default `FALSE`. If `TRUE`, allows rectangles to use
 #'   the letter 'I' in the longitude band (rarely used). Only used when
 #'   `method = "robust"`.
 #'
@@ -25,6 +25,12 @@
 #' @details
 #' The ICES statistical rectangle system is a spatial reference grid for
 #' marine data. Longitude and latitude must be decimal degrees.
+#'
+#' @references For `"vmstools"`: `vmstools::icesRectangle()` (Hintzen, N.T.,
+#'   Bastardie, F., Beare, D., et al. (2012). "VMStools: Open-source software
+#'   for the processing, analysis and visualisation of fisheries logbook and
+#'   VMS data". Fisheries Research, 115–116, 31–43.
+#'   \doi{10.1016/j.fishres.2011.11.007}).
 #'
 #' @examples
 #' # Standard position inside ICES area

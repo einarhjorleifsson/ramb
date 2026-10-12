@@ -67,17 +67,19 @@ rb_read_logbook_mfri <- function(con, vids, years) {
 }
 
 
-#' Cap effort
+#' Cap and fill logbook effort
 #'
-#' Replaces missing effort with median effort and caps effort to 12 hours (gid 6)
-#' 24 hours (gid 7) and 15 hours (gid 14). If end of haul (t2) overlaps with
-#' beginning of next haul (t1), cut the value of t2.
+#' Icelandic gear ids. A missing `effort` takes the gear's median; an effort
+#' above the gear's cap is cut to it (12 hours for gid 6, 24 for gid 7, 15
+#' for gid 14). Where a haul's end (`t2`) passes the next setting's start
+#' (`t1`), it is cut back to one minute before; the effort is not adjusted
+#' to match.
 #'
-#' @param lb logbooks
+#' @param lb Logbook records as from [rb_read_logbook_mfri()], with `vid`,
+#'   `gid`, `effort`, `t1` and `t2`.
 #'
-#' @return a tibble, supposedly with same number of rows as the input
+#' @return `lb` with `effort` and `t2` adjusted; the same rows.
 #' @export
-#'
 rb_cap_effort <- function(lb) {
   median.effort <-
     lb |>
@@ -126,14 +128,18 @@ rb_cap_effort <- function(lb) {
   return(lb)
 }
 
-#' Standardize mesh size
+#' Standardise logbook mesh sizes
 #'
-#' Crude correction of mesh size
+#' Icelandic gear ids. Adds `mesh.std`, a mesh size on a common scale: fixed
+#' classes for most gears, the recorded mesh classed at 147 mm for trawls
+#' (gid 5, 6; for gid 7 `mesh_min` is used), and gillnet (gid 2) mesh
+#' converted from its recorded unit and classed, defaulting to 203.
 #'
-#' @param lb logbooks
+#' @param lb Logbook records as from [rb_read_logbook_mfri()], with `gid`,
+#'   `mesh` and `mesh_min`.
 #'
+#' @return `lb` with `mesh.std` added.
 #' @export
-#'
 rb_standardise_gear_meshsize <- function(lb) {
   lb <-
     lb |>
@@ -168,16 +174,18 @@ rb_standardise_gear_meshsize <- function(lb) {
 }
 
 
-#' Gear width proxy
+#' Fill logbook gear widths
 #'
-#' The gear width for trawl is based on the sweeps, otherwise the plow width.
-#' If missing use the median value.
+#' Icelandic gear ids. Adds `gear.width`: the sweep length for trawls and
+#' seines (gid 6, 7, 9, 14), the plough width for dredges (gid 15, 38, 40),
+#' capped per gear; a missing width takes the gear's median, and gid 5 a
+#' placeholder 500.
 #'
-#' @param lb logbooks
+#' @param lb Logbook records as from [rb_read_logbook_mfri()], with `gid`,
+#'   `sweeps` and `plow_width`.
 #'
-#' @return a tibble
+#' @return `lb` with `gear.width` added.
 #' @export
-#'
 rb_fill_gear_width <- function(lb) {
   lb <-
     lb |>

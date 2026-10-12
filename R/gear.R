@@ -78,14 +78,7 @@ rb_predict_gear_width <- function(metier, length_m, kw, method = "benthis") {
   return(res)
 }
 
-#' Get ICES metier 6 table
-#'
-#' @param trim Boolean (default TRUE), return only key variables
-#' @param valid Boolean (default TRUE), returns only metiers not depreciated.
-#' Only actuelt if trim is TRUE.
-#'
-#' @return A tibble containing metier 6 and description
-#' @noRd
+# ICES Metier6_FishingActivity code list: met6, description
 .rb_get_ices_metier6 <- function(trim = TRUE, valid = TRUE) {
   .rb_need("icesVocab")
   res <- icesVocab::getCodeList("Metier6_FishingActivity")
@@ -111,14 +104,7 @@ rb_predict_gear_width <- function(metier, length_m, kw, method = "benthis") {
   return(res)
 }
 
-#' Get ICES gear table
-#'
-#' @param trim Boolean (default TRUE), return only key variables
-#' @param valid Boolean (default TRUE), returns only metiers not depreciated.
-#' Only actuelt if trim is TRUE.
-#'
-#' @return A tibble containing target list and description
-#' @noRd
+# ICES GearType code list. NOTE: the key column is misnamed `target` (it holds gear codes).
 .rb_get_ices_gears <- function(trim = TRUE, valid = TRUE) {
   .rb_need("icesVocab")
   res <- icesVocab::getCodeList("GearType")
@@ -142,14 +128,7 @@ rb_predict_gear_width <- function(metier, length_m, kw, method = "benthis") {
 }
 
 
-#' Get ICES target table
-#'
-#' @param trim Boolean (default TRUE), return only key variables
-#' @param valid Boolean (default TRUE), returns only metiers not depreciated.
-#' Only actuelt if trim is TRUE.
-#'
-#' @return A tibble containing target list and description
-#' @noRd
+# ICES TargetAssemblage code list: target, description
 .rb_get_ices_target <- function(trim = TRUE, valid = TRUE) {
   .rb_need("icesVocab")
   res <- icesVocab::getCodeList("TargetAssemblage")
@@ -172,15 +151,9 @@ rb_predict_gear_width <- function(metier, length_m, kw, method = "benthis") {
   return(res)
 }
 
-#' Get a table matching metier 5 and benthis metier
-#'
-#' Extracts key variables from https://raw.githubusercontent.com/ices-eg/RCGs/master/Metiers/Reference_lists/RDB_ISSG_Metier_list.csv
-#'
-#' @param trim Boolean (default TRUE), return only key variables
-#' @param correct Boolean (default TRUE), not active
-#'
-#' @return A vector
-#' @noRd
+# Metier 5 to Benthis metier lookup, from the RCG reference list
+# (RDB_ISSG_Metier_list.csv at github.com/ices-eg/RCGs). `correct` is a
+# placeholder and does nothing.
 .rb_get_ices_metier5_benthis_lookup <- function(trim = TRUE, correct = TRUE) {
   res <-
     "https://raw.githubusercontent.com/ices-eg/RCGs/master/Metiers/Reference_lists/RDB_ISSG_Metier_list.csv" |>
@@ -200,7 +173,8 @@ rb_predict_gear_width <- function(metier, length_m, kw, method = "benthis") {
 
 #' Extract a part of an ICES metier code
 #'
-#' @param x A character vector of metier codes (level 5 or 6, e.g. `"OTB_DEF_>=120_0_0"`).
+#' @param x A character vector of metier codes (level 5 or 6, e.g.
+#'   `"OTB_DEF_>=120_0_0"`; see [rb_get_gear_vocabulary()] for the code lists).
 #' @param part `"gear"` (first field), `"target"` (second field) or `"metier5"` (gear and target).
 #'
 #' @return A character vector.

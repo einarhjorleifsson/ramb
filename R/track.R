@@ -30,6 +30,12 @@
 #'
 #' @return Numeric vector of distances in metres; `NA` where any coordinate is `NA`.
 #'
+#' @references For `"geodesic"`: Karney, C.F.F. (2013). "Algorithms for
+#'   geodesics". Journal of Geodesy, 87(1), 43–55.
+#'   \doi{10.1007/s00190-012-0578-z}; the engine is GeographicLib's
+#'   `geodesic.c` (\url{https://geographiclib.sourceforge.io/}), vendored
+#'   unchanged.
+#'
 #' @examples
 #' rb_calc_distance(0, 64, 0, 65)                 # one degree of latitude, 111,195 m
 #' rb_calc_distance(-21.93, 64.15, -23.93, 65.65) # Reykjavik to Talknafjordur, about 190 km
@@ -309,25 +315,23 @@ rb_calc_track_time <- function(time, weight = c(0, 1), fill_ends = TRUE) {
 
   return(int)
 }
-#' Track speed
+# As traipse::track_speed(), but in knots, and a single-position track gets
+# NA rather than an error.
+
+#' Speed between consecutive positions
 #'
-#' @description Calculates speed in nautical miles per hour. Based on
-#' traipse::track_speed but returns knots not meters per second and sets the
-#' first value as the second value. If the length of the vector is one,
-#' na values are automatically returned (rather than an error returned
-#' by traipse::track_speed)
+#' The speed of each step in knots: the distance from the previous position
+#' divided by the elapsed time. The first position takes the second's value;
+#' a single-position track gets `NA`.
 #'
-#'
-#' @param lon longitude
-#' @param lat latitude
-#' @param time datetime (POSIXct)
+#' @param lon,lat Longitude and latitude, decimal degrees.
+#' @param time Position times (`POSIXct`).
 #' @param method The distance method. The default `"haversine"` is the sphere of
 #'   [rb_flag_ping_impossible()] and much the faster of the two; `"geodesic"` (WGS84,
 #'   Karney) is the more accurate — see [rb_calc_distance()] for guidance.
 #'
-#' @return numerical vector in nautical miles per hour
+#' @return A numeric vector of speeds in knots (nautical miles per hour).
 #' @export
-#'
 rb_calc_speed <- function(
   lon,
   lat,
@@ -344,13 +348,14 @@ rb_calc_speed <- function(
   }
   return(x)
 }
-#' Event id
+#' Number runs of consecutive equal values
 #'
+#' Each run of consecutive equal values gets a sequential number, starting
+#' at 1.
 #'
+#' @param x A vector, normally character or integer.
 #'
-#' @param x A vector, normally character or integer
-#'
-#' @return A numerical vector that labels each discreet event
+#' @return An integer vector numbering the run each element belongs to.
 #' @export
 #'
 rb_number_runs <- function(x) {
@@ -360,42 +365,29 @@ rb_number_runs <- function(x) {
 }
 
 
-#' rb_ms2kn
-#'
-#' meters per second to knots for those of us that forget the convertion number
-#'
-#' @param x A numerical vector of speed in meters per second
-#'
-#' @return A vector, speed in knots (nautical miles per hour)
-#' @noRd
-#'
-#' @author Einar Hjörleifsson, \email{einar.hjorleifsson@gmail.com}
-#'
+# metres per second to knots
 .rb_ms2kn <- function(x) {
   x * 1.94384449
 }
 
-#' rb_kn2ms
-#'
-#' knots to meters per second for those of us that forget the convertion number
-#'
-#' @param x A numerical vector of speed in knots
-#'
-#' @return A vector, speed in meters per second
-#' @noRd
-#'
-#' @author Einar Hjörleifsson, \email{einar.hjorleifsson@gmail.com}
-#'
+# knots to metres per second
 .rb_kn2ms <- function(x) {
   x / 1.94384449
 }
 
 
-#' rb_summarise_track
+#' Summarise a vessel track
 #'
-#' @param d ...
+#' A one-row summary per group of a track table: the number of pings, the
+#' time range, the ranges of speed, per-step distance and per-step duration,
+#' and the number of distinct trips and harbours.
 #'
-#' @return A summary tibble, dependent on grouping upstream
+#' @param d A (grouped) data frame with `time`, `speed`, `dist`, `dura` and,
+#'   for the counts, `tid` and `hid`.
+#'
+#' @return A tibble with one row per group: `pings`, `t.min`, `t.max`,
+#'   `s.min`, `s.med`, `s.max`, `di.min`, `di.med`, `di.max`, `du.min`,
+#'   `du.med`, `du.max`, `n.tips` and `n.harb`.
 #' @export
 #'
 rb_summarise_track <- function(d) {

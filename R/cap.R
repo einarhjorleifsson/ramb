@@ -9,16 +9,7 @@
   return(upper)
 }
 
-#' Cap value to the upper multiplier of the IQR range
-#'
-#' Replace extreme values by less extreme using interquartile range multiplier
-#'
-#' @param x A numeric vector
-#' @param multiplier Default is 1.5
-#'
-#' @return A vector of same length as x
-#' @noRd
-#'
+# Cap x at the upper IQR-multiplier limit (log scale; see .rb_iqr above)
 .rb_cap_iqr <- function(x, multiplier = 1.5) {
   upper <- .rb_iqr(x, multiplier)
   x[x > upper] <- upper
@@ -30,17 +21,7 @@
   stats::quantile(x = x, probs = probs, na.rm = FALSE)
 }
 
-#' Winsorize
-#'
-#' Replace extreme values by less extreme ones. Default is just to cap the higher
-#' values, but if arguement p is of length 2, lower values can also be substituted.
-#'
-#' @param x A numeric vector
-#' @param probs A single value of probabilities with values in \[0, 1\], default 0.99.
-#'
-#' @return A vector of same length as x
-#' @noRd
-#'
+# Cap x at the probs percentile (upper tail only; an NA in x gives an NA limit)
 .rb_cap_winsorize <- function(x, probs = 0.99) {
   if (length(probs) > 1) {
     message("Cap vector can only be of length 1 (upper value)")
@@ -90,17 +71,7 @@
   return(limit)
 }
 
-#' Cap value to highest sequential 1.5 log step
-#'
-#' Replaces extreme values by less extreme ones.
-#'
-#' @param x A numeric vector
-#' @param step_limit A single value (default 1.5), log10 step values between consecutive
-#' ordered values of x will be capped by the maximum step value.
-#'
-#' @return A vector of same length as x
-#' @noRd
-#'
+# Cap x at the highest value before a log10 step larger than step_limit (see .rb_miller above)
 .rb_cap_miller <- function(x, step_limit = 1.5) {
   limit <- .rb_miller(x, step_limit)
 

@@ -269,6 +269,10 @@ SELECT *, %s AS rb_year FROM ps",
   )
 }
 
+# "runs" is what the removed rb_trip() numbered, "jepol" the removed rb_trip_jepol(). The jepol cut was
+# fixed on 2026-10-12 (the old function cut one ping before the longest gap); see the comment above
+# .rb_jepol_one() below, and NEWS.md.
+
 #' Cut vessel tracks into voyages between port stays
 #'
 #' A step-1 builder of the fishing-activity flow. Three methods, one result: a table of voyages.
@@ -277,12 +281,11 @@ SELECT *, %s AS rb_year FROM ps",
 #'   falls in (the earlier of two that overlap), the track is cut into runs of stay and sea, and each sea run
 #'   becomes a voyage, from the port of the stay before it to the port of the stay after it.
 #' * `"runs"`: as `"stays"`, but every run of pings tagged in a port ([rb_flag_ping_port()]) is a stay,
-#'   however short. This is what `rb_trip()` numbered.
-#' * `"jepol"`: the ICES VMS datacall rule (`define_trips_pol`, was `rb_trip_jepol()`): a voyage runs from the
+#'   however short.
+#' * `"jepol"`: the ICES VMS datacall rule (`define_trips_pol`): a voyage runs from the
 #'   first ping at sea to the first ping back in port; voyages of `min_dur_h` hours or less are dropped, and
-#'   with `split` one over `max_dur_h` hours is cut at its longest gap between pings. Note the cut moved on
-#'   2026-10-12: the old function (and this one before that date) cut one ping before the longest gap; a long
-#'   voyage with fewer than two pings inside it, where the old function stopped, is left whole.
+#'   with `split` one over `max_dur_h` hours is cut at its longest gap between pings, repeatedly. A long
+#'   voyage with no inside gap of three minutes or more is left whole.
 #'
 #' @param pings A data frame or lazy DuckDB table with `vid` and `time`, and `port_id` for `"runs"` and
 #'   `"jepol"` (NA at sea).
@@ -298,6 +301,13 @@ SELECT *, %s AS rb_year FROM ps",
 #'
 #' @return One row per voyage: `vid`, `year` (with `by_year`), `voyage_id`, `T1`, `T2`, `port_from`,
 #'   `port_to`, `n_pings`. A data frame for data frame input, a lazy table for lazy input.
+#'
+#' @references For `"jepol"`: the trip rule `define_trips_pol` of the ICES VMS
+#'   data-call workflow, after `vmstools` (Hintzen, N.T., Bastardie, F.,
+#'   Beare, D., et al. (2012). "VMStools: Open-source software for the
+#'   processing, analysis and visualisation of fisheries logbook and VMS
+#'   data". Fisheries Research, 115–116, 31–43.
+#'   \doi{10.1016/j.fishres.2011.11.007}).
 #' @family trip
 #' @export
 rb_cut_trip_voyages <- function(
@@ -393,8 +403,8 @@ SELECT vid, %s voyage_id, T1, T2, port_from, port_to, n_pings FROM v WHERE n_pin
 #' Step 1 of the fishing-activity flow. Each ping gets the voyage it lies in (`voyage_id`, from
 #' [rb_cut_trip_voyages()]) and, with `stays`, the port stay it lies in (`stay_port_id`). `trip_id` is
 #' the voyage and `trip_basis` says where it came from: `"reconstructed"` (the track) or `"none"`. Declared
-#' trips (logbook) and landings as sources, and their reconciliation with the voyages, are to come (fishycode
-#' plan 013, phase 4). No ping is dropped.
+#' trips (logbook) and landings as sources, and their reconciliation with the voyages, are planned for a
+#' later release. No ping is dropped.
 #'
 #' @param pings A data frame or lazy DuckDB table with `vid` and `time`.
 #' @param voyages Voyages from [rb_cut_trip_voyages()].
@@ -770,24 +780,29 @@ FROM ranked WHERE rn = 1",
 }
 #' Link VMS records to logbook trips
 #'
-#' Adds a trip id column to a VMS dataset by matching each VMS record to logbook entries where:
-#'   - vessel IDs match, and
-#'   - the VMS timestamp falls between logbook departure and arrival times.
-#' Similar to \code{vmstools::mergeEflalo2Tacsat}, but here not dependent on specific variable names in the data frames.
+#' Adds the logbook trip id to each VMS record of the same vessel whose
+#' timestamp falls between the trip's departure and arrival; unmatched
+#' records get `NA`. The match of `vmstools::mergeEflalo2Tacsat()`, but with
+#' the column names passed as arguments rather than fixed.
 #'
-#' @param ve A data frame or tibble containing VMS data. Must have columns specified by \code{vessel_id} and \code{time}.
-#' @param le A data frame or tibble containing logbook data. Must have columns specified by \code{vessel_id}, \code{trip_id}, \code{departure}, and \code{arrival}.
-#' @param vessel_id Unquoted column name for vessel ID (must exist in both datasets). Default: \code{vid}.
-#' @param trip_id Unquoted column name for trip ID in the logbook dataset. Default: \code{tid}.
-#' @param time Unquoted column name for timestamp in the VMS dataset. Default: \code{time}.
-#' @param departure Unquoted column name for trip departure time in the logbook dataset. Default: \code{T1}.
-#' @param arrival Unquoted column name for trip arrival time in the logbook dataset. Default: \code{T2}.
+#' @param ve A data frame of VMS records, with the `vessel_id` and `time`
+#'   columns.
+#' @param le A data frame of logbook trips, with the `vessel_id`, `trip_id`,
+#'   `departure` and `arrival` columns.
+#' @param vessel_id The vessel id column (in both data frames), default `vid`.
+#' @param trip_id The trip id column in `le`, default `tid`.
+#' @param time The timestamp column in `ve`, default `time`.
+#' @param departure,arrival The trip start and end columns in `le`, defaults
+#'   `T1` and `T2`.
 #'
-#' @return A tibble with all columns from the VMS data and the trip id column appended (if matched). The departure and arrival columns from the logbook are removed.
+#' @return `ve` with the trip id column added (the departure and arrival
+#'   columns are not carried over).
+#'
+#' @references Hintzen, N.T., Bastardie, F., Beare, D., et al. (2012).
+#'   "VMStools: Open-source software for the processing, analysis and
+#'   visualisation of fisheries logbook and VMS data". Fisheries Research,
+#'   115–116, 31–43. \doi{10.1016/j.fishres.2011.11.007}.
 #' @export
-#'
-#' @examples
-#' # rb_link_trip_logbook(ve, le)  # defaults: vid, tid, time, T1, T2
 rb_link_trip_logbook <- function(
   ve,
   le,
@@ -862,17 +877,17 @@ rb_link_trip_logbook <- function(
 }
 
 
-#' Pad harbour id
+#' Pad the harbour id onto the ends of a trip
 #'
-#' Add the harbour id to the first and the last point of an actual trip
+#' The first ping of a trip (a positive `tid` different from the previous
+#' row's) gets the previous row's harbour id, and the last ping gets the next
+#' row's, so a trip's end pings carry the ports it sailed between.
 #'
-#' @param tid trip id, e.g. from `rb_assign_trip()` or `rb_cut_trip_voyages()`
-#' @param hid harbour id
+#' @param tid A trip id, e.g. from [rb_assign_trip()].
+#' @param hid A harbour id, e.g. from [rb_flag_ping_port()].
 #'
-#' @return The hid vector with added harbour id to the first and the last point
-#' of a trip.
+#' @return The `hid` vector, padded.
 #' @export
-#'
 rb_pad_harbour <- function(tid, hid) {
   tibble::tibble(.tid = tid, .hid = hid) |>
     dplyr::mutate(

@@ -161,14 +161,14 @@ rb_flag_ping_invalid <- function(
 #' Step 0 of the fishing-activity flow. When several feeds (e.g. a national AIS network and a commercial
 #' one) report the same fix, the lower-priority feed's copy is flagged `"duplicate"` in `ping_flag`: a
 #' ping of the same vessel from a higher-priority feed lies within `max_dt_s` seconds and the distance
-#' `kn_max` covers in that time, among the `n` neighbours on each side in time order. Only rows not yet
+#' `kn_max` covers in that time, among the `n_neighbours` neighbours on each side in time order. Only rows not yet
 #' flagged are tested, and they are not used as anchors. No row is dropped.
 #'
 #' @param x A data frame or a lazy DuckDB table with `vid`, `time`, `lon`, `lat` and the feed column.
 #' @param priority The feeds, highest priority first. A feed not listed ranks last. No default: the
 #'   order is a judgement about the feeds.
 #' @param feed The column naming the feed.
-#' @param max_dt_s,kn_max,n Seconds apart, speed in knots that sets the distance, neighbours compared.
+#' @param max_dt_s,kn_max,n_neighbours Seconds apart, speed in knots that sets the distance, neighbours compared.
 #' @param vid,time,lon,lat The columns, if named otherwise.
 #' @param batch_pings For a lazy table: pings per batch.
 #'
@@ -262,6 +262,12 @@ rb_flag_ping_duplicate <- function(
 #' @param batch_pings For a lazy table: pings per batch.
 #'
 #' @return `x` with `ping_flag` added or updated: the same type, the same rows.
+#'
+#' @references For `"sda"`: Freitas, C., Lydersen, C., Fedak, M.A. and Kovacs,
+#'   K.M. (2008). "A simple new algorithm to filter marine mammal Argos
+#'   locations". Marine Mammal Science, 24(2), 315–325.
+#'   \doi{10.1111/j.1748-7692.2007.00180.x}; the algorithm of
+#'   [argosfilter::sdafilter()], re-implemented in C++.
 #' @family flag pings
 #' @export
 rb_flag_ping_impossible <- function(

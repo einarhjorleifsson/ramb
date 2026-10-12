@@ -24,6 +24,14 @@ fishycode call sites to migrate: `curate/ais_ping_clean.R` (`n = DUP_K` → `n_n
 - `rb_cap_outliers(method = "miller")`: an all-zero vector came back as all `-Inf` (the limit was assigned to a misspelled variable, so `max()` of an empty vector was used, with a warning); it is now returned unchanged.
 - The internal `.rb_read_trails()` is removed — legacy from the old MFRI workflow, unused in the package, and broken (`nrow(ais > 0)`); `rb_read_trail_mfri()` is the reader. One unevaluated historical sketch in fishycode (`curate/ramb-articles/ais-workflow.Rmd`) still calls the pre-rename name.
 
+<<<<<<< Updated upstream
+=======
+## Documentation reviewed, articles now Quarto (2026-10-12)
+
+- The roxygen documentation of every exported function was reviewed for consistency and precision. Development history and sister-repo references moved out of the help pages into plain code comments, internal dot-functions now carry plain comments instead of `@noRd` pages, and the methods are properly referenced: Karney (2013) for `rb_calc_distance(method = "geodesic")`, Freitas et al. (2008) for `rb_flag_ping_impossible(method = "sda")`, Hintzen et al. (2012) for the `"jepol"` voyage rule, `rb_link_trip_logbook()` and `rb_encode_ices_rectangle(method = "vmstools")`, Eigaard et al. (2016) for `rb_predict_gear_width()` and the `benthis_*` data.
+- The five articles are now Quarto (`.qmd`) and link profusely, both to the function reference and to external sources (the WGSFD, the data-call methods, DuckDB, mapview). In `.qmd`, pkgdown does not expand the rmarkdown-style `[rb_x()]` shortcuts, so the articles link explicitly: `[rb_x()](../reference/rb_x.html)`.
+
+>>>>>>> Stashed changes
 - `rb_cut_trip_voyages(method = "jepol")`: fixed the off-by-one inherited from `rb_trip_jepol()` — a voyage over `max_dur_h` was split one ping before its longest gap, and the three-minute test read the gap before that ping. The cut now falls at the longest gap. Counted on `dansk`: no cut moves at `max_dur_h = 72`, two voyages of 92 at 48, three of 93 at 24; no voyage is gained or lost (at 24, the moved cut re-times two segments across the `min_dur_h` threshold, flipping two pings' at-sea status). Without splits the output is unchanged.
 
 - `rb_calc_distance()` gains a `method` argument: `"haversine"` (default, unchanged — the filters' sphere) and `"geodesic"` (Karney's algorithm on WGS84, via GeographicLib's `geodesic.c` vendored unchanged in `src/`; exact everywhere, including nearly antipodal pairs). It also gains a data-frame form, `rb_calc_distance(d, lon2 = port_lon, lat2 = port_lat)`: first argument a data frame, the coordinate columns tidy-eval arguments (`lon1`/`lat1` default to `lon`/`lat`). The vector forms (positional or named) are unchanged; lazy DuckDB tables are not supported.

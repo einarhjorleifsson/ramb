@@ -1,14 +1,16 @@
-#' Create timestamp from date and time character columns
+#' Create timestamps from date and time character columns
 #'
-#' This function combines separate date and time character columns into a POSIXct timestamp.
-#' It allows specifying the time zone and the expected date-time format. The function checks for leap day (29/02) validity.
+#' Combines separate date and time character vectors into `POSIXct`
+#' timestamps, warning where the conversion fails; an impossible leap day
+#' (29 February in a non-leap year, with a `%d/%m/%Y` date format) is set
+#' to `NA`.
 #'
-#' @param date Character vector or column containing dates (e.g. "2022-12-31" or "31/12/2022").
-#' @param time Character vector or column containing times (e.g. "23:59:59").
-#' @param tz Time zone to use for the output (default "GMT").
-#' @param format Expected date-time format (default `"%d/%m/%Y %H:%M:%S"`).
+#' @param date,time Character vectors of dates and times, of equal length.
+#' @param tz The time zone of the result, default `"GMT"`.
+#' @param format The date-time format, default `"%d/%m/%Y %H:%M:%S"`.
 #'
-#' @return A POSIXct vector of the same length as `date` and `time`, or NA where conversion fails.
+#' @return A `POSIXct` vector the length of `date`, `NA` where the
+#'   conversion fails.
 #'
 #' @examples
 #' rb_create_timestamp("14/09/2025", "15:30:00")
@@ -89,9 +91,9 @@ rb_create_timestamp <- function(
   }
   ts
 }
-#' Calculate the Duration Between Two Datetimes
+#' Duration between two datetimes
 #'
-#' `rb_calc_duration()` computes the elapsed time between two datetime columns
+#' Computes the elapsed time between two datetime columns
 #' (or vectors), returned as a plain numeric vector in the requested `unit`.
 #' It works identically on three kinds of input:
 #'
@@ -170,9 +172,10 @@ rb_calc_duration <- function(x, from, to, unit = "hours", name = "duration") {
     )
   }
 }
-#' Check if Any Datetime Pairs Cross Year Boundary
+#' Detect intervals that cross a year boundary
 #'
-#' This function checks, for each pair of datetimes in two vectors, if the interval between them crosses a calendar year boundary.
+#' For each pair of datetimes, whether the interval between them crosses a
+#' calendar year boundary.
 #'
 #' @param datetime1 A vector of POSIXct or Date objects. The start times.
 #' @param datetime2 A vector of POSIXct or Date objects. The end times.
@@ -250,17 +253,18 @@ rb_detect_crosses_year <- function(datetime1, datetime2) {
 }
 #' Check for fishing trips that cross calendar years
 #'
-#' @description
-#' Given an eflalo data.frame (with date/time columns for departure and landing), warns if any trips start in one year and end in another.
-#' Adds combined POSIXct timestamp columns if not already present, using `rb_create_timestamp`.
-#' Uses `rb_detect_crosses_year` to detect cross-year trips.
+#' Warns if any trip in an eflalo table starts in one year and lands in
+#' another: `vmstools::splitAmongPings()` does not handle such trips, so they
+#' should be split first. Departure and landing timestamps are added with
+#' [rb_create_timestamp()] where missing; the check is
+#' [rb_detect_crosses_year()].
 #'
-#' @param eflalo A data.frame containing at least FT_DDAT, FT_DTIME, FT_LDAT, FT_LTIME columns (date/time for departure/landing).
+#' @param eflalo A data frame with `FT_DDAT`, `FT_DTIME`, `FT_LDAT` and
+#'   `FT_LTIME` (departure and landing date and time), or the combined
+#'   `FT_DDATIM` and `FT_LDATIM`.
 #'
-#' @return Invisibly returns the eflalo data.frame (with possible new columns).
-#' @details
-#' Trips that start in one year and end in another can cause problems in downstream functions (e.g., splitAmongPings).
-#' This function warns the user and suggests splitting such trips.
+#' @return `eflalo`, invisibly, with the timestamp columns added where they
+#'   were missing.
 #'
 #' @examples
 #' eflalo <- data.frame(

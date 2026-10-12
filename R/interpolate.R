@@ -1,28 +1,28 @@
-#' A wrapper around approx
+#' Linear interpolation at the original points
 #'
-#' @param x A vector, nomally time
-#' @param y The value to interpolate
+#' [stats::approx()] with `rule = 1` (no extrapolation) and duplicate `x`
+#' values averaged, evaluated at the original `x`: internal `NA` gaps are
+#' filled, the ends are left `NA`.
 #'
-#' @return A vector with orgiginal and interpolated values, if any
+#' @param x The predictor, normally time.
+#' @param y The values to interpolate, the length of `x`.
+#'
+#' @return A numeric vector the length of `y`.
 #' @export
-#'
 rb_interpolate <- function(x, y) {
   stats::approx(x, y, x, method = "linear", rule = 1, f = 0, ties = mean)$y
 }
+# Extracted 2026-09-23 from fishycode's curate/logbook_sensor_gps.R, where it was inline group_modify()
+# logic that re-filtered the whole track table once per (vid, trip) group — O(groups x track_rows).
+# Both paths here are O(events + track).
+
 #' Interpolate positions onto event timestamps from a reference track
 #'
-#' For each row of `x` (an "event" needing a position - e.g. a logger fix
+#' For each row of `x` (an "event" needing a position — e.g. a logger fix
 #' whose own lon/lat is unreliable or absent), finds the two nearest points in
-#' `track` bracketing its timestamp - within the same group (`by`) - and
+#' `track` bracketing its timestamp — within the same group (`by`) — and
 #' linearly interpolates the `value_vars` columns onto it. No extrapolation:
 #' an event outside its group's track time coverage gets `NA`.
-#'
-#' Extracted 2026-09-23 from `fishycode`'s `curate/logbook_sensor_gps.R`,
-#' which had this as inline `group_modify()` logic that re-filtered the whole
-#' track table once per `(vid, trip)` group - O(groups x track_rows), and the
-#' actual bottleneck once the AIS chain itself sped up (whack_forward's fix,
-#' same commit range). Both paths here are O(events + track), not
-#' O(groups x track).
 #'
 #' @section Algorithm:
 #' Dispatches on the class of `x`:

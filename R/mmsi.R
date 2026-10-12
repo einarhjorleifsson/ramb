@@ -1,13 +1,18 @@
-#' Categories MMSI
+#' Classify MMSI numbers
 #'
+#' The category a Maritime Mobile Service Identity (MMSI) belongs to, from
+#' its leading digits: coast station (`00MIDxxxx`), group ship station
+#' (`0MIDxxxxx`), SAR aircraft (`111MIDxxx`), vessel (leading 2–7), handheld
+#' VHF transceiver (leading 8), AIS aids to navigation and devices (leading
+#' 970, 972, 974, 98, 99). A value that is not nine digits gets `NA`.
 #'
-#' See: https://en.wikipedia.org/wiki/Maritime_Mobile_Service_Identity
+#' @param mmsi A vector of MMSI numbers (character or numeric).
 #'
-#' @param mmsi MMSI
+#' @return A character vector of categories.
 #'
-#' @return A vector with mmsi categories
+#' @references
+#'   \url{https://en.wikipedia.org/wiki/Maritime_Mobile_Service_Identity}
 #' @export
-#'
 rb_classify_mmsi <- function(mmsi) {
   category <-
     tibble::tibble(mmsi = mmsi) |>
@@ -57,12 +62,17 @@ rb_classify_mmsi <- function(mmsi) {
   return(category)
 }
 
-#' Return flag state from MMSI
+#' Look up the flag state of an MMSI
 #'
-#' @param mmsi MMSI
-#' @param lookup A tibble
+#' The flag state of a vessel MMSI: the Maritime Identification Digits (MID)
+#' — the leading three digits of a vessel MMSI, digits 3–5 for a `98MIDxxxx`
+#' child vessel — matched against a lookup table.
 #'
-#' @return A vector
+#' @param mmsi A vector of MMSI numbers.
+#' @param lookup A tibble with `MID` and `flag`.
+#'
+#' @return A character vector of flag states; `NA` for non-vessel MMSIs and
+#'   MIDs not in `lookup`.
 #' @export
 #'
 rb_lookup_mmsi_country <- function(mmsi, lookup) {

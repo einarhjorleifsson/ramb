@@ -1,9 +1,7 @@
 #' Vessel tracks and behaviour of creel fisheries
 #'
-#' A dataset of movement data collected every 60 sec from 5 trips by 5 different
-#' small scale fishing vessels using creels. (Mendo, Tania; Smout, Sophie; Photopoulou, Theoni; James, Mark (2019), Data
-#' from: Identifying fishing grounds from vessel tracks: model-based inference
-#' for small scale fisheries)
+#' Movement data collected every 60 seconds on 5 trips of 5 small-scale
+#' fishing vessels using creels, with the behaviour annotated.
 #'
 #' @format A data frame with 2226 rows and 8 variables:
 #' \describe{
@@ -17,9 +15,9 @@
 #'   \item{behaviour}{Vessel activity}
 #'   }
 #'
-#' @source Mendo, Tania; Smout, Sophie; Photopoulou, Theoni; James, Mark (2019), Data
-#' from: Identifying fishing grounds from vessel tracks: model-based inference
-#' for small scale fisheries (\url{https://doi.org/10.5061/dryad.k80bp46})
+#' @source Mendo, T., Smout, S., Photopoulou, T. and James, M. (2019). "Data
+#'   from: Identifying fishing grounds from vessel tracks: model-based
+#'   inference for small scale fisheries". Dryad. \doi{10.5061/dryad.k80bp46}
 #'
 "creel"
 
@@ -66,13 +64,14 @@
 
 #' Bottom trawl survey tows
 #'
-#' Icelandic spring bottom trawl survey.
+#' Icelandic spring bottom trawl survey, the tows.
 #'
 "trawlsurveytows"
 
 #' Fictional vessel tracks - set 1
 #'
-#' Some simple dataset to test speed filters
+#' A small fictional track table for testing the impossible-position filters
+#' ([rb_flag_ping_impossible()]).
 #'
 #' @format A data frame with 46 rows and 7 variables:
 #' \describe{
@@ -82,7 +81,7 @@
 #'   \item{lon}{Longitude}
 #'   \item{lat}{latitude}
 #'   \item{time}{time}
-#'   \item{whacks}{Boolean, indication if vessel on track or not}
+#'   \item{whacks}{logical; `TRUE` for the positions a speed filter should flag}
 #'   }
 #'
 #'
@@ -97,11 +96,9 @@
 #' gear components, such as trawl doors, sweeps, and groundgear, to the total
 #' area and severity of the gear's impact.
 #'
-#' For each gear group, a vessel size–gear size relationship parameters can
-#' used to estimate gear width and sediment penetration from
-#' vessel size (length or power).
-#'
-#' https://doi.org/10.1093/icesjms/fsv099
+#' For each gear group, the vessel size–gear size relationship parameters can
+#' be used to estimate gear width and sediment penetration from vessel size
+#' (length or power); see [rb_predict_gear_width()].
 #'
 #' @format A data frame with 14 observations (rows) and 12 variables (columns):
 #' \describe{
@@ -119,11 +116,16 @@
 #'   \item{contact_model}{...}
 #'   }
 #'
-#' @source https://doi.org/10.1093/icesjms/fsv099
+#' @source Eigaard, O.R., Bastardie, F., Breen, M., et al. (2016). ICES
+#'   Journal of Marine Science, 73(suppl. 1), i27–i43.
+#'   \doi{10.1093/icesjms/fsv099}
 "benthis_parameters"
 
 
 #' Benthis metier lookup
+#'
+#' The mapping from ICES metier level 5 to the Benthis metiers of
+#' [benthis_parameters].
 #'
 #' @format A data frame with 41 observations (rows) and 2 variables (columns):
 #' \describe{
@@ -131,5 +133,7 @@
 #'   \item{benthis_metier}{Metier as defined in the benthis project}
 #'   }
 #'
-#' @source https://doi.org/10.1093/icesjms/fsv099
+#' @source Eigaard, O.R., Bastardie, F., Breen, M., et al. (2016). ICES
+#'   Journal of Marine Science, 73(suppl. 1), i27–i43.
+#'   \doi{10.1093/icesjms/fsv099}
 "metier5_benthis_lookup"

@@ -1,12 +1,11 @@
-#' Share Catch and Value from Events to Trails Using Hierarchical Allocation
+#' Share catch and value over fishing pings
 #'
-#' Allocates event weights (`LE_KG`) and values (`LE_EURO`) from the `events` data frame
-#' to corresponding fishing trails in the `trails` data frame using a three-step hierarchical
-#' matching and allocation procedure (by day, ICES rectangle, and trip). This ensures
-#' that catches and values are distributed as precisely as possible, with unmatched allocations
-#' handled at progressively broader levels.
+#' Shares each landing event's weight (`LE_KG`) and value (`LE_EURO`) evenly
+#' over the fishing pings (`state == 1`) of its trip, conserving the totals.
+#' An event is allocated at the finest level its information allows, and only
+#' to pings not already allocated at a finer level:
 #'
-#' @section Hierarchical Allocation Procedure:
+#' @section Hierarchical allocation:
 #' \enumerate{
 #'   \item \strong{Date Level}:
 #'     \itemize{
@@ -28,9 +27,9 @@
 #' \strong{Note:} Two further allocation steps are planned but not yet implemented
 #' (see `raise_unallocated` and `raise_unmatched`).
 #'
-#' @param trails A data frame of fishing trail records. Must contain:
+#' @param pings A data frame of fishing ping records. Must contain:
 #'   \describe{
-#'     \item{.pid}{integer, unique trail identifier}
+#'     \item{.pid}{integer, unique ping identifier}
 #'     \item{VE_COU}{character, vessel country}
 #'     \item{VE_REF}{character, vessel reference}
 #'     \item{time}{POSIXct, UTC timestamp}
@@ -53,15 +52,10 @@
 #' @param raise_unallocated Logical (default FALSE). Reserved: raise trips whose events were
 #'   only partly allocated, so the full event total is shared (not yet implemented).
 #' @param raise_unmatched Logical (default FALSE). Reserved: share events whose trip has no
-#'   match in `trails` at a broader level, e.g. vessel by month (not yet implemented).
-#'
-#' @details
-#' The function spreads catch and value information through three hierarchical steps.
-#' At each step, allocations are only made to pings not already allocated at a finer level.
-#' Only `state == 1` pings are eligible for allocation.
+#'   match in `pings` at a broader level, e.g. vessel by month (not yet implemented).
 #'
 #' @return
-#' A data frame matching the number of rows in `trails`, with added columns:
+#' A data frame matching the number of rows in `pings`, with added columns:
 #'   \describe{
 #'     \item{LE_KG}{numeric, allocated landed weight in kg}
 #'     \item{LE_EURO}{numeric, allocated landed value in euro}
@@ -314,11 +308,11 @@ rb_share_catch <- function(
     #  those that were not allocated
   }
 
-  # Reserved: share events whose trip has no match in trails (not implemented)
+  # Reserved: share events whose trip has no match in pings (not implemented)
   if (raise_unmatched) {
     # Under consideration
     # Will likely be used to raise any event trip catches that are not matched
-    # with trips in the trails data - likely first by vessel then by month, ...
+    # with trips in the pings data - likely first by vessel then by month, ...
   }
 
   # Remove diagnostic columns if requested
@@ -344,23 +338,22 @@ rb_share_catch <- function(
 
   return(out)
 }
-#' Sum columns across by prefix in Data Frame
+#' Sum the columns whose names share a prefix
 #'
-#' Summarizes (row-wise) all numeric columns in a data frame whose names start with a specified prefix,
-#' returning their sum as a new column. Optionally removes the original columns used in the sum.
-#'
-#' Useful for eflalo data where multiple columns represent catches of different species,
-#' and you want to produce a total catch column and at the same time remove the original columns.
+#' Row-wise sums of the numeric columns whose names start with a prefix,
+#' added as a column named by the prefix itself; the summed columns are
+#' optionally removed. For eflalo-style catch tables, where the per-species
+#' columns (`LE_KG_COD`, `LE_KG_HAD`, ...) sum to the total catch `LE_KG`.
 #'
 #' @param d A data frame (typically an eflalo data frame).
-#' @param start_name A string (default "LE_KG"). Prefix of column names to sum across. All columns starting with this string will be included in the sum.
-#' @param remove Logical (default TRUE). If TRUE, removes all original columns whose names start with \code{start_name} after summing.
+#' @param prefix A string (default "LE_KG"). Prefix of column names to sum across. All columns starting with this string will be included in the sum.
+#' @param remove Logical (default TRUE). If TRUE, removes all original columns whose names start with \code{prefix} after summing.
 #'
 #' @return
-#' The input data frame with a new column named \code{start_name} containing the row sums. If \code{remove = TRUE}, the original columns are removed.
+#' The input data frame with a new column named \code{prefix} containing the row sums. If \code{remove = TRUE}, the original columns are removed.
 #'
 #' @details
-#' The function will error if no columns match \code{start_name}, or if any matching columns are not numeric.
+#' The function will error if no columns match \code{prefix}, or if any matching columns are not numeric.
 #'
 #' @examples
 #' # Example: Summing all columns starting with 'catch_'

@@ -327,7 +327,7 @@ rb_assign_record <- function(
 #' @param pings A data frame or lazy DuckDB table with `vid`, `time` and the speed column; all its columns
 #'   are kept.
 #' @param matches Matches from [rb_link_record_pings()] (with the speed range columns).
-#' @param method Only `"window"` so far; the track-only methods are plan 013 phase 4.
+#' @param method Only `"window"` so far; the track-only methods are planned for a later release.
 #' @param not_fishing,speed,speed_min,speed_max As in [rb_link_record_pings()].
 #' @return `pings` with `fishing`.
 #' @export
