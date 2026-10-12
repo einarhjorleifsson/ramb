@@ -1,25 +1,21 @@
 ---
 title: "Gear on the trail"
-editor_options:
-  markdown:
-    wrap: 72
+format: html
+execute:
+  message: false
+  warning: false
+  collapse: true
+  comment: "#>"
 ---
 
-```{r, include = FALSE}
-knitr::opts_chunk$set(
-  message = FALSE,
-  warning = FALSE,
-  collapse = TRUE,
-  comment = "#>"
-)
-```
-
-Step 3 of the fishing-activity flow puts the gear on the track: which
-gear was used, and — for towed gear — how wide it was, since gear width
-is what turns track into swept area. The ICES VMS datacall asks for
-gear width by métier, and the standard source is the BENTHIS model:
-gear width as a function of gear group and vessel size (length or
-power), linear or a power function.
+Step 3 of the [fishing-activity flow](flow.html) puts the gear on the
+track: which gear was used, and — for towed gear — how wide it was,
+since gear width is what turns track into swept area. The ICES VMS
+datacall asks for gear width by métier, and the standard source is the
+BENTHIS model ([Eigaard et al.
+2016](https://doi.org/10.1093/icesjms/fsv099)): gear width as a
+function of gear group and vessel size (length or power), linear or a
+power function.
 
 ```{r}
 library(ramb)
@@ -30,7 +26,7 @@ library(dplyr)
 
 ICES logbook records carry level-6 métier codes such as
 `OTB_DEF_>=120_0_0` (gear, target assemblage, mesh size range, ...).
-`rb_extract_metier()` pulls out a part:
+[rb_extract_metier()](../reference/rb_extract_metier.html) pulls out a part:
 
 ```{r}
 codes <- c("OTB_DEF_>=120_0_0", "GNS_DEF_60-79_0_0", "DRB_MOL_0_0_0",
@@ -41,9 +37,11 @@ rb_extract_metier(codes, part = "metier5")
 ```
 
 The full ICES vocabularies (gears, target assemblages, métier levels 5
-and 6) are available through `rb_get_gear_vocabulary()`, which fetches
-them with {icesVocab}. The mapping from métier level 5 to the 14
-BENTHIS gear groups is shipped with the package:
+and 6, served at [vocab.ices.dk](https://vocab.ices.dk)) are available
+through [rb_get_gear_vocabulary()](../reference/rb_get_gear_vocabulary.html), which fetches them with
+[icesVocab](https://docs.ropensci.org/icesVocab/). The mapping from
+métier level 5 to the 14 BENTHIS gear groups is shipped with the
+package:
 
 ```{r}
 metier5_benthis_lookup
@@ -51,7 +49,7 @@ metier5_benthis_lookup
 
 ## The BENTHIS parameters
 
-For each BENTHIS métier, `benthis_parameters` holds the coefficients of
+For each BENTHIS métier, [benthis_parameters](../reference/benthis_parameters.html) holds the coefficients of
 the vessel size–gear width relationship: a linear model
 (`width = a * size + b`) or a power model (`width = a * size^b`), with
 vessel size measured as length overall (`avg_oal`) or engine power
@@ -64,7 +62,7 @@ benthis_parameters |>
 
 ## Predicting gear width
 
-`rb_predict_gear_width()` wraps the lookup and the two model forms.
+[rb_predict_gear_width()](../reference/rb_predict_gear_width.html) wraps the lookup and the two model forms.
 Given a small fleet — métier, length and engine power per vessel:
 
 ```{r}

@@ -1,30 +1,25 @@
 ---
 title: "Sharing catch over fishing pings"
-editor_options:
-  markdown:
-    wrap: 72
+format: html
+execute:
+  message: false
+  warning: false
+  collapse: true
+  comment: "#>"
 ---
 
-```{r, include = FALSE}
-knitr::opts_chunk$set(
-  message = FALSE,
-  warning = FALSE,
-  collapse = TRUE,
-  comment = "#>"
-)
-```
-
-Step 6 of the fishing-activity flow. Catch and value are recorded per
-logbook event — a day, a haul, sometimes only a trip — while the
-activity lives on the pings. `rb_share_catch()` spreads each event's
-weight (`LE_KG`) and value (`LE_EURO`) over the fishing pings it
-covers, conserving the total.
+Step 6 of the [fishing-activity flow](flow.html). Catch and value are
+recorded per logbook event — a day, a haul, sometimes only a trip —
+while the activity lives on the pings. [rb_share_catch()](../reference/rb_share_catch.html) spreads each
+event's weight (`LE_KG`) and value (`LE_EURO`) over the fishing pings
+it covers, conserving the total.
 
 The column names follow the ICES VMS/Logbook datacall convention:
 `VE_COU`, `VE_REF` (vessel country and id), `FT_REF` (fishing trip id),
-`LE_RECT` (ICES rectangle), `LE_KG`, `LE_EURO`. The pings (`trails`)
-add a timestamp, the ICES rectangle of the position (`ir`) and a
-`state` that is `1` for fishing pings — only those receive catch.
+`LE_RECT` (ICES rectangle), `LE_KG`, `LE_EURO`. The pings (`pings`)
+add a timestamp, the ICES rectangle of the position (`ir`, see
+[rb_encode_ices_rectangle()](../reference/rb_encode_ices_rectangle.html)) and a `state` that is `1` for fishing
+pings — only those receive catch.
 
 ## How the sharing works
 
@@ -51,7 +46,7 @@ with one non-fishing ping (`state = 0`) that must receive nothing:
 library(ramb)
 library(dplyr)
 
-trails <-
+pings <-
   tibble(
     .pid = 1:12L,
     VE_COU = "IS", VE_REF = "1234", FT_REF = "T1",
@@ -75,7 +70,7 @@ events <-
     LE_EURO = c(150, 450, 300, 750)
   )
 
-out <- rb_share_catch(trails, events)
+out <- rb_share_catch(pings, events)
 out |> select(.pid, time, ir, state, LE_KG, .how)
 ```
 
@@ -92,4 +87,4 @@ sum(out$LE_KG, na.rm = TRUE)
 Two refinements are reserved but not yet implemented:
 `raise_unallocated` (share the remainder of events that were only
 partly allocated) and `raise_unmatched` (share events whose trip has no
-match in the trails at a broader level, e.g. vessel by month).
+match in the pings at a broader level, e.g. vessel by month).

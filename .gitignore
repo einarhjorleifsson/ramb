@@ -16,3 +16,4 @@ src/*.dll
 
 /.quarto/
 **/*.quarto_ipynb
+vignettes/.quarto

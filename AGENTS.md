@@ -103,6 +103,10 @@ with an `.rb_need()` guard, never in Imports.
 - Articles are for package users: they must run against the public API,
   with no local paths, internal (`:::`) calls, or credentials. The six
   developer-note sketches that violated this moved to fishycode
-  `curate/ramb-articles/` on 2026-10-11.
+  `curate/ramb-articles/` on 2026-10-11. Articles are Quarto (`.qmd`);
+  pkgdown does not expand rmarkdown-style `[rb_x()]` shortcuts in `.qmd`,
+  so link explicitly (`[rb_x()](../reference/rb_x.html)`). Building
+  articles leaves a `vignettes/.quarto` freeze dir — git- and
+  build-ignored, safe to delete.
 - Known stale corners (do not "fix" blindly): `TOPSECRET.R` and
   `zgarbage/` sit in the repo root, build-ignored.

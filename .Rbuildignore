@@ -17,3 +17,4 @@ TOPSECRET.R
 AGENTS.md
 ^air\.toml$
 ^distance-2026-10-12\.qmd$
+^vignettes/\.quarto$
