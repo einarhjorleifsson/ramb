@@ -28,6 +28,7 @@ call.
 ```{r}
 library(ramb)
 library(dplyr)
+library(ggplot2)
 
 d <-
   dansk |>
@@ -52,6 +53,10 @@ surrounding track they consult; `"clean"` is the fast default:
 d <- d |> rb_flag_ping_impossible(method = "clean")
 d |> count(ping_flag)
 ```
+
+The label names the filter stage that raised the flag — `"vmask"` from
+the speed-distance-angle screen, `"forward"` from the forward scan
+against the last retained ping.
 
 A third flagger, `rb_flag_ping_duplicate()`, marks the lower-priority
 feed's copy when several feeds report the same fix.
@@ -202,35 +207,158 @@ water, only `"runs"` keeps them. The third rule, `"stays"`, goes the
 other way entirely: it ends a voyage only at a *stay*, so a brief
 harbour passage mid-trip would not split the day's trip either.
 
-### Trouble pings inside a voyage
+### Trouble pings that bend the track
 
-The next day on the same vessel. Voyage 5 (Jul 19, 04:12–12:30) sails
-with eight flagged pings in its window:
+`EX_10` again, a year earlier — the morning of Oct 6, 2013, mid-way
+through a three-day voyage out of port 141. Here the badness needs no
+diagnostics:
 
-* **The voyage** (blue): the track as kept after step 0.
-* **The flagged pings** (red): a `"vmask"` flag near port in the
-  morning, then a burst of seven `"forward"` flags in the last quarter
-  of an hour before landing — the classic signature of a GPS glitch
-  burst on the final approach.
+* **The raw track** (grey): sixteen impossible positions drag the line
+  up to 33 km off the grounds and back within minutes — while the
+  vessel's own speed sensor reads ~6 knots throughout.
+* **The clean track** (blue): the same morning after step 0; the
+  voyage's shape is unchanged, the spikes are gone.
+* **The flagged pings** (red): `"vmask"` and `"forward"` flags. This is
+  the failure mode the speed filters are built for, and every `method`
+  catches these.
 
 ```{r}
-v5 <- p |> filter(vid == "EX_10", voyage_id == 5, lubridate::year(time) == 2014)
-f5 <- flagged |>
-  filter(vid == "EX_10", lubridate::date(time) == as.Date("2014-07-19"))
+t1 <- as.POSIXct("2013-10-06 05:00", tz = "UTC")
+t2 <- as.POSIXct("2013-10-06 13:30", tz = "UTC")
+clean6 <- d |> filter(vid == "EX_10", time >= t1, time <= t2)
+flag6  <- flagged |> filter(vid == "EX_10", time >= t1, time <= t2)
 
 mapview(harbours |> filter(port_id == 141),
         col.regions = "orange", alpha.regions = 0.4, layer.name = "Port 141") +
-  mapview(v5 |> as_line(),
-          color = "steelblue", lwd = 2, layer.name = "Voyage 5 (Jul 19)") +
-  mapview(f5 |> sf::st_as_sf(coords = c("lon", "lat"), crs = 4326),
+  mapview(bind_rows(clean6, flag6) |> as_line(),
+          color = "grey40", lwd = 2, layer.name = "Raw track (flags kept)") +
+  mapview(clean6 |> as_line(),
+          color = "steelblue", lwd = 2, layer.name = "Clean track (flags set aside)") +
+  mapview(flag6 |> sf::st_as_sf(coords = c("lon", "lat"), crs = 4326),
           col.regions = "red", cex = 6, layer.name = "Flagged pings")
 ```
 
+The same morning as the speed filter sees it — implied speed of each
+ping against its predecessor, log scale. Every spike is orders of
+magnitude above the 25-knot ceiling (dashed), while the honest track
+never exceeds ~10 kn:
+
+```{r}
+diag6 <-
+  bind_rows(clean6, flag6) |>
+  arrange(time) |>
+  mutate(dt = as.numeric(difftime(time, lag(time), units = "secs")),
+         kn = rb_calc_distance(lag(lon), lag(lat), lon, lat) / dt * 1.94384,
+         flag = ifelse(is.na(ping_flag), "kept", ping_flag))
+
+ggplot(diag6 |> filter(!is.na(kn)), aes(time, kn, colour = flag)) +
+  geom_point(size = 0.8) +
+  scale_y_log10() +
+  geom_hline(yintercept = 25, linetype = 2, colour = "grey40") +
+  scale_colour_manual(values = c(kept = "grey70", forward = "red",
+                                 vmask = "orange")) +
+  labs(y = "Implied speed [kn, log scale]", colour = NULL) +
+  theme(legend.position = "top")
+```
+
+The few *kept* points above the line are the returns-to-track right
+after a spike: the filter's anchor is the last *retained* ping, so the
+comeback is measured against the last good position and passes.
+
 Because the flags are set aside first, neither cutting rule is confused
-by the glitch: the voyage is cut on the clean pings, and the voyage
-window then covers the gap. This is why step 0 flags rather than drops
+by the spikes: the voyage is cut on the clean pings, and the voyage
+window then covers the gaps. This is why step 0 flags rather than drops
 — the flagged pings still exist for audit, but they cannot bend the
 trip boundaries.
+
+### Side point: when the flagged pings sit *on* the track
+
+Not every flag is a spike. Back to Jul 19, 2014 on the same vessel:
+eight flags inside the voyage window, yet on a map most of them sit on
+the track. The diagnostic that separates the cases is implied speed
+against time — each ping measured against its predecessor:
+
+```{r}
+raw5 <-
+  p |>
+  filter(vid == "EX_10", voyage_id == 5, lubridate::year(time) == 2014) |>
+  bind_rows(flagged |>
+              filter(vid == "EX_10",
+                     lubridate::date(time) == as.Date("2014-07-19"))) |>
+  arrange(time) |>
+  mutate(dt = as.numeric(difftime(time, lag(time), units = "secs")),
+         kn = rb_calc_distance(lag(lon), lag(lat), lon, lat) / dt * 1.94384,
+         flag = ifelse(is.na(ping_flag), "kept", ping_flag))
+
+ggplot(raw5 |> filter(!is.na(kn)), aes(time, kn, colour = flag)) +
+  geom_point(size = 1.2) +
+  scale_y_log10() +
+  geom_hline(yintercept = 25, linetype = 2, colour = "grey50") +
+  scale_colour_manual(values = c(kept = "grey70", forward = "red",
+                                 vmask = "orange")) +
+  labs(y = "Implied speed [kn, log scale]", colour = NULL) +
+  theme(legend.position = "top")
+```
+
+Two regimes, one morning apart: a lone point at 264 kn — the same kind
+of spike as above, correctly flagged — and a cluster straddling the
+25-knot threshold in the last hour before landing. The turn-angle view
+adds a clue: a working vessel turns constantly, but the flagged cluster
+sits at ~175 degrees — positions jumping almost straight back, the
+fingerprint of a track alternating between two sources:
+
+```{r}
+raw5 |>
+  mutate(brg = atan2(lon - lag(lon), lat - lag(lat)) * 180 / pi,
+         turn = (brg - lag(brg) + 540) %% 360 - 180) |>
+  filter(!is.na(turn)) |>
+  ggplot(aes(time, abs(turn), colour = flag)) +
+  geom_point(size = 0.8) +
+  scale_colour_manual(values = c(kept = "grey70", forward = "red",
+                                 vmask = "orange")) +
+  labs(y = "|Turn| [deg]", colour = NULL) +
+  theme(legend.position = "top")
+```
+
+Zooming into that last hour reveals not glitches but **two interleaved
+emission streams**:
+
+* a dense, self-consistent stream — a ping every ~10 s, ~36 m steps,
+  ~7 kn, matching the vessel's speed sensor exactly;
+* a sparse stream (~every 60 s, always at `:39`/`:40` seconds) whose
+  positions zigzag against the dense track — the signature of a second,
+  lower-quality feed (or a delayed secondary channel) reporting the
+  same voyage.
+
+The forward filter anchors on the last *retained* ping, so a retained
+sparse ping poisons the next measurement: the innocent dense ping after
+it shows 175 m in 11 s = 31 kn and gets flagged. Of the seven
+`"forward"` flags that afternoon, five are innocent dense pings —
+collateral damage — while most of the sparse stream survives every
+method. This is precisely what `rb_flag_ping_duplicate()` exists for,
+and because flagged pings are never used as anchors by later flaggers,
+running it first repairs the anchors:
+
+```{r}
+raw5 |>
+  select(vid, time, lon, lat) |>
+  mutate(feed = if_else(lubridate::second(time) %in% c(39, 40),
+                        "sparse", "dense")) |>
+  rb_flag_ping_duplicate(priority = c("dense", "sparse"),
+                         feed = feed, max_dt_s = 15) |>
+  rb_flag_ping_impossible(method = "clean") |>
+  count(ping_flag)
+```
+
+Every sparse ping is flagged `"duplicate"`, the true spike is still
+caught — and not a single dense ping is flagged. Two honest caveats:
+the `feed` labels here are inferred from the emission cadence (`dansk`
+has no provider column; real data would), and this two-stream
+fingerprint is not everywhere — across `dansk` it is confined to
+`EX_10` and `EX_11`, but there it accounts for most of their flags,
+while the other vessels' flags are sparse true spikes. Inferring these
+streams without a feed column is open work; for now, know your feeds
+and flag duplicates before impossibles.
 
 From here the flow continues with the logbook record (step 2): which
 declared trip or haul covers each ping. `rb_link_trip_logbook()` builds

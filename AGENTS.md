@@ -58,6 +58,8 @@ with an `.rb_need()` guard, never in Imports.
   subprocess stream that `capture.output()` does not catch. Sink both
   streams to a file (`sink(f); sink(f, type = "message")`) and report
   only the pass/fail lines, or run via `callr::r(..., show = FALSE)`.
+- Do not stage or commit while articles are being drafted — the
+  maintainer commits when an iteration is ready.
 - Format with `air format .` (binary at `~/.local/bin/air`; settings are
   the committed `air.toml`, i.e. explicit defaults — keep diffs free of
   formatting noise). Note: the CRAN package called `air` is an unrelated

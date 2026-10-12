@@ -38,6 +38,7 @@ LinkingTo:
     Rcpp
 Suggests:
     icesVocab,
+    ggplot2,
     mapdeck,
     mapview,
     traipse,
