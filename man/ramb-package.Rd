@@ -29,6 +29,14 @@ a method; it is the \code{by} argument. The rename plan is fishycode's
 \code{curate/plans/013-ramb-one-flow.md}; the pre-2026-10-08 names were removed on 2026-10-11.
 }
 
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://heima.hafro.is/~einarhj/ramb}
+  \item \url{https://github.com/einarhjorleifsson/ramb}
+}
+
+}
 \author{
 \strong{Maintainer}: Einar Hjörleifsson \email{einar.hjorleifsson@gmail.com}
 

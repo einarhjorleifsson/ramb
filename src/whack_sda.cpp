@@ -26,6 +26,8 @@ using namespace Rcpp;
 
 namespace {
 
+// The rb_calc_distance() sphere (R/track.R is the reference of record); the same formula lives
+// in whack_forward.cpp and in the SQL of .rb_whack_fwdbwd (R/whack.R).
 const double R_EARTH = 6371000.0;
 inline double rad(double d) { return d * M_PI / 180.0; }
 

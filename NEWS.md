@@ -1,5 +1,8 @@
 # ramb (development version)
 
+- `rb_calc_distance()` gains a `method` argument: `"haversine"` (default, unchanged — the filters' sphere) and `"geodesic"` (Vincenty on WGS84; nearly antipodal pairs fall back to Haversine with a warning). It also gains a data-frame form, `rb_calc_distance(d, lon2 = port_lon, lat2 = port_lat)`: first argument a data frame, the coordinate columns tidy-eval arguments (`lon1`/`lat1` default to `lon`/`lat`). The vector forms (positional or named) are unchanged; lazy DuckDB tables are not supported.
+- `rb_calc_speed()` and `rb_calc_step_acceleration()` gain the same `method` argument, defaulting to `"haversine"` — one sphere across distance, speed and the impossible-position filters, and about 12x faster than the ellipsoid. Their previous behaviour was `"geodesic"`; pass that explicitly where the old values are needed. Speeds shift by a systematic, latitude- and bearing-dependent amount within ~0.6 % (about 0.1-0.3 % at Icelandic latitudes).
+
 ## Articles reorganised (2026-10-11)
 
 The articles are now a small user-facing set explaining the essence of the package, all self-contained (package data only, no undeclared dependencies):

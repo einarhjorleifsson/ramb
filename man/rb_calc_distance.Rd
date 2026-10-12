@@ -4,25 +4,69 @@
 \alias{rb_calc_distance}
 \title{Great-circle distance between two points}
 \usage{
-rb_calc_distance(lon1, lat1, lon2, lat2)
+rb_calc_distance(
+  x,
+  ...,
+  method = c("haversine", "geodesic"),
+  lon1 = lon,
+  lat1 = lat,
+  lon2,
+  lat2
+)
 }
 \arguments{
-\item{lon1, lat1}{Longitude and latitude of the first point, decimal degrees.}
+\item{x}{The vector form: longitude of the first point, decimal degrees. The data-frame
+form: a data frame with the coordinate columns.}
 
-\item{lon2, lat2}{Longitude and latitude of the second point, decimal degrees.}
+\item{...}{The vector form: \code{lat1}, \code{lon2} and \code{lat2}, in that order.}
+
+\item{method}{\code{"haversine"} (default) or \code{"geodesic"}.}
+
+\item{lon1, lat1, lon2, lat2}{The data-frame form: the coordinate columns (tidy-eval).
+\code{lon1} and \code{lat1} default to the grammar names \code{lon} and \code{lat}; \code{lon2} and \code{lat2}
+are required.}
 }
 \value{
 Numeric vector of distances in metres; \code{NA} where any coordinate is \code{NA}.
 }
 \description{
-Haversine distance, in metres, on a sphere of radius 6,371,000 m: the radius the
-impossible-position filters (\code{\link[=rb_flag_ping_impossible]{rb_flag_ping_impossible()}}) use, so a distance computed here
-agrees with theirs. Vectorised, and the four arguments recycle to a common length, so it
-works inside \code{mutate()} with \code{dplyr::lag()} and \code{dplyr::lead()}.
+Two methods:
+\itemize{
+\item \code{"haversine"} (default): on a sphere of radius 6,371,000 m — the radius the
+impossible-position filters (\code{\link[=rb_flag_ping_impossible]{rb_flag_ping_impossible()}}) use, so a distance computed
+here agrees with theirs.
+\item \code{"geodesic"}: Vincenty's inverse formula on the WGS84 ellipsoid. Vincenty's formula
+may not converge for nearly antipodal points; those pairs fall back to the Haversine
+value, with a warning.
+}
+}
+\details{
+Which method: use the default for anything measured against the impossible-position
+filters (a speed computed on the ellipsoid can disagree with a filter threshold purely
+from the sphere mismatch) and for large data — Haversine is about 12x faster and is the
+only method expressible in SQL. Use \code{"geodesic"} when the absolute distance itself
+matters, e.g. distance-steamed totals: the Haversine error is systematic, up to ~0.6 \%
+depending on latitude and bearing, so it does not cancel in sums.
+
+Two forms. The vector form takes the four coordinate vectors; they recycle to a common
+length, so it works inside \code{mutate()} with \code{dplyr::lag()} and \code{dplyr::lead()}. The
+data-frame form takes a data frame as the first argument and the coordinate columns as
+tidy-eval arguments, for point-to-point columns such as ping to port. A lazy DuckDB
+table is not supported — collect first.
 }
 \examples{
 rb_calc_distance(0, 64, 0, 65)                 # one degree of latitude, 111,195 m
 rb_calc_distance(-21.93, 64.15, -23.93, 65.65) # Reykjavik to Talknafjordur, about 190 km
+
+# the data-frame form: distance from each ping to a fixed port
+d <- data.frame(
+  lon = c(-21.93, -22.50),
+  lat = c(64.15, 63.90),
+  port_lon = -21.94,
+  port_lat = 64.15
+)
+rb_calc_distance(d, lon2 = port_lon, lat2 = port_lat)
+rb_calc_distance(d, lon2 = port_lon, lat2 = port_lat, method = "geodesic")
 \dontrun{
 pings |>
   group_by(vid) |>

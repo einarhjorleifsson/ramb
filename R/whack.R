@@ -99,6 +99,10 @@
     con <- dbplyr::remote_con(x)
     inner_sql <- as.character(dbplyr::sql_render(dplyr::ungroup(x)))
 
+    # Haversine, R = 6,371,000 m: the rb_calc_distance() formula (R/track.R) is the reference
+    # of record; the same sphere lives in src/whack_forward.cpp and src/whack_sda.cpp.
+    # Deliberately no LEAST(1, ...) clamp: DuckDB's LEAST ignores NULLs, which would turn
+    # NA-coordinate pairs into the antipodal distance; unclamped, NULL propagates.
     sql <- .rb_fill(
       "
       WITH src AS ({inner_sql}),

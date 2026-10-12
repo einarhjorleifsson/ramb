@@ -26,6 +26,8 @@ LogicalVector whack_forward_cpp(NumericVector lon, NumericVector lat,
   LogicalVector flag(n, false);
   if (n < 2) return flag;
 
+  // Haversine, R = 6,371,000 m — the rb_calc_distance() sphere (R/track.R is the reference
+  // of record); the same formula lives in whack_sda.cpp and in the SQL of .rb_whack_fwdbwd (R/whack.R).
   const double r = 6371000.0;
   int prev = 0;
 
