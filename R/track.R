@@ -4,14 +4,13 @@
 #' * `"haversine"` (default): on a sphere of radius 6,371,000 m — the radius the
 #'   impossible-position filters ([rb_flag_ping_impossible()]) use, so a distance computed
 #'   here agrees with theirs.
-#' * `"geodesic"`: Vincenty's inverse formula on the WGS84 ellipsoid. Vincenty's formula
-#'   may not converge for nearly antipodal points; those pairs fall back to the Haversine
-#'   value, with a warning.
+#' * `"geodesic"`: Karney's algorithm on the WGS84 ellipsoid (vendored GeographicLib C,
+#'   see `inst/COPYRIGHTS`). Exact everywhere, including nearly antipodal points.
 #'
 #' Which method: use the default for anything measured against the impossible-position
 #' filters (a speed computed on the ellipsoid can disagree with a filter threshold purely
-#' from the sphere mismatch) and for large data — Haversine is about 12x faster and is the
-#' only method expressible in SQL. Use `"geodesic"` when the absolute distance itself
+#' from the sphere mismatch) and for large data — Haversine is about 40-50x faster and is
+#' the only method expressible in SQL. Use `"geodesic"` when the absolute distance itself
 #' matters, e.g. distance-steamed totals: the Haversine error is systematic, up to ~0.6 %
 #' depending on latitude and bearing, so it does not cancel in sums.
 #'
@@ -160,66 +159,18 @@ rb_calc_distance <- function(
     cos(lat1 * k) * cos(lat2 * k) * sin((lon2 - lon1) * k / 2)^2
   2 * 6371000 * asin(sqrt(pmin(1, a)))
 }
-# geodesic.R — distance on the WGS84 ellipsoid, recoded from traipse/geodist (plan 013: no copied code).
+# geodesic.R — distance on the WGS84 ellipsoid.
 #
-# Vincenty's inverse formula. It agrees with geodist's "geodesic" measure (Karney) to well under a millimetre for
-# the short steps of a track. It may not converge for nearly antipodal points; those pairs fall back to
-# .rb_haversine(), with a warning — successive pings never are antipodal, but rb_calc_distance() takes any pair.
+# Karney's algorithm, via the vendored GeographicLib C code (src/geodesic.c, src/geodesic.h,
+# taken in unchanged — plan 013's recorded exception to the recode rule; see inst/COPYRIGHTS)
+# behind the Rcpp entry point geod_karney() (src/geodesic_karney.cpp). Exact everywhere,
+# including nearly antipodal pairs, with no convergence failure and no fallback branch —
+# which is why it replaced the earlier Vincenty recode (2026-10-12; Vincenty failed silently
+# near the antipode, measured 7 km short on the pair in test-track.R). Agrees with
+# traipse::track_distance() to nanometres; about 0.7 s per million legs.
 
 .rb_geodesic <- function(lon1, lat1, lon2, lat2) {
-  a <- 6378137
-  f <- 1 / 298.257223563
-  b <- (1 - f) * a
-  k <- pi / 180
-  L <- (lon2 - lon1) * k
-  U1 <- atan((1 - f) * tan(lat1 * k))
-  U2 <- atan((1 - f) * tan(lat2 * k))
-  sU1 <- sin(U1)
-  cU1 <- cos(U1)
-  sU2 <- sin(U2)
-  cU2 <- cos(U2)
-  lam <- L
-  conv <- rep(FALSE, length(lam))
-  for (i in 1:200) {
-    sl <- sin(lam)
-    cl <- cos(lam)
-    ss <- sqrt((cU2 * sl)^2 + (cU1 * sU2 - sU1 * cU2 * cl)^2)
-    cs <- sU1 * sU2 + cU1 * cU2 * cl
-    sig <- atan2(ss, cs)
-    sa <- ifelse(ss == 0, 0, cU1 * cU2 * sl / ss)
-    c2a <- 1 - sa^2
-    c2m <- ifelse(c2a == 0, 0, cs - 2 * sU1 * sU2 / c2a)
-    C <- f / 16 * c2a * (4 + f * (4 - 3 * c2a))
-    lam0 <- lam
-    lam <- L +
-      (1 - C) * f * sa * (sig + C * ss * (c2m + C * cs * (-1 + 2 * c2m^2)))
-    conv <- abs(lam - lam0) < 1e-12
-    if (all(conv, na.rm = TRUE)) break
-  }
-  u2 <- c2a * (a^2 - b^2) / b^2
-  A <- 1 + u2 / 16384 * (4096 + u2 * (-768 + u2 * (320 - 175 * u2)))
-  B <- u2 / 1024 * (256 + u2 * (-128 + u2 * (74 - 47 * u2)))
-  ds <- B *
-    ss *
-    (c2m +
-      B /
-        4 *
-        (cs *
-          (-1 + 2 * c2m^2) -
-          B / 6 * c2m * (-3 + 4 * ss^2) * (-3 + 4 * c2m^2)))
-  out <- b * A * (sig - ds)
-  # Nearly antipodal pairs: Vincenty did not converge; Haversine stands in
-  bad <- !is.na(conv) & !conv
-  if (any(bad)) {
-    warning(
-      "Vincenty's formula did not converge for ",
-      sum(bad),
-      " point pair(s) (nearly antipodal?); Haversine distance used for those.",
-      call. = FALSE
-    )
-    out[bad] <- .rb_haversine(lon1[bad], lat1[bad], lon2[bad], lat2[bad])
-  }
-  out
+  geod_karney(lon1, lat1, lon2, lat2)
 }
 
 # The step from the previous fix: NA for the first. As traipse::track_distance(), track_time(), track_speed().
@@ -268,8 +219,8 @@ rb_calc_step_time <- function(time, units = "secs") {
 #' @param lat latitude
 #' @param time time in POSIXct
 #' @param method The distance method. The default `"haversine"` is the sphere of
-#'   [rb_flag_ping_impossible()] and much the faster of the two; `"geodesic"` (WGS84
-#'   Vincenty) is the more accurate — see [rb_calc_distance()] for guidance.
+#'   [rb_flag_ping_impossible()] and much the faster of the two; `"geodesic"` (WGS84,
+#'   Karney) is the more accurate — see [rb_calc_distance()] for guidance.
 #'
 #' @return A numerical vector
 #' @export
@@ -360,8 +311,8 @@ rb_calc_track_time <- function(date, weight = c(0, 1), fill = TRUE) {
 #' @param lat latitude
 #' @param time datetime (POSIXct)
 #' @param method The distance method. The default `"haversine"` is the sphere of
-#'   [rb_flag_ping_impossible()] and much the faster of the two; `"geodesic"` (WGS84
-#'   Vincenty) is the more accurate — see [rb_calc_distance()] for guidance.
+#'   [rb_flag_ping_impossible()] and much the faster of the two; `"geodesic"` (WGS84,
+#'   Karney) is the more accurate — see [rb_calc_distance()] for guidance.
 #'
 #' @return numerical vector in nautical miles per hour
 #' @export

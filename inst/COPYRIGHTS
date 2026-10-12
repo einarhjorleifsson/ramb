@@ -1,0 +1,10 @@
+ramb bundles the following third-party code, taken in unchanged (fishycode
+plan 013, "One distance function", 2026-10-09: a deliberate exception to the
+recode rule — recoding Karney's numerics by hand is where errors would enter):
+
+src/geodesic.c
+src/geodesic.h
+  GeographicLib-C, version 2.2
+  https://github.com/geographiclib/geographiclib-c/tree/v2.2
+  Copyright (c) Charles Karney (2012-2025) <karney@alum.mit.edu>
+  License: MIT/X11 — the licence text is in the files' headers.

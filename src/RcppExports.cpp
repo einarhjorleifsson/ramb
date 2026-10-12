@@ -10,6 +10,20 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
+// geod_karney
+NumericVector geod_karney(NumericVector lon1, NumericVector lat1, NumericVector lon2, NumericVector lat2);
+RcppExport SEXP _ramb_geod_karney(SEXP lon1SEXP, SEXP lat1SEXP, SEXP lon2SEXP, SEXP lat2SEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type lon1(lon1SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type lat1(lat1SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type lon2(lon2SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type lat2(lat2SEXP);
+    rcpp_result_gen = Rcpp::wrap(geod_karney(lon1, lat1, lon2, lat2));
+    return rcpp_result_gen;
+END_RCPP
+}
 // interpolate_track_cpp
 List interpolate_track_cpp(IntegerVector trk_code, NumericVector trk_time, NumericMatrix trk_vals, IntegerVector grp_start, IntegerVector x_code, NumericVector x_time);
 RcppExport SEXP _ramb_interpolate_track_cpp(SEXP trk_codeSEXP, SEXP trk_timeSEXP, SEXP trk_valsSEXP, SEXP grp_startSEXP, SEXP x_codeSEXP, SEXP x_timeSEXP) {
@@ -64,6 +78,7 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
+    {"_ramb_geod_karney", (DL_FUNC) &_ramb_geod_karney, 4},
     {"_ramb_interpolate_track_cpp", (DL_FUNC) &_ramb_interpolate_track_cpp, 6},
     {"_ramb_whack_forward_cpp", (DL_FUNC) &_ramb_whack_forward_cpp, 6},
     {"_ramb_whack_sda_cpp", (DL_FUNC) &_ramb_whack_sda_cpp, 10},

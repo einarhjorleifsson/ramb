@@ -47,14 +47,29 @@ test_that("rb_calc_distance(method = \"geodesic\") matches traipse's geodesic", 
   expect_length(rb_calc_distance(0, 0, 1:3, 1:3, method = "geodesic"), 3)
 })
 
-test_that("geodesic falls back to haversine, with a warning, for antipodal points", {
-  expect_warning(
-    d <- rb_calc_distance(0, 0, 180, 0, method = "geodesic"),
-    "did not converge"
+test_that("geodesic (Karney) is exact at and near the antipode, with no warning", {
+  skip_if_not_installed("traipse")
+  # the exact antipode
+  expect_no_warning(
+    d <- rb_calc_distance(0, 0, 180, 0, method = "geodesic")
   )
-  expect_equal(d, rb_calc_distance(0, 0, 180, 0))
-  # NA pairs do not count as non-converged
-  expect_no_warning(rb_calc_distance(0, NA, 1, 1, method = "geodesic"))
+  expect_equal(
+    d,
+    traipse::track_distance(c(0, 180), c(0, 0))[2],
+    tolerance = 1e-9
+  )
+  # the near-antipodal pair where the earlier Vincenty recode failed (plan 013:
+  # 7,059 m short; with the 2026-10-12 fallback it was the haversine value)
+  expect_no_warning(
+    d2 <- rb_calc_distance(-22, 64, 157.9, -63.95, method = "geodesic")
+  )
+  expect_equal(
+    d2,
+    traipse::track_distance(c(-22, 157.9), c(64, -63.95))[2],
+    tolerance = 1e-9
+  )
+  # NA passes through
+  expect_true(is.na(rb_calc_distance(0, NA, 1, 1, method = "geodesic")))
 })
 
 test_that("rb_calc_distance() data-frame form: tidy-eval columns, same values as vectors", {
