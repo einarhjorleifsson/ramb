@@ -1,18 +1,28 @@
-#' Predict gear width in meters based on Benthis
+#' Predict gear width from vessel size
 #'
-#' @param metier Metier 5
-#' @param length Vessel length in meters
-#' @param kw Vessel power
+#' The width (metres) of the gear a vessel would tow, from its metier and its
+#' length or engine power, with the Benthis vessel-size–gear-width models.
 #'
-#' @return A numeric vector in meters
-#' @param method Only `"benthis"` so far: the Benthis gear-width models (Eigaard et al. 2016).
+#' @param metier Metier level 5 codes, matched against
+#'   [metier5_benthis_lookup].
+#' @param length_m Vessel length overall, metres.
+#' @param kw Vessel engine power, kW.
+#' @param method Only `"benthis"` so far.
+#'
+#' @return A numeric vector of gear widths in metres; `NA` where the metier
+#'   has no model, or the model is in the other size variable.
+#'
+#' @references Eigaard, O.R., Bastardie, F., Breen, M., et al. (2016).
+#'   "Estimating seabed pressure from demersal trawls, seines, and dredges
+#'   based on gear design and dimensions". ICES Journal of Marine Science,
+#'   73(suppl. 1), i27–i43. \doi{10.1093/icesjms/fsv099}; the parameters are
+#'   in [benthis_parameters].
 #' @export
-#'
-rb_predict_gear_width <- function(metier, length, kw, method = "benthis") {
+rb_predict_gear_width <- function(metier, length_m, kw, method = "benthis") {
   method <- match.arg(method)
   tibble::tibble(
     metier5 = {{ metier }},
-    length = {{ length }},
+    length_m = {{ length_m }},
     kw = {{ kw }}
   ) |>
     dplyr::left_join(metier5_benthis_lookup, by = dplyr::join_by(metier5)) |>
@@ -24,60 +34,28 @@ rb_predict_gear_width <- function(metier, length, kw, method = "benthis") {
     dplyr::mutate(
       width = dplyr::case_when(
         model == "power" & variable == "avg_kw" ~ a * kw^b,
-        model == "power" & variable == "avg_oal" ~ a * length^b,
-        model == "linear" & variable == "avg_oal" ~ a * length + b,
+        model == "power" & variable == "avg_oal" ~ a * length_m^b,
+        model == "linear" & variable == "avg_oal" ~ a * length_m + b,
         .default = NA
       )
     ) |>
     dplyr::pull(width)
 }
-#' Derive gear from metier 5 or 6
-#'
-#' Obtain gear type (sometimes wrongly called metier 4?) from metier5 or  6
-#'
-#' @param x A character vector
-#'
-#' @return A vector
-#' @noRd
-#'
+# The gear field of a metier 5 or 6 code
 .rb_gear_from_metier <- function(x) {
   x |> stringr::str_split("_") |> purrr::map_chr(1)
 }
-#' Derive target from metier 5 or 6
-#'
-#' Not to be confused with metier 5
-#'
-#' @param x A character vector
-#'
-#' @return A vector
-#' @noRd
-#'
+# The target-assemblage field of a metier 5 or 6 code
 .rb_target_from_metier <- function(x) {
   x |> stringr::str_split("_") |> purrr::map_chr(2)
 }
-#' Derive metier 5 from metier 6
-#'
-#' Not to be confused with target assemblage
-#'
-#' @param x A character vector
-#'
-#' @return A vector
-#' @noRd
-#'
+# The metier 5 (gear_target) of a metier 6 code
 .rb_met5_from6 <- function(x) {
   sapply(strsplit(x, "_"), function(x) paste(x[1:2], collapse = "_"))
 }
 
 
-#' Get ICES metier level 5 table
-#'
-#' @param trim Boolean (default TRUE), return only key variables
-#' @param valid Boolean (default TRUE), returns only metiers not depreciated.
-#' Only done if trim is TRUE.
-#'
-#' @return A tibble containing metier 5 and description
-#' @noRd
-#'
+# ICES Metier5_FishingActivity code list: metier5, description; valid drops the deprecated
 .rb_get_ices_metier5 <- function(trim = TRUE, valid = TRUE) {
   .rb_need("icesVocab")
   res <- icesVocab::getCodeList("Metier5_FishingActivity")
@@ -240,20 +218,29 @@ rb_extract_metier <- function(x, part = c("gear", "target", "metier5")) {
   )
 }
 
-#' Get an ICES gear vocabulary table
+#' Get an ICES vocabulary table
 #'
-#' @param list Which table: `"gears"`, `"target"`, `"metier5"`, `"metier6"` or `"metier5_benthis_lookup"`.
-#' @param ... Passed on: `trim`, `valid` (and `correct` for `"metier5_benthis_lookup"`).
+#' @param code_list Which code list: `"gears"`, `"target"`, `"metier5"`,
+#'   `"metier6"` (from [icesVocab::getCodeList()]) or
+#'   `"metier5_benthis_lookup"` (from the RCG metier reference list).
+#' @param ... Passed on: `trim` (key columns only) and `valid` (drop
+#'   deprecated codes).
 #'
-#' @return A tibble, fetched with icesVocab.
+#' @return A tibble.
 #' @export
 rb_get_gear_vocabulary <- function(
-  list = c("gears", "target", "metier5", "metier6", "metier5_benthis_lookup"),
+  code_list = c(
+    "gears",
+    "target",
+    "metier5",
+    "metier6",
+    "metier5_benthis_lookup"
+  ),
   ...
 ) {
-  list <- match.arg(list)
+  code_list <- match.arg(code_list)
   switch(
-    list,
+    code_list,
     gears = .rb_get_ices_gears(...),
     target = .rb_get_ices_target(...),
     metier5 = .rb_get_ices_metier5(...),

@@ -11,6 +11,6 @@ An object of class \code{sf} (inherits from \code{tbl_df}, \code{tbl}, \code{dat
 trawlsurveytows
 }
 \description{
-Icelandic spring bottom trawl survey.
+Icelandic spring bottom trawl survey, the tows.
 }
 \keyword{datasets}

@@ -7,7 +7,8 @@
 rb_extract_metier(x, part = c("gear", "target", "metier5"))
 }
 \arguments{
-\item{x}{A character vector of metier codes (level 5 or 6, e.g. \code{"OTB_DEF_>=120_0_0"}).}
+\item{x}{A character vector of metier codes (level 5 or 6, e.g.
+\code{"OTB_DEF_>=120_0_0"}; see \code{\link[=rb_get_gear_vocabulary]{rb_get_gear_vocabulary()}} for the code lists).}
 
 \item{part}{\code{"gear"} (first field), \code{"target"} (second field) or \code{"metier5"} (gear and target).}
 }

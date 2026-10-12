@@ -181,7 +181,7 @@ rb_flag_ping_duplicate <- function(
   feed = provider,
   max_dt_s = 10,
   kn_max = 25,
-  n = 3,
+  n_neighbours = 3,
   vid = vid,
   time = time,
   lon = lon,
@@ -214,7 +214,7 @@ rb_flag_ping_duplicate <- function(
         priority = priority,
         max_dt_s = max_dt_s,
         kn_max = kn_max,
-        n = n
+        n = n_neighbours
       )
       d$ping_flag[i[dup]] <- "duplicate"
     }

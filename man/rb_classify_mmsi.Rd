@@ -2,16 +2,23 @@
 % Please edit documentation in R/mmsi.R
 \name{rb_classify_mmsi}
 \alias{rb_classify_mmsi}
-\title{Categories MMSI}
+\title{Classify MMSI numbers}
 \usage{
 rb_classify_mmsi(mmsi)
 }
 \arguments{
-\item{mmsi}{MMSI}
+\item{mmsi}{A vector of MMSI numbers (character or numeric).}
 }
 \value{
-A vector with mmsi categories
+A character vector of categories.
 }
 \description{
-See: https://en.wikipedia.org/wiki/Maritime_Mobile_Service_Identity
+The category a Maritime Mobile Service Identity (MMSI) belongs to, from
+its leading digits: coast station (\verb{00MIDxxxx}), group ship station
+(\verb{0MIDxxxxx}), SAR aircraft (\verb{111MIDxxx}), vessel (leading 2–7), handheld
+VHF transceiver (leading 8), AIS aids to navigation and devices (leading
+970, 972, 974, 98, 99). A value that is not nine digits gets \code{NA}.
+}
+\references{
+\url{https://en.wikipedia.org/wiki/Maritime_Mobile_Service_Identity}
 }

@@ -10,8 +10,14 @@ test_that("robust method encodes interior points", {
 test_that("robust method handles 10-degree boundaries", {
   # floor-binning puts -10 in cell [-10, -9), midpoint -9.5, band E
   expect_identical(rb_encode_ices_rectangle(-10, 62.5), "54E0")
-  expect_identical(rb_encode_ices_rectangle(-10, 62.5, safe = FALSE), "54E0")
-  expect_identical(rb_encode_ices_rectangle(-20, 62.5, safe = FALSE), "54D0")
+  expect_identical(
+    rb_encode_ices_rectangle(-10, 62.5, snap_to_midpoint = FALSE),
+    "54E0"
+  )
+  expect_identical(
+    rb_encode_ices_rectangle(-20, 62.5, snap_to_midpoint = FALSE),
+    "54D0"
+  )
 })
 
 test_that("vmstools method reproduces the legacy algorithm", {

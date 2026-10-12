@@ -69,19 +69,17 @@
 #'   }
 #' Additional columns are included if `remove_diagnostic = FALSE`.
 #'
-#' @author Einar Hjörleifsson
-#'
 #' @export
 rb_share_catch <- function(
-  trails,
+  pings,
   events,
   remove_diagnostic = TRUE,
   raise_unallocated = FALSE,
   raise_unmatched = FALSE
 ) {
   # Input checks ----
-  # Check for required columns and correct data types in 'trails' and 'events' data frames
-  required_trails <- c(
+  # Check for required columns and correct data types in 'pings' and 'events' data frames
+  required_pings <- c(
     ".pid",
     "VE_COU",
     "VE_REF",
@@ -102,11 +100,11 @@ rb_share_catch <- function(
   )
 
   # Check for columns
-  missing_trails <- setdiff(required_trails, colnames(trails))
-  if (length(missing_trails) > 0) {
+  missing_pings <- setdiff(required_pings, colnames(pings))
+  if (length(missing_pings) > 0) {
     stop(
-      "Missing required columns in trails: ",
-      paste(missing_trails, collapse = ", ")
+      "Missing required columns in pings: ",
+      paste(missing_pings, collapse = ", ")
     )
   }
   missing_events <- setdiff(required_events, colnames(events))
@@ -117,30 +115,30 @@ rb_share_catch <- function(
     )
   }
 
-  # Check classes for trails
-  if (!is.integer(trails$.pid)) {
-    stop(".pid in trails must be integer")
+  # Check classes for pings
+  if (!is.integer(pings$.pid)) {
+    stop(".pid in pings must be integer")
   }
-  if (!is.character(trails$VE_COU)) {
-    stop("VE_COU in trails must be character")
+  if (!is.character(pings$VE_COU)) {
+    stop("VE_COU in pings must be character")
   }
-  if (!is.character(trails$VE_REF)) {
-    stop("VE_REF in trails must be character")
+  if (!is.character(pings$VE_REF)) {
+    stop("VE_REF in pings must be character")
   }
-  if (!inherits(trails$time, "POSIXct")) {
-    stop("time in trails must be POSIXct/datetime")
+  if (!inherits(pings$time, "POSIXct")) {
+    stop("time in pings must be POSIXct/datetime")
   }
-  if (!is.character(trails$FT_REF)) {
-    stop("FT_REF in trails must be character")
+  if (!is.character(pings$FT_REF)) {
+    stop("FT_REF in pings must be character")
   }
-  if (!is.character(trails$ir)) {
-    stop("ir in trails must be character")
+  if (!is.character(pings$ir)) {
+    stop("ir in pings must be character")
   }
-  if (!is.integer(trails$state)) {
-    stop("state in trails must be integer")
+  if (!is.integer(pings$state)) {
+    stop("state in pings must be integer")
   }
-  if (!all(trails$state %in% c(0, 1))) {
-    stop("state in trails must be 0 or 1")
+  if (!all(pings$state %in% c(0, 1))) {
+    stop("state in pings must be 0 or 1")
   }
 
   # Check classes for events
@@ -170,7 +168,7 @@ rb_share_catch <- function(
   }
 
   # Prepare extra columns ----
-  trails <- trails |> dplyr::mutate(date = lubridate::as_date(time))
+  pings <- pings |> dplyr::mutate(date = lubridate::as_date(time))
   events <-
     events |>
     dplyr::mutate(state = 1L)
@@ -182,7 +180,7 @@ rb_share_catch <- function(
     events |>
     dplyr::select(.eid, VE_COU, VE_REF, FT_REF, date, LE_RECT) |>
     dplyr::left_join(
-      trails |>
+      pings |>
         dplyr::filter(state == 1) |>
         dplyr::select(VE_COU, VE_REF, FT_REF, date, LE_RECT = ir) |>
         dplyr::distinct() |>
@@ -207,10 +205,10 @@ rb_share_catch <- function(
     dplyr::left_join(step_plan, by = dplyr::join_by(.eid))
 
   # Keep track of .pid that are not mapped after each step
-  PID_left <- trails$.pid
+  PID_left <- pings$.pid
 
   # Step 1: Join by trip + rectangle + day -------------------------------------
-  # Allocate events to trails at the most specific (date & rectangle) level
+  # Allocate events to pings at the most specific (date & rectangle) level
   events1 <-
     events |>
     dplyr::filter(.step == 1) |>
@@ -221,7 +219,7 @@ rb_share_catch <- function(
       .groups = "drop"
     )
 
-  trails1 <- trails |>
+  pings1 <- pings |>
     dplyr::inner_join(
       events1,
       by = c("VE_COU", "VE_REF", "FT_REF", "ir" = "LE_RECT", "date", "state")
@@ -235,13 +233,13 @@ rb_share_catch <- function(
     ) |>
     dplyr::ungroup()
 
-  PID_left <- PID_left[!PID_left %in% trails1$.pid]
+  PID_left <- PID_left[!PID_left %in% pings1$.pid]
 
   # Step 2: Join by trip + rectangle -------------------------------------------
-  # Allocate remaining events to trails at the rectangle level
+  # Allocate remaining events to pings at the rectangle level
 
-  trails_left <-
-    trails |>
+  pings_left <-
+    pings |>
     dplyr::filter(.pid %in% PID_left)
 
   events2 <-
@@ -255,8 +253,8 @@ rb_share_catch <- function(
       .groups = "drop"
     )
 
-  trails2 <-
-    trails_left |>
+  pings2 <-
+    pings_left |>
     dplyr::select(-date) |>
     dplyr::inner_join(
       events2,
@@ -271,13 +269,13 @@ rb_share_catch <- function(
     ) |>
     dplyr::ungroup()
 
-  PID_left <- PID_left[!PID_left %in% trails2$.pid]
+  PID_left <- PID_left[!PID_left %in% pings2$.pid]
 
   # Step 3: Join by trip -------------------------------------------------------
-  # Allocate remaining events to trails at the trip level
+  # Allocate remaining events to pings at the trip level
 
-  trails_left <-
-    trails |>
+  pings_left <-
+    pings |>
     dplyr::filter(.pid %in% PID_left)
   events3 <-
     events |>
@@ -288,8 +286,8 @@ rb_share_catch <- function(
       LE_EURO = sum(LE_EURO, na.rm = TRUE),
       .groups = "drop"
     )
-  trails3 <-
-    trails_left |>
+  pings3 <-
+    pings_left |>
     dplyr::left_join(events3, by = c("VE_COU", "VE_REF", "FT_REF", "state")) |>
     dplyr::group_by(VE_COU, VE_REF, FT_REF, state) |>
     dplyr::mutate(
@@ -303,9 +301,9 @@ rb_share_catch <- function(
   # Combine allocation results from all steps into a single output data frame ----
   out <-
     dplyr::bind_rows(
-      trails1 |> dplyr::mutate(.how = as.character(.how)),
-      trails2 |> dplyr::mutate(.how = as.character(.how)),
-      trails3 |> dplyr::mutate(.how = as.character(.how))
+      pings1 |> dplyr::mutate(.how = as.character(.how)),
+      pings2 |> dplyr::mutate(.how = as.character(.how)),
+      pings3 |> dplyr::mutate(.how = as.character(.how))
     ) |>
     dplyr::arrange(.pid)
 
@@ -332,8 +330,8 @@ rb_share_catch <- function(
 
   # Output checks --------------------------------------------------------------
   # Validate that output matches input in row count and total LE_KG allocation
-  if (nrow(trails) != nrow(out)) {
-    stop("Number of rows in output does not match input trails - File an issue")
+  if (nrow(pings) != nrow(out)) {
+    stop("Number of rows in output does not match input pings - File an issue")
   }
 
   kg_out <- sum(out$LE_KG, na.rm = TRUE)
@@ -372,22 +370,20 @@ rb_share_catch <- function(
 #'   LE_KG_HAD = c(0, 1, 0),
 #'   LE_KG_HER = c(2, 1, 2)
 #' )
-#' rb_sum_across(df, start_name = "LE_KG")
+#' rb_sum_across(df, prefix = "LE_KG")
 #'
 #' # Keep original columns
-#' rb_sum_across(df, start_name = "LE_KG", remove = FALSE)
+#' rb_sum_across(df, prefix = "LE_KG", remove = FALSE)
 #'
 #' @export
-rb_sum_across <- function(d, start_name = "LE_KG", remove = TRUE) {
+rb_sum_across <- function(d, prefix = "LE_KG", remove = TRUE) {
   # Input checks
-  if (
-    is.null(start_name) || !is.character(start_name) || length(start_name) != 1
-  ) {
-    stop("start_name must be a single character string.")
+  if (is.null(prefix) || !is.character(prefix) || length(prefix) != 1) {
+    stop("prefix must be a single character string.")
   }
-  cols_to_sum <- grep(paste0("^", start_name), names(d), value = TRUE)
+  cols_to_sum <- grep(paste0("^", prefix), names(d), value = TRUE)
   if (length(cols_to_sum) == 0) {
-    stop("No columns found starting with '", start_name, "'.")
+    stop("No columns found starting with '", prefix, "'.")
   }
   if (!all(sapply(d[cols_to_sum], is.numeric))) {
     stop("All columns to sum must be numeric.")
@@ -395,12 +391,12 @@ rb_sum_across <- function(d, start_name = "LE_KG", remove = TRUE) {
 
   d <- dplyr::mutate(
     d,
-    !!start_name := rowSums(dplyr::across(dplyr::starts_with(start_name)))
+    !!prefix := rowSums(dplyr::across(dplyr::starts_with(prefix)))
   )
 
   if (remove) {
     # Remove only the original columns, not the new sum column
-    cols_to_remove <- setdiff(cols_to_sum, start_name)
+    cols_to_remove <- setdiff(cols_to_sum, prefix)
     d <- dplyr::select(d, -dplyr::all_of(cols_to_remove))
   }
   return(d)

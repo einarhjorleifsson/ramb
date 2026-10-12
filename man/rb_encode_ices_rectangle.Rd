@@ -8,8 +8,8 @@ rb_encode_ices_rectangle(
   lon,
   lat,
   method = c("robust", "vmstools"),
-  safe = TRUE,
-  useI = FALSE
+  snap_to_midpoint = TRUE,
+  use_i = FALSE
 )
 }
 \arguments{
@@ -25,11 +25,11 @@ inconsistent boundaries (right-inclusive for bands A-D, right-exclusive
 for E-H, no upper bound on J), so the two methods diverge for positions
 exactly on 10-degree longitudes (e.g. \code{lon = -10}, \code{lon = -20}).}
 
-\item{safe}{Logical, default \code{TRUE}. If \code{TRUE}, coordinates are snapped to
-bin midpoints before rectangle calculation, reducing edge effects.
-Only used when \code{method = "robust"}.}
+\item{snap_to_midpoint}{Logical, default \code{TRUE}. If \code{TRUE}, coordinates are
+snapped to bin midpoints before rectangle calculation, reducing edge
+effects. Only used when \code{method = "robust"}.}
 
-\item{useI}{Logical, default \code{FALSE}. If \code{TRUE}, allows rectangles to use
+\item{use_i}{Logical, default \code{FALSE}. If \code{TRUE}, allows rectangles to use
 the letter 'I' in the longitude band (rarely used). Only used when
 \code{method = "robust"}.}
 }
@@ -55,4 +55,11 @@ rb_encode_ices_rectangle(100, 10)
 # Legacy vmstools reproduction
 rb_encode_ices_rectangle(-10.5, 62.5, method = "vmstools")
 
+}
+\references{
+For \code{"vmstools"}: \code{vmstools::icesRectangle()} (Hintzen, N.T.,
+Bastardie, F., Beare, D., et al. (2012). "VMStools: Open-source software
+for the processing, analysis and visualisation of fisheries logbook and
+VMS data". Fisheries Research, 115–116, 31–43.
+\doi{10.1016/j.fishres.2011.11.007}).
 }

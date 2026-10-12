@@ -2,29 +2,28 @@
 % Please edit documentation in R/catch.R
 \name{rb_sum_across}
 \alias{rb_sum_across}
-\title{Sum columns across by prefix in Data Frame}
+\title{Sum the columns whose names share a prefix}
 \usage{
-rb_sum_across(d, start_name = "LE_KG", remove = TRUE)
+rb_sum_across(d, prefix = "LE_KG", remove = TRUE)
 }
 \arguments{
 \item{d}{A data frame (typically an eflalo data frame).}
 
-\item{start_name}{A string (default "LE_KG"). Prefix of column names to sum across. All columns starting with this string will be included in the sum.}
+\item{prefix}{A string (default "LE_KG"). Prefix of column names to sum across. All columns starting with this string will be included in the sum.}
 
-\item{remove}{Logical (default TRUE). If TRUE, removes all original columns whose names start with \code{start_name} after summing.}
+\item{remove}{Logical (default TRUE). If TRUE, removes all original columns whose names start with \code{prefix} after summing.}
 }
 \value{
-The input data frame with a new column named \code{start_name} containing the row sums. If \code{remove = TRUE}, the original columns are removed.
+The input data frame with a new column named \code{prefix} containing the row sums. If \code{remove = TRUE}, the original columns are removed.
 }
 \description{
-Summarizes (row-wise) all numeric columns in a data frame whose names start with a specified prefix,
-returning their sum as a new column. Optionally removes the original columns used in the sum.
+Row-wise sums of the numeric columns whose names start with a prefix,
+added as a column named by the prefix itself; the summed columns are
+optionally removed. For eflalo-style catch tables, where the per-species
+columns (\code{LE_KG_COD}, \code{LE_KG_HAD}, ...) sum to the total catch \code{LE_KG}.
 }
 \details{
-Useful for eflalo data where multiple columns represent catches of different species,
-and you want to produce a total catch column and at the same time remove the original columns.
-
-The function will error if no columns match \code{start_name}, or if any matching columns are not numeric.
+The function will error if no columns match \code{prefix}, or if any matching columns are not numeric.
 }
 \examples{
 # Example: Summing all columns starting with 'catch_'
@@ -34,9 +33,9 @@ df <- data.frame(
   LE_KG_HAD = c(0, 1, 0),
   LE_KG_HER = c(2, 1, 2)
 )
-rb_sum_across(df, start_name = "LE_KG")
+rb_sum_across(df, prefix = "LE_KG")
 
 # Keep original columns
-rb_sum_across(df, start_name = "LE_KG", remove = FALSE)
+rb_sum_across(df, prefix = "LE_KG", remove = FALSE)
 
 }

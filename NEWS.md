@@ -1,5 +1,24 @@
 # ramb (development version)
 
+## Argument renames (2026-10-12)
+
+Sixteen argument names across twelve functions, for consistency and against base-name shadowing — hard renames, no aliases:
+
+- `rb_calc_step_time(units)` → `unit` (matching `rb_calc_duration()`).
+- `rb_calc_track_time(date, fill)` → `time`, `fill_ends`.
+- `rb_encode_ices_rectangle(safe, useI)` → `snap_to_midpoint`, `use_i`.
+- `rb_flag_ping_duplicate(n)` → `n_neighbours`.
+- `rb_plot_trail(no_lines = TRUE)` → `path = FALSE` — note the flip: `no_lines = FALSE` becomes `path = TRUE`.
+- `rb_peek(criteria)` → `threshold`.
+- `rb_sum_across(start_name)` → `prefix`.
+- `rb_get_gear_vocabulary(list)` → `code_list`.
+- `rb_predict_gear_width(length)` → `length_m`.
+- `rb_read_logbook_mfri(VIDs, YEARS)` → `vids`, `years`.
+- `rb_share_catch(trails)` → `pings`, including the internals and error messages.
+- `rb_detect_in_polygons()`, `rb_keep_in_polygons()` and `rb_drop_in_polygons(x, y)` → `points`, `polygons`.
+
+fishycode call sites to migrate: `curate/ais_ping_clean.R` (`n = DUP_K` → `n_neighbours`), `curate/ais_voyage.R` and `docs/stk_data-inspection.qmd` (`no_lines = FALSE` → `path = TRUE`, 5 sites), `products/ices_vms_datacall/build.R` (`safe = FALSE` → `snap_to_midpoint = FALSE`), and the unevaluated `curate/ramb-articles/ais-workflow.Rmd` (`YEARS = YEARS` → `years`).
+
 ## Bug fixes (2026-10-12)
 
 - `rb_cap_outliers(method = "miller")`: an all-zero vector came back as all `-Inf` (the limit was assigned to a misspelled variable, so `max()` of an empty vector was used, with a warning); it is now returned unchanged.

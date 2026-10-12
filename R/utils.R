@@ -2,20 +2,22 @@
 .rb_numbers_only <- function(x) !grepl("\\D", x)
 
 
-#' rb_peek
+#' Show rows around those exceeding a threshold
 #'
-#' Experimental function, returns rows adjacent to the one fulfilling a critera
+#' For inspecting flagged rows in context: the rows where `what` exceeds
+#' `threshold`, and the two rows on each side of them. Experimental.
 #'
-#' @param d ais/vms track tibble
-#' @param what the variable name to check
-#' @param criteria the critera.
+#' @param d A track tibble with a `.rid` row-number column.
+#' @param what The column to test.
+#' @param threshold The threshold.
 #'
-#' @return a tibble
+#' @return The matching rows and their neighbours, with a `whacky` column
+#'   marking the matching ones.
 #' @export
 #'
-rb_peek <- function(d, what, criteria) {
+rb_peek <- function(d, what, threshold) {
   d |>
-    dplyr::filter({{ what }} > criteria) |>
+    dplyr::filter({{ what }} > threshold) |>
     dplyr::pull(.rid) -> rid
   d <-
     d |>

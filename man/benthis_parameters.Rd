@@ -22,7 +22,9 @@ A data frame with 14 observations (rows) and 12 variables (columns):
 }
 }
 \source{
-https://doi.org/10.1093/icesjms/fsv099
+Eigaard, O.R., Bastardie, F., Breen, M., et al. (2016). ICES
+Journal of Marine Science, 73(suppl. 1), i27–i43.
+\doi{10.1093/icesjms/fsv099}
 }
 \usage{
 benthis_parameters
@@ -35,10 +37,8 @@ gear components, such as trawl doors, sweeps, and groundgear, to the total
 area and severity of the gear's impact.
 }
 \details{
-For each gear group, a vessel size–gear size relationship parameters can
-used to estimate gear width and sediment penetration from
-vessel size (length or power).
-
-https://doi.org/10.1093/icesjms/fsv099
+For each gear group, the vessel size–gear size relationship parameters can
+be used to estimate gear width and sediment penetration from vessel size
+(length or power); see \code{\link[=rb_predict_gear_width]{rb_predict_gear_width()}}.
 }
 \keyword{datasets}

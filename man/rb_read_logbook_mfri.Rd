@@ -2,21 +2,24 @@
 % Please edit documentation in R/logbook_mfri.R
 \name{rb_read_logbook_mfri}
 \alias{rb_read_logbook_mfri}
-\title{Read in logbooks}
+\title{Read MFRI logbook records}
 \usage{
-rb_read_logbook_mfri(con, VIDs, YEARS)
+rb_read_logbook_mfri(con, vids, years)
 }
 \arguments{
-\item{con}{connection to Oracle}
+\item{con}{An Oracle connection (see the \code{omar} package).}
 
-\item{VIDs}{Vessel identification numbers}
+\item{vids}{Vessel ids; if missing, all vessels.}
 
-\item{YEARS}{xxx}
+\item{years}{The years to read.}
 }
 \value{
-A tibble with both mobile and static tows
+A tibble of mobile and static records, \code{source} saying which.
 }
 \description{
-A single tibble for both mobile and static gears for particular vessel(s) and
-year(s).
+Towed ("mobile") and static-gear records from the MFRI Oracle database for
+given vessels and years, as one table, with each record's catch summed
+from the catch table. Iceland-specific: the gear ids (\code{gid}) are the
+Icelandic ones. Reads with \code{omar::lb_mobile()}, \code{omar::lb_static()} and
+\code{omar::lb_catch()}.
 }

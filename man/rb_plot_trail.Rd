@@ -2,36 +2,36 @@
 % Please edit documentation in R/plot.R
 \name{rb_plot_trail}
 \alias{rb_plot_trail}
-\title{Plot trails}
+\title{Plot a vessel track on an interactive map}
 \usage{
 rb_plot_trail(
   d,
   col = "speed",
   tooltip = "speed",
-  no_lines = TRUE,
+  path = FALSE,
   radius = 400,
   highlight_colour = "black",
   stroke_colour = "cyan"
 )
 }
 \arguments{
-\item{d}{a tibble containing trails}
+\item{d}{A track tibble with \code{lon} and \code{lat} (WGS 84), or an sf object.}
 
-\item{col}{the variable that controls colour}
+\item{col}{The column that controls the point colour, default \code{"speed"}.}
 
-\item{tooltip}{the variable to show as tooltip}
+\item{tooltip}{The column shown as the tooltip, default \code{"speed"}.}
 
-\item{no_lines}{plot track as lines (default = TRUE)}
+\item{path}{Logical; if \code{TRUE}, the track is drawn as a path under the
+points (default \code{FALSE}).}
 
-\item{radius}{the radius of the points (default 400 m)}
+\item{radius}{The point radius in metres, default 400.}
 
-\item{highlight_colour}{colour of track (default black)}
-
-\item{stroke_colour}{stroke colour of track (default cyan)}
+\item{highlight_colour, stroke_colour}{The colours of the path.}
 }
 \value{
-a mapdeck map
+A \code{\link[mapdeck:mapdeck]{mapdeck::mapdeck()}} map.
 }
 \description{
-Plot trails
+The pings as points coloured by a variable, optionally with the track as
+a path underneath.
 }

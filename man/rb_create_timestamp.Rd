@@ -2,25 +2,26 @@
 % Please edit documentation in R/time.R
 \name{rb_create_timestamp}
 \alias{rb_create_timestamp}
-\title{Create timestamp from date and time character columns}
+\title{Create timestamps from date and time character columns}
 \usage{
 rb_create_timestamp(date, time, tz = "GMT", format = "\%d/\%m/\%Y \%H:\%M:\%S")
 }
 \arguments{
-\item{date}{Character vector or column containing dates (e.g. "2022-12-31" or "31/12/2022").}
+\item{date, time}{Character vectors of dates and times, of equal length.}
 
-\item{time}{Character vector or column containing times (e.g. "23:59:59").}
+\item{tz}{The time zone of the result, default \code{"GMT"}.}
 
-\item{tz}{Time zone to use for the output (default "GMT").}
-
-\item{format}{Expected date-time format (default \code{"\%d/\%m/\%Y \%H:\%M:\%S"}).}
+\item{format}{The date-time format, default \code{"\%d/\%m/\%Y \%H:\%M:\%S"}.}
 }
 \value{
-A POSIXct vector of the same length as \code{date} and \code{time}, or NA where conversion fails.
+A \code{POSIXct} vector the length of \code{date}, \code{NA} where the
+conversion fails.
 }
 \description{
-This function combines separate date and time character columns into a POSIXct timestamp.
-It allows specifying the time zone and the expected date-time format. The function checks for leap day (29/02) validity.
+Combines separate date and time character vectors into \code{POSIXct}
+timestamps, warning where the conversion fails; an impossible leap day
+(29 February in a non-leap year, with a \verb{\%d/\%m/\%Y} date format) is set
+to \code{NA}.
 }
 \examples{
 rb_create_timestamp("14/09/2025", "15:30:00")

@@ -2,18 +2,24 @@
 % Please edit documentation in R/track.R
 \name{rb_calc_step_time}
 \alias{rb_calc_step_time}
-\title{Time between steps, forcing users to explicitly specify the unit}
+\title{Time between consecutive positions}
 \usage{
-rb_calc_step_time(time, units = "secs")
+rb_calc_step_time(time, unit = "secs")
 }
 \arguments{
-\item{time}{time}
+\item{time}{Position times (\code{POSIXct}).}
 
-\item{units}{units of return value}
+\item{unit}{The unit of the result, passed to \code{\link[base:difftime]{base::difftime()}}:
+\code{"secs"} (default), \code{"mins"}, \code{"hours"}, \code{"days"} or \code{"weeks"}.}
 }
 \value{
-A numeric vector
+A numeric vector the length of \code{time}.
 }
 \description{
-Time between steps, forcing users to explicitly specify the unit
+The elapsed time from the previous position to the current one, in the
+chosen unit. The first value is \code{NA}.
+}
+\seealso{
+\code{\link[=rb_calc_track_time]{rb_calc_track_time()}}, which can instead spread each interval
+over the two adjacent positions.
 }

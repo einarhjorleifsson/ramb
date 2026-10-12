@@ -12,12 +12,15 @@ A data frame with 41 observations (rows) and 2 variables (columns):
 }
 }
 \source{
-https://doi.org/10.1093/icesjms/fsv099
+Eigaard, O.R., Bastardie, F., Breen, M., et al. (2016). ICES
+Journal of Marine Science, 73(suppl. 1), i27–i43.
+\doi{10.1093/icesjms/fsv099}
 }
 \usage{
 metier5_benthis_lookup
 }
 \description{
-Benthis metier lookup
+The mapping from ICES metier level 5 to the Benthis metiers of
+\link{benthis_parameters}.
 }
 \keyword{datasets}

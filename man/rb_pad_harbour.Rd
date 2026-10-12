@@ -2,19 +2,20 @@
 % Please edit documentation in R/trip.R
 \name{rb_pad_harbour}
 \alias{rb_pad_harbour}
-\title{Pad harbour id}
+\title{Pad the harbour id onto the ends of a trip}
 \usage{
 rb_pad_harbour(tid, hid)
 }
 \arguments{
-\item{tid}{trip id, e.g. from \code{rb_assign_trip()} or \code{rb_cut_trip_voyages()}}
+\item{tid}{A trip id, e.g. from \code{\link[=rb_assign_trip]{rb_assign_trip()}}.}
 
-\item{hid}{harbour id}
+\item{hid}{A harbour id, e.g. from \code{\link[=rb_flag_ping_port]{rb_flag_ping_port()}}.}
 }
 \value{
-The hid vector with added harbour id to the first and the last point
-of a trip.
+The \code{hid} vector, padded.
 }
 \description{
-Add the harbour id to the first and the last point of an actual trip
+The first ping of a trip (a positive \code{tid} different from the previous
+row's) gets the previous row's harbour id, and the last ping gets the next
+row's, so a trip's end pings carry the ports it sailed between.
 }

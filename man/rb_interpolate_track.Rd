@@ -37,19 +37,11 @@ the event falls outside its group's track coverage) and a new \code{dt_sec}
 column.
 }
 \description{
-For each row of \code{x} (an "event" needing a position - e.g. a logger fix
+For each row of \code{x} (an "event" needing a position — e.g. a logger fix
 whose own lon/lat is unreliable or absent), finds the two nearest points in
-\code{track} bracketing its timestamp - within the same group (\code{by}) - and
+\code{track} bracketing its timestamp — within the same group (\code{by}) — and
 linearly interpolates the \code{value_vars} columns onto it. No extrapolation:
 an event outside its group's track time coverage gets \code{NA}.
-}
-\details{
-Extracted 2026-09-23 from \code{fishycode}'s \code{curate/logbook_sensor_gps.R},
-which had this as inline \code{group_modify()} logic that re-filtered the whole
-track table once per \verb{(vid, trip)} group - O(groups x track_rows), and the
-actual bottleneck once the AIS chain itself sped up (whack_forward's fix,
-same commit range). Both paths here are O(events + track), not
-O(groups x track).
 }
 \section{Algorithm}{
 

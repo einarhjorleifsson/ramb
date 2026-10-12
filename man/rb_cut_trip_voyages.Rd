@@ -52,13 +52,20 @@ A step-1 builder of the fishing-activity flow. Three methods, one result: a tabl
 falls in (the earlier of two that overlap), the track is cut into runs of stay and sea, and each sea run
 becomes a voyage, from the port of the stay before it to the port of the stay after it.
 \item \code{"runs"}: as \code{"stays"}, but every run of pings tagged in a port (\code{\link[=rb_flag_ping_port]{rb_flag_ping_port()}}) is a stay,
-however short. This is what \code{rb_trip()} numbered.
-\item \code{"jepol"}: the ICES VMS datacall rule (\code{define_trips_pol}, was \code{rb_trip_jepol()}): a voyage runs from the
+however short.
+\item \code{"jepol"}: the ICES VMS datacall rule (\code{define_trips_pol}): a voyage runs from the
 first ping at sea to the first ping back in port; voyages of \code{min_dur_h} hours or less are dropped, and
-with \code{split} one over \code{max_dur_h} hours is cut at its longest gap between pings. Note the cut moved on
-2026-10-12: the old function (and this one before that date) cut one ping before the longest gap; a long
-voyage with fewer than two pings inside it, where the old function stopped, is left whole.
+with \code{split} one over \code{max_dur_h} hours is cut at its longest gap between pings, repeatedly. A long
+voyage with no inside gap of three minutes or more is left whole.
 }
+}
+\references{
+For \code{"jepol"}: the trip rule \code{define_trips_pol} of the ICES VMS
+data-call workflow, after \code{vmstools} (Hintzen, N.T., Bastardie, F.,
+Beare, D., et al. (2012). "VMStools: Open-source software for the
+processing, analysis and visualisation of fisheries logbook and VMS
+data". Fisheries Research, 115–116, 31–43.
+\doi{10.1016/j.fishres.2011.11.007}).
 }
 \seealso{
 Other trip:

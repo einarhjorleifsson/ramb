@@ -15,31 +15,34 @@ rb_link_trip_logbook(
 )
 }
 \arguments{
-\item{ve}{A data frame or tibble containing VMS data. Must have columns specified by \code{vessel_id} and \code{time}.}
+\item{ve}{A data frame of VMS records, with the \code{vessel_id} and \code{time}
+columns.}
 
-\item{le}{A data frame or tibble containing logbook data. Must have columns specified by \code{vessel_id}, \code{trip_id}, \code{departure}, and \code{arrival}.}
+\item{le}{A data frame of logbook trips, with the \code{vessel_id}, \code{trip_id},
+\code{departure} and \code{arrival} columns.}
 
-\item{vessel_id}{Unquoted column name for vessel ID (must exist in both datasets). Default: \code{vid}.}
+\item{vessel_id}{The vessel id column (in both data frames), default \code{vid}.}
 
-\item{trip_id}{Unquoted column name for trip ID in the logbook dataset. Default: \code{tid}.}
+\item{trip_id}{The trip id column in \code{le}, default \code{tid}.}
 
-\item{time}{Unquoted column name for timestamp in the VMS dataset. Default: \code{time}.}
+\item{time}{The timestamp column in \code{ve}, default \code{time}.}
 
-\item{departure}{Unquoted column name for trip departure time in the logbook dataset. Default: \code{T1}.}
-
-\item{arrival}{Unquoted column name for trip arrival time in the logbook dataset. Default: \code{T2}.}
+\item{departure, arrival}{The trip start and end columns in \code{le}, defaults
+\code{T1} and \code{T2}.}
 }
 \value{
-A tibble with all columns from the VMS data and the trip id column appended (if matched). The departure and arrival columns from the logbook are removed.
+\code{ve} with the trip id column added (the departure and arrival
+columns are not carried over).
 }
 \description{
-Adds a trip id column to a VMS dataset by matching each VMS record to logbook entries where:
-\itemize{
-\item vessel IDs match, and
-\item the VMS timestamp falls between logbook departure and arrival times.
-Similar to \code{vmstools::mergeEflalo2Tacsat}, but here not dependent on specific variable names in the data frames.
+Adds the logbook trip id to each VMS record of the same vessel whose
+timestamp falls between the trip's departure and arrival; unmatched
+records get \code{NA}. The match of \code{vmstools::mergeEflalo2Tacsat()}, but with
+the column names passed as arguments rather than fixed.
 }
-}
-\examples{
-# rb_link_trip_logbook(ve, le)  # defaults: vid, tid, time, T1, T2
+\references{
+Hintzen, N.T., Bastardie, F., Beare, D., et al. (2012).
+"VMStools: Open-source software for the processing, analysis and
+visualisation of fisheries logbook and VMS data". Fisheries Research,
+115–116, 31–43. \doi{10.1016/j.fishres.2011.11.007}.
 }

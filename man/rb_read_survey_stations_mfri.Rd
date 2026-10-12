@@ -2,21 +2,18 @@
 % Please edit documentation in R/read_mfri.R
 \name{rb_read_survey_stations_mfri}
 \alias{rb_read_survey_stations_mfri}
-\title{rb_read_survey_stations_mfri}
+\title{Read MFRI survey stations}
 \usage{
 rb_read_survey_stations_mfri()
 }
 \value{
-A tibble
+A tibble.
 }
 \description{
-A conenient wrapper that read a dataframe of Icelandic trawl vessel survey
-tow data. The variables are \code{cruise_id} (cruise identification number),
-\code{station_id} (unique station identification numner), \code{station_nr}
-(a non-unique station number), \code{date} (date the tow was taken),
-\code{vid} (vessel identification number), \code{sclass} (sample class, 30
-is the annual spring survey, 35 the annual fall survey) and time-space
-informations: start (\code{lon1}, \code{lat1}, \code{t1}) and end
-(\code{lon2}, \code{lat2}, \code{t2}) of towing as reported by the vessel
-captain.
+The tows of the Icelandic trawl surveys, read from MFRI's public FTP site:
+\code{cruise_id} (cruise id), \code{station_id} (unique station id), \code{station_nr}
+(a non-unique station number), \code{date}, \code{vid} (vessel id), \code{sclass} (sample
+class: 30 the spring survey, 35 the autumn survey) and the start (\code{lon1},
+\code{lat1}, \code{t1}) and end (\code{lon2}, \code{lat2}, \code{t2}) of each tow as reported by
+the captain.
 }

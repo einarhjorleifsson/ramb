@@ -2,18 +2,21 @@
 % Please edit documentation in R/mmsi.R
 \name{rb_lookup_mmsi_country}
 \alias{rb_lookup_mmsi_country}
-\title{Return flag state from MMSI}
+\title{Look up the flag state of an MMSI}
 \usage{
 rb_lookup_mmsi_country(mmsi, lookup)
 }
 \arguments{
-\item{mmsi}{MMSI}
+\item{mmsi}{A vector of MMSI numbers.}
 
-\item{lookup}{A tibble}
+\item{lookup}{A tibble with \code{MID} and \code{flag}.}
 }
 \value{
-A vector
+A character vector of flag states; \code{NA} for non-vessel MMSIs and
+MIDs not in \code{lookup}.
 }
 \description{
-Return flag state from MMSI
+The flag state of a vessel MMSI: the Maritime Identification Digits (MID)
+— the leading three digits of a vessel MMSI, digits 3–5 for a \verb{98MIDxxxx}
+child vessel — matched against a lookup table.
 }

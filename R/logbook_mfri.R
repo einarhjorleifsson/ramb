@@ -2,29 +2,31 @@
 # (effort capping, mesh-size standardisation, gear-width filling, gear
 # lumping). Iceland-specific: gear ids (gid) are the Icelandic ones.
 
-#' Read in logbooks
+#' Read MFRI logbook records
 #'
-#' A single tibble for both mobile and static gears for particular vessel(s) and
-#' year(s).
+#' Towed ("mobile") and static-gear records from the MFRI Oracle database for
+#' given vessels and years, as one table, with each record's catch summed
+#' from the catch table. Iceland-specific: the gear ids (`gid`) are the
+#' Icelandic ones. Reads with `omar::lb_mobile()`, `omar::lb_static()` and
+#' `omar::lb_catch()`.
 #'
-#' @param con connection to Oracle
-#' @param VIDs Vessel identification numbers
-#' @param YEARS xxx
+#' @param con An Oracle connection (see the `omar` package).
+#' @param vids Vessel ids; if missing, all vessels.
+#' @param years The years to read.
 #'
-#' @return A tibble with both mobile and static tows
+#' @return A tibble of mobile and static records, `source` saying which.
 #' @export
-#'
-rb_read_logbook_mfri <- function(con, VIDs, YEARS) {
+rb_read_logbook_mfri <- function(con, vids, years) {
   mb <-
     omar::lb_mobile(con)
-  if (!missing(VIDs)) {
+  if (!missing(vids)) {
     mb <-
       mb |>
-      dplyr::filter(vid %in% VIDs)
+      dplyr::filter(vid %in% vids)
   }
   mb <-
     mb |>
-    dplyr::filter(year %in% YEARS) |>
+    dplyr::filter(year %in% years) |>
     dplyr::left_join(
       omar::lb_catch(con) |>
         dplyr::group_by(visir) |>
@@ -34,15 +36,15 @@ rb_read_logbook_mfri <- function(con, VIDs, YEARS) {
     ) |>
     dplyr::collect(n = Inf)
   st <- omar::lb_static(con)
-  if (!missing(VIDs)) {
+  if (!missing(vids)) {
     st <-
       st |>
-      dplyr::filter(vid %in% VIDs)
+      dplyr::filter(vid %in% vids)
   }
 
   st <-
     st |>
-    dplyr::filter(year %in% YEARS) |>
+    dplyr::filter(year %in% years) |>
     dplyr::left_join(
       omar::lb_catch(con) |>
         dplyr::group_by(visir) |>

@@ -17,7 +17,7 @@ rb_plot_trail <-
     d,
     col = "speed",
     tooltip = "speed",
-    no_lines = TRUE,
+    path = FALSE,
     radius = 400,
     highlight_colour = "black",
     stroke_colour = "cyan"
@@ -39,7 +39,7 @@ rb_plot_trail <-
         sf::st_as_sf(coords = c("lon", "lat"), crs = 4326)
     }
 
-    if (!no_lines) {
+    if (path) {
       track <-
         d |>
         dplyr::summarise(do_union = FALSE) |>
@@ -48,7 +48,7 @@ rb_plot_trail <-
 
     m <- mapdeck::mapdeck()
 
-    if (!no_lines) {
+    if (path) {
       m <-
         m |>
         mapdeck::add_path(

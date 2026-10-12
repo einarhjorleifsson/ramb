@@ -2,21 +2,24 @@
 % Please edit documentation in R/gear.R
 \name{rb_get_gear_vocabulary}
 \alias{rb_get_gear_vocabulary}
-\title{Get an ICES gear vocabulary table}
+\title{Get an ICES vocabulary table}
 \usage{
 rb_get_gear_vocabulary(
-  list = c("gears", "target", "metier5", "metier6", "metier5_benthis_lookup"),
+  code_list = c("gears", "target", "metier5", "metier6", "metier5_benthis_lookup"),
   ...
 )
 }
 \arguments{
-\item{list}{Which table: \code{"gears"}, \code{"target"}, \code{"metier5"}, \code{"metier6"} or \code{"metier5_benthis_lookup"}.}
+\item{code_list}{Which code list: \code{"gears"}, \code{"target"}, \code{"metier5"},
+\code{"metier6"} (from \code{\link[icesVocab:getCodeList]{icesVocab::getCodeList()}}) or
+\code{"metier5_benthis_lookup"} (from the RCG metier reference list).}
 
-\item{...}{Passed on: \code{trim}, \code{valid} (and \code{correct} for \code{"metier5_benthis_lookup"}).}
+\item{...}{Passed on: \code{trim} (key columns only) and \code{valid} (drop
+deprecated codes).}
 }
 \value{
-A tibble, fetched with icesVocab.
+A tibble.
 }
 \description{
-Get an ICES gear vocabulary table
+Get an ICES vocabulary table
 }

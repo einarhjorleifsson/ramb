@@ -10,7 +10,7 @@ rb_flag_ping_duplicate(
   feed = provider,
   max_dt_s = 10,
   kn_max = 25,
-  n = 3,
+  n_neighbours = 3,
   vid = vid,
   time = time,
   lon = lon,
@@ -26,7 +26,7 @@ order is a judgement about the feeds.}
 
 \item{feed}{The column naming the feed.}
 
-\item{max_dt_s, kn_max, n}{Seconds apart, speed in knots that sets the distance, neighbours compared.}
+\item{max_dt_s, kn_max, n_neighbours}{Seconds apart, speed in knots that sets the distance, neighbours compared.}
 
 \item{vid, time, lon, lat}{The columns, if named otherwise.}
 
@@ -39,7 +39,7 @@ order is a judgement about the feeds.}
 Step 0 of the fishing-activity flow. When several feeds (e.g. a national AIS network and a commercial
 one) report the same fix, the lower-priority feed's copy is flagged \code{"duplicate"} in \code{ping_flag}: a
 ping of the same vessel from a higher-priority feed lies within \code{max_dt_s} seconds and the distance
-\code{kn_max} covers in that time, among the \code{n} neighbours on each side in time order. Only rows not yet
+\code{kn_max} covers in that time, among the \code{n_neighbours} neighbours on each side in time order. Only rows not yet
 flagged are tested, and they are not used as anchors. No row is dropped.
 }
 \seealso{

@@ -2,18 +2,21 @@
 % Please edit documentation in R/read_mfri.R
 \name{rb_read_trail_mfri}
 \alias{rb_read_trail_mfri}
-\title{Read vessel trails}
+\title{Read vessel position trails from the MFRI database}
 \usage{
 rb_read_trail_mfri(con, vid)
 }
 \arguments{
-\item{con}{oracle connection}
+\item{con}{An Oracle connection (see the \code{omar} package).}
 
-\item{vid}{vessel id, if missing the function returns all trails}
+\item{vid}{Vessel ids; if missing, all trails.}
 }
 \value{
-a tibble
+A lazy table with \code{mid}, \code{time}, \code{lon}, \code{lat}, \code{speed}, \code{heading},
+\code{hid}, \code{io}, \code{rectime}, and \code{vid} where \code{vid} was given.
 }
 \description{
-Read vessel trails
+Decoded positions from the \code{stk.trail} table (longitude, latitude and
+heading in degrees, speed in knots), for all vessels or, via the
+mobile-id–vessel mapping, a given set.
 }

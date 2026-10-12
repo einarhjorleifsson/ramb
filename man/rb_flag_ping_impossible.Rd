@@ -56,6 +56,13 @@ Step 0 of the fishing-activity flow. A position or jump that implies an impossib
 in \code{ping_flag} with the stage that caught it. Only rows not yet flagged are tested, so invalid and
 duplicate pings never serve as anchors. No row is dropped.
 }
+\references{
+For \code{"sda"}: Freitas, C., Lydersen, C., Fedak, M.A. and Kovacs,
+K.M. (2008). "A simple new algorithm to filter marine mammal Argos
+locations". Marine Mammal Science, 24(2), 315–325.
+\doi{10.1111/j.1748-7692.2007.00180.x}; the algorithm of
+\code{\link[argosfilter:sdafilter]{argosfilter::sdafilter()}}, re-implemented in C++.
+}
 \seealso{
 Other flag pings:
 \code{\link[=rb_flag_ping_duplicate]{rb_flag_ping_duplicate()}},

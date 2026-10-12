@@ -2,18 +2,22 @@
 % Please edit documentation in R/spatial.R
 \name{rb_detect_in_polygons}
 \alias{rb_detect_in_polygons}
-\title{Points in polygon}
+\title{Detect points inside polygons}
 \usage{
-rb_detect_in_polygons(x, y)
+rb_detect_in_polygons(points, polygons)
 }
 \arguments{
-\item{x}{object containing geometry POINT of class sf or sfc}
+\item{points}{POINTs, as an sf or sfc object.}
 
-\item{y}{object containing geometry POLYGON of class sf or sfc}
+\item{polygons}{POLYGONs, as an sf or sfc object, in the same CRS as
+\code{points}.}
 }
 \value{
-A boolean vector
+A logical vector, \code{TRUE} where the point lies in a polygon.
 }
 \description{
-Find points that are within polygon(s)
+Detect points inside polygons
+}
+\seealso{
+\code{\link[=rb_keep_in_polygons]{rb_keep_in_polygons()}}, \code{\link[=rb_drop_in_polygons]{rb_drop_in_polygons()}}.
 }

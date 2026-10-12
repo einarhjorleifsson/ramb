@@ -2,18 +2,20 @@
 % Please edit documentation in R/interpolate.R
 \name{rb_interpolate}
 \alias{rb_interpolate}
-\title{A wrapper around approx}
+\title{Linear interpolation at the original points}
 \usage{
 rb_interpolate(x, y)
 }
 \arguments{
-\item{x}{A vector, nomally time}
+\item{x}{The predictor, normally time.}
 
-\item{y}{The value to interpolate}
+\item{y}{The values to interpolate, the length of \code{x}.}
 }
 \value{
-A vector with orgiginal and interpolated values, if any
+A numeric vector the length of \code{y}.
 }
 \description{
-A wrapper around approx
+\code{\link[stats:approx]{stats::approx()}} with \code{rule = 1} (no extrapolation) and duplicate \code{x}
+values averaged, evaluated at the original \code{x}: internal \code{NA} gaps are
+filled, the ends are left \code{NA}.
 }

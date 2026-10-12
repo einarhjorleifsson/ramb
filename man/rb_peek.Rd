@@ -2,20 +2,22 @@
 % Please edit documentation in R/utils.R
 \name{rb_peek}
 \alias{rb_peek}
-\title{rb_peek}
+\title{Show rows around those exceeding a threshold}
 \usage{
-rb_peek(d, what, criteria)
+rb_peek(d, what, threshold)
 }
 \arguments{
-\item{d}{ais/vms track tibble}
+\item{d}{A track tibble with a \code{.rid} row-number column.}
 
-\item{what}{the variable name to check}
+\item{what}{The column to test.}
 
-\item{criteria}{the critera.}
+\item{threshold}{The threshold.}
 }
 \value{
-a tibble
+The matching rows and their neighbours, with a \code{whacky} column
+marking the matching ones.
 }
 \description{
-Experimental function, returns rows adjacent to the one fulfilling a critera
+For inspecting flagged rows in context: the rows where \code{what} exceeds
+\code{threshold}, and the two rows on each side of them. Experimental.
 }

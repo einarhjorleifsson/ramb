@@ -2,18 +2,21 @@
 % Please edit documentation in R/logbook_mfri.R
 \name{rb_cap_effort}
 \alias{rb_cap_effort}
-\title{Cap effort}
+\title{Cap and fill logbook effort}
 \usage{
 rb_cap_effort(lb)
 }
 \arguments{
-\item{lb}{logbooks}
+\item{lb}{Logbook records as from \code{\link[=rb_read_logbook_mfri]{rb_read_logbook_mfri()}}, with \code{vid},
+\code{gid}, \code{effort}, \code{t1} and \code{t2}.}
 }
 \value{
-a tibble, supposedly with same number of rows as the input
+\code{lb} with \code{effort} and \code{t2} adjusted; the same rows.
 }
 \description{
-Replaces missing effort with median effort and caps effort to 12 hours (gid 6)
-24 hours (gid 7) and 15 hours (gid 14). If end of haul (t2) overlaps with
-beginning of next haul (t1), cut the value of t2.
+Icelandic gear ids. A missing \code{effort} takes the gear's median; an effort
+above the gear's cap is cut to it (12 hours for gid 6, 24 for gid 7, 15
+for gid 14). Where a haul's end (\code{t2}) passes the next setting's start
+(\code{t1}), it is cut back to one minute before; the effort is not adjusted
+to match.
 }

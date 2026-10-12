@@ -41,8 +41,8 @@ rb_encode_ices_rectangle <- function(
   lon,
   lat,
   method = c("robust", "vmstools"),
-  safe = TRUE,
-  useI = FALSE
+  snap_to_midpoint = TRUE,
+  use_i = FALSE
 ) {
   if (!is.numeric(lon) || !is.numeric(lat)) {
     stop("Both 'lon' and 'lat' must be numeric vectors.")
@@ -54,15 +54,15 @@ rb_encode_ices_rectangle <- function(
   if (method == "vmstools") {
     return(.rb_encode_ices_rectangle_vmstools(lon, lat))
   }
-  if (!is.logical(safe) || length(safe) != 1) {
-    stop("'safe' must be a single logical value.")
+  if (!is.logical(snap_to_midpoint) || length(snap_to_midpoint) != 1) {
+    stop("'snap_to_midpoint' must be a single logical value.")
   }
-  if (!is.logical(useI) || length(useI) != 1) {
-    stop("'useI' must be a single logical value.")
+  if (!is.logical(use_i) || length(use_i) != 1) {
+    stop("'use_i' must be a single logical value.")
   }
 
   # Letters used for rectangles (I is rarely used)
-  if (useI) {
+  if (use_i) {
     lettersUsed <- LETTERS[1:12] # A-L
   } else {
     lettersUsed <- LETTERS[c(1:8, 10:13)] # A-H, J-M (skipping I)
@@ -80,8 +80,8 @@ rb_encode_ices_rectangle <- function(
   outside <- d[d$outside, ]
   inside <- d[!d$outside, ]
 
-  # Apply midpoint rounding if safe = TRUE
-  if (safe && nrow(inside) > 0) {
+  # Apply midpoint rounding if snap_to_midpoint = TRUE
+  if (snap_to_midpoint && nrow(inside) > 0) {
     dx <- 1
     dy <- dx / 2
     inside$lon <- inside$lon %/% dx * dx + dx / 2

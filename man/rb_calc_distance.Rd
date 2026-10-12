@@ -74,3 +74,10 @@ pings |>
 }
 
 }
+\references{
+For \code{"geodesic"}: Karney, C.F.F. (2013). "Algorithms for
+geodesics". Journal of Geodesy, 87(1), 43–55.
+\doi{10.1007/s00190-012-0578-z}; the engine is GeographicLib's
+\code{geodesic.c} (\url{https://geographiclib.sourceforge.io/}), vendored
+unchanged.
+}

@@ -25,8 +25,7 @@ predict, classify, lookup, cap, standardise, sum, check, get, read, plot, regist
 pair up: \code{detect} returns a logical vector, \code{check} inspects a table and warns.
 
 A method is never part of a name; it is the \code{method} argument. A grouping is never part of
-a method; it is the \code{by} argument. The rename plan is fishycode's
-\code{curate/plans/013-ramb-one-flow.md}; the pre-2026-10-08 names were removed on 2026-10-11.
+a method; it is the \code{by} argument.
 }
 
 \seealso{

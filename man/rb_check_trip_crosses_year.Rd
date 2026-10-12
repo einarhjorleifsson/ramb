@@ -7,19 +7,20 @@
 rb_check_trip_crosses_year(eflalo)
 }
 \arguments{
-\item{eflalo}{A data.frame containing at least FT_DDAT, FT_DTIME, FT_LDAT, FT_LTIME columns (date/time for departure/landing).}
+\item{eflalo}{A data frame with \code{FT_DDAT}, \code{FT_DTIME}, \code{FT_LDAT} and
+\code{FT_LTIME} (departure and landing date and time), or the combined
+\code{FT_DDATIM} and \code{FT_LDATIM}.}
 }
 \value{
-Invisibly returns the eflalo data.frame (with possible new columns).
+\code{eflalo}, invisibly, with the timestamp columns added where they
+were missing.
 }
 \description{
-Given an eflalo data.frame (with date/time columns for departure and landing), warns if any trips start in one year and end in another.
-Adds combined POSIXct timestamp columns if not already present, using \code{rb_create_timestamp}.
-Uses \code{rb_detect_crosses_year} to detect cross-year trips.
-}
-\details{
-Trips that start in one year and end in another can cause problems in downstream functions (e.g., splitAmongPings).
-This function warns the user and suggests splitting such trips.
+Warns if any trip in an eflalo table starts in one year and lands in
+another: \code{vmstools::splitAmongPings()} does not handle such trips, so they
+should be split first. Departure and landing timestamps are added with
+\code{\link[=rb_create_timestamp]{rb_create_timestamp()}} where missing; the check is
+\code{\link[=rb_detect_crosses_year]{rb_detect_crosses_year()}}.
 }
 \examples{
 eflalo <- data.frame(

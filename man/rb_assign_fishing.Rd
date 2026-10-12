@@ -20,7 +20,7 @@ are kept.}
 
 \item{matches}{Matches from \code{\link[=rb_link_record_pings]{rb_link_record_pings()}} (with the speed range columns).}
 
-\item{method}{Only \code{"window"} so far; the track-only methods are plan 013 phase 4.}
+\item{method}{Only \code{"window"} so far; the track-only methods are planned for a later release.}
 
 \item{not_fishing, speed, speed_min, speed_max}{As in \code{\link[=rb_link_record_pings]{rb_link_record_pings()}}.}
 }

@@ -2,16 +2,15 @@
 % Please edit documentation in R/read_mfri.R
 \name{rb_read_survey_tracks_mfri}
 \alias{rb_read_survey_tracks_mfri}
-\title{rb_read_survey_tracks_mfri}
+\title{Read MFRI survey tracks}
 \usage{
 rb_read_survey_tracks_mfri()
 }
 \value{
-A tibble
+A tibble.
 }
 \description{
-A conenient wrapper that read a dataframe of Icelandic trawl vessel ais/vms
-data. The variables are \code{vid} (vessel idendification numner), \code{cruise_id}
-(cruise identification number) and the usual ais/vms variables (\code{time},
-\code{lon}, \code{lat}, \code{speed}, \code{heading}).
+AIS/VMS tracks of the Icelandic trawl survey vessels, read from MFRI's
+public FTP site: \code{vid} (vessel id), \code{cruise_id} (cruise id) and the usual
+track variables (\code{time}, \code{lon}, \code{lat}, \code{speed}, \code{heading}).
 }

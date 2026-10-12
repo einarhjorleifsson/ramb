@@ -13,13 +13,14 @@ A data frame with 46 rows and 7 variables:
 \item{lon}{Longitude}
 \item{lat}{latitude}
 \item{time}{time}
-\item{whacks}{Boolean, indication if vessel on track or not}
+\item{whacks}{logical; \code{TRUE} for the positions a speed filter should flag}
 }
 }
 \usage{
 whacks1
 }
 \description{
-Some simple dataset to test speed filters
+A small fictional track table for testing the impossible-position filters
+(\code{\link[=rb_flag_ping_impossible]{rb_flag_ping_impossible()}}).
 }
 \keyword{datasets}

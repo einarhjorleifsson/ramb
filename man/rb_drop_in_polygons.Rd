@@ -2,18 +2,21 @@
 % Please edit documentation in R/spatial.R
 \name{rb_drop_in_polygons}
 \alias{rb_drop_in_polygons}
-\title{Points not in polygon}
+\title{Drop the points inside polygons}
 \usage{
-rb_drop_in_polygons(x, y)
+rb_drop_in_polygons(points, polygons)
 }
 \arguments{
-\item{x}{object containin geometry POINT of class sf, sfc or sfg}
+\item{points}{POINTs: an sf data frame (its rows are filtered) or an sfc
+geometry.}
 
-\item{y}{object cotaining geometry POLYGON of class sf, sfc or sfg}
+\item{polygons}{POLYGONs, as an sf or sfc object, in the same CRS as
+\code{points}.}
 }
 \value{
-Normally POINT object of class sf that are within object y
+For an sf data frame, the rows outside every polygon; for an sfc,
+the negated logical vector from \code{\link[=rb_detect_in_polygons]{rb_detect_in_polygons()}}.
 }
 \description{
-Points not in polygon
+Drop the points inside polygons
 }

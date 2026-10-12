@@ -33,8 +33,8 @@ type, the same rows.
 Step 1 of the fishing-activity flow. Each ping gets the voyage it lies in (\code{voyage_id}, from
 \code{\link[=rb_cut_trip_voyages]{rb_cut_trip_voyages()}}) and, with \code{stays}, the port stay it lies in (\code{stay_port_id}). \code{trip_id} is
 the voyage and \code{trip_basis} says where it came from: \code{"reconstructed"} (the track) or \code{"none"}. Declared
-trips (logbook) and landings as sources, and their reconciliation with the voyages, are to come (fishycode
-plan 013, phase 4). No ping is dropped.
+trips (logbook) and landings as sources, and their reconciliation with the voyages, are planned for a
+later release. No ping is dropped.
 }
 \seealso{
 Other trip:

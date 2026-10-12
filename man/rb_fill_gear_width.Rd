@@ -2,17 +2,20 @@
 % Please edit documentation in R/logbook_mfri.R
 \name{rb_fill_gear_width}
 \alias{rb_fill_gear_width}
-\title{Gear width proxy}
+\title{Fill logbook gear widths}
 \usage{
 rb_fill_gear_width(lb)
 }
 \arguments{
-\item{lb}{logbooks}
+\item{lb}{Logbook records as from \code{\link[=rb_read_logbook_mfri]{rb_read_logbook_mfri()}}, with \code{gid},
+\code{sweeps} and \code{plow_width}.}
 }
 \value{
-a tibble
+\code{lb} with \code{gear.width} added.
 }
 \description{
-The gear width for trawl is based on the sweeps, otherwise the plow width.
-If missing use the median value.
+Icelandic gear ids. Adds \code{gear.width}: the sweep length for trawls and
+seines (gid 6, 7, 9, 14), the plough width for dredges (gid 15, 38, 40),
+capped per gear; a missing width takes the gear's median, and gid 5 a
+placeholder 500.
 }

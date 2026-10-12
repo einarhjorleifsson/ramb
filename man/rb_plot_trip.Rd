@@ -2,24 +2,26 @@
 % Please edit documentation in R/plot.R
 \name{rb_plot_trip}
 \alias{rb_plot_trip}
-\title{rb_plot_trip}
+\title{Plot a vessel's trips on an interactive map}
 \usage{
 rb_plot_trip(data, tid, radius = 10, col = "speed", trip = TRUE)
 }
 \arguments{
-\item{data}{A tibble containing variable names lon and lat (crs 4326)}
+\item{data}{A track tibble with \code{lon} and \code{lat} (WGS 84) and \code{speed}, or
+an sf object.}
 
-\item{tid}{Trip id variable name, default tid}
+\item{tid}{The trip id column.}
 
-\item{radius}{Radius (in meters) of the point size (default 10)}
+\item{radius}{The point radius in metres, default 10.}
 
-\item{col}{What variable to be used for colour scale (default speed)}
+\item{col}{Reserved; the points are coloured by \code{speed}.}
 
-\item{trip}{add trip path, default FALSE}
+\item{trip}{Logical; if \code{TRUE} (default), a path per trip is drawn.}
 }
 \value{
-xxx
+A \code{\link[mapdeck:mapdeck]{mapdeck::mapdeck()}} map.
 }
 \description{
-rb_plot_trip
+The pings as points (coloured by \code{speed}), with a path per trip
+underneath.
 }

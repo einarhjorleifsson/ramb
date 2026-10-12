@@ -2,28 +2,24 @@
 % Please edit documentation in R/track.R
 \name{rb_calc_speed}
 \alias{rb_calc_speed}
-\title{Track speed}
+\title{Speed between consecutive positions}
 \usage{
 rb_calc_speed(lon, lat, time, method = c("haversine", "geodesic"))
 }
 \arguments{
-\item{lon}{longitude}
+\item{lon, lat}{Longitude and latitude, decimal degrees.}
 
-\item{lat}{latitude}
-
-\item{time}{datetime (POSIXct)}
+\item{time}{Position times (\code{POSIXct}).}
 
 \item{method}{The distance method. The default \code{"haversine"} is the sphere of
 \code{\link[=rb_flag_ping_impossible]{rb_flag_ping_impossible()}} and much the faster of the two; \code{"geodesic"} (WGS84,
 Karney) is the more accurate — see \code{\link[=rb_calc_distance]{rb_calc_distance()}} for guidance.}
 }
 \value{
-numerical vector in nautical miles per hour
+A numeric vector of speeds in knots (nautical miles per hour).
 }
 \description{
-Calculates speed in nautical miles per hour. Based on
-traipse::track_speed but returns knots not meters per second and sets the
-first value as the second value. If the length of the vector is one,
-na values are automatically returned (rather than an error returned
-by traipse::track_speed)
+The speed of each step in knots: the distance from the previous position
+divided by the elapsed time. The first position takes the second's value;
+a single-position track gets \code{NA}.
 }

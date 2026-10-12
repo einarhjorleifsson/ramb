@@ -197,32 +197,40 @@ rb_calc_distance <- function(
 }
 # Compare track_time vs rb_time (rb_calc_step_time)
 
-#' Time between steps, forcing users to explicitly specify the unit
+#' Time between consecutive positions
 #'
-#' @param time time
-#' @param units units of return value
+#' The elapsed time from the previous position to the current one, in the
+#' chosen unit. The first value is `NA`.
 #'
-#' @return A numeric vector
+#' @param time Position times (`POSIXct`).
+#' @param unit The unit of the result, passed to [base::difftime()]:
+#'   `"secs"` (default), `"mins"`, `"hours"`, `"days"` or `"weeks"`.
+#'
+#' @return A numeric vector the length of `time`.
 #' @export
 #'
-#'
-rb_calc_step_time <- function(time, units = "secs") {
-  difftime(time, dplyr::lag(time), units = units) |>
+#' @seealso [rb_calc_track_time()], which can instead spread each interval
+#'   over the two adjacent positions.
+rb_calc_step_time <- function(time, unit = "secs") {
+  difftime(time, dplyr::lag(time), units = unit) |>
     as.numeric()
 }
 
-#' Calculate step acceleration
+#' Step acceleration
 #'
-#' To use this on multiple vessels or trips, use a grouped data frame with tidyverse code like ...
+#' For each step, the distance travelled divided by the squared elapsed time,
+#' in m/s^2: the acceleration implied if the vessel went from rest to the
+#' step's mean speed. `NA` for the first position. For several vessels or
+#' trips, compute within groups, e.g. inside `dplyr::mutate()` on a grouped
+#' data frame.
 #'
-#' @param lon longitude
-#' @param lat latitude
-#' @param time time in POSIXct
+#' @param lon,lat Longitude and latitude, decimal degrees.
+#' @param time Position times (`POSIXct`).
 #' @param method The distance method. The default `"haversine"` is the sphere of
 #'   [rb_flag_ping_impossible()] and much the faster of the two; `"geodesic"` (WGS84,
 #'   Karney) is the more accurate — see [rb_calc_distance()] for guidance.
 #'
-#' @return A numerical vector
+#' @return A numeric vector of accelerations in m/s^2.
 #' @export
 #'
 rb_calc_step_acceleration <- function(
@@ -234,32 +242,35 @@ rb_calc_step_acceleration <- function(
   method <- match.arg(method)
   .rb_track_speed(lon, lat, time, method) / .rb_track_time(time)
 }
-#' Track time duration
+# The interval convention is flipped relative to traipse::track_time() (time
+# *from* the previous position, not to the next), and the weights spread an
+# interval over the two adjacent positions, as vmstools's intvTacsat does.
+
+#' Time the track spent at each position
 #'
-#' Calculate time duration based on sequential difference of date-time input.
-#' The unit of time duration is seconds.
+#' For each position, the time between the previous and the next position,
+#' split by `weight`: `c(0, 1)` (default) counts the step from the previous
+#' position, `c(1, 0)` the step to the next, `c(0.5, 0.5)` half of each. With
+#' `fill_ends = TRUE` the two end positions take their neighbour's value
+#' instead of `NA`.
 #'
-#' Function is a modification of traipse::track_time allowing for calculation
-#' of time from previous points rather than by convention the time to next
-#' point. It also allows for puting some weighing a.la. the datacall::intvTacsat
-#' function.
+#' @param time Position times; coerced to `POSIXct`.
+#' @param weight A length-2 numeric vector: the share of the bracketing
+#'   interval counted towards the previous and the next step. Normalised to
+#'   sum to 1.
+#' @param fill_ends Logical; if `TRUE` (default) the first and last value take
+#'   their neighbour's value.
 #'
-#' @param date date-time in POSIXct
-#' @param weight A numerical vector of length 2 weight to apply to calculation
-#' of mean interval rate towards and away from ping
-#' @param fill Boolean (default TRUE)
-#'
-#' @return A vector of duration in seconds
+#' @return A numeric vector of durations in seconds.
 #' @export
-#'
-rb_calc_track_time <- function(date, weight = c(0, 1), fill = TRUE) {
+rb_calc_track_time <- function(time, weight = c(0, 1), fill_ends = TRUE) {
   # tests
-  cls <- class(date)
-  if (!inherits(date, "POSIXct")) {
-    date <- try(as.POSIXct(date), silent = TRUE)
-    if (inherits(date, "try-error")) {
+  cls <- class(time)
+  if (!inherits(time, "POSIXct")) {
+    time <- try(as.POSIXct(time), silent = TRUE)
+    if (inherits(time, "try-error")) {
       stop(sprintf(
-        "Cannot convert 'date' of class '%s' to POSIXct",
+        "Cannot convert 'time' of class '%s' to POSIXct",
         paste(cls, collapse = ",")
       ))
     }
@@ -274,22 +285,22 @@ rb_calc_track_time <- function(date, weight = c(0, 1), fill = TRUE) {
 
   if (any(weight == 0)) {
     if (weight[1] == 0) {
-      int <- c(NA_real_, diff(unclass(date)))
-      if (fill) int[1] <- int[2]
+      int <- c(NA_real_, diff(unclass(time)))
+      if (fill_ends) int[1] <- int[2]
     }
     if (weight[2] == 0) {
-      int <- c(diff(unclass(date)), NA_real_)
-      if (fill) {
+      int <- c(diff(unclass(time)), NA_real_)
+      if (fill_ends) {
         l <- length(int)
         int[l] <- int[l - 1]
       }
     }
   } else {
     int <- rowSums(cbind(
-      c(NA_real_, diff(unclass(date))) * weight[1],
-      c(diff(unclass(date)), NA_real_) * weight[2]
+      c(NA_real_, diff(unclass(time))) * weight[1],
+      c(diff(unclass(time)), NA_real_) * weight[2]
     ))
-    if (fill) {
+    if (fill_ends) {
       l <- length(int)
       int[1] <- int[2]
       int[l] <- int[l - 1]

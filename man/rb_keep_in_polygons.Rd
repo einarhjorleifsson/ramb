@@ -2,21 +2,21 @@
 % Please edit documentation in R/spatial.R
 \name{rb_keep_in_polygons}
 \alias{rb_keep_in_polygons}
-\title{Points in polygon}
+\title{Keep the points inside polygons}
 \usage{
-rb_keep_in_polygons(x, y)
+rb_keep_in_polygons(points, polygons)
 }
 \arguments{
-\item{x}{object containing geometry POINT of class sf, sfc or sfg}
+\item{points}{POINTs: an sf data frame (its rows are filtered) or an sfc
+geometry.}
 
-\item{y}{object containing geometry POLYGON of class sf, sfc or sfg}
+\item{polygons}{POLYGONs, as an sf or sfc object, in the same CRS as
+\code{points}.}
 }
 \value{
-Normally POINT object of class sf that are within object y
+For an sf data frame, the rows inside a polygon; for an sfc, the
+logical vector from \code{\link[=rb_detect_in_polygons]{rb_detect_in_polygons()}}.
 }
 \description{
-Points in polygon
-}
-\note{
-No serious testing in done
+Keep the points inside polygons
 }

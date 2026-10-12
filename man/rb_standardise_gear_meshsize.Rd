@@ -2,13 +2,20 @@
 % Please edit documentation in R/logbook_mfri.R
 \name{rb_standardise_gear_meshsize}
 \alias{rb_standardise_gear_meshsize}
-\title{Standardize mesh size}
+\title{Standardise logbook mesh sizes}
 \usage{
 rb_standardise_gear_meshsize(lb)
 }
 \arguments{
-\item{lb}{logbooks}
+\item{lb}{Logbook records as from \code{\link[=rb_read_logbook_mfri]{rb_read_logbook_mfri()}}, with \code{gid},
+\code{mesh} and \code{mesh_min}.}
+}
+\value{
+\code{lb} with \code{mesh.std} added.
 }
 \description{
-Crude correction of mesh size
+Icelandic gear ids. Adds \code{mesh.std}, a mesh size on a common scale: fixed
+classes for most gears, the recorded mesh classed at 147 mm for trawls
+(gid 5, 6; for gid 7 \code{mesh_min} is used), and gillnet (gid 2) mesh
+converted from its recorded unit and classed, defaulting to 203.
 }

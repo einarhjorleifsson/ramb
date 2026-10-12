@@ -2,28 +2,27 @@
 % Please edit documentation in R/track.R
 \name{rb_calc_track_time}
 \alias{rb_calc_track_time}
-\title{Track time duration}
+\title{Time the track spent at each position}
 \usage{
-rb_calc_track_time(date, weight = c(0, 1), fill = TRUE)
+rb_calc_track_time(time, weight = c(0, 1), fill_ends = TRUE)
 }
 \arguments{
-\item{date}{date-time in POSIXct}
+\item{time}{Position times; coerced to \code{POSIXct}.}
 
-\item{weight}{A numerical vector of length 2 weight to apply to calculation
-of mean interval rate towards and away from ping}
+\item{weight}{A length-2 numeric vector: the share of the bracketing
+interval counted towards the previous and the next step. Normalised to
+sum to 1.}
 
-\item{fill}{Boolean (default TRUE)}
+\item{fill_ends}{Logical; if \code{TRUE} (default) the first and last value take
+their neighbour's value.}
 }
 \value{
-A vector of duration in seconds
+A numeric vector of durations in seconds.
 }
 \description{
-Calculate time duration based on sequential difference of date-time input.
-The unit of time duration is seconds.
-}
-\details{
-Function is a modification of traipse::track_time allowing for calculation
-of time from previous points rather than by convention the time to next
-point. It also allows for puting some weighing a.la. the datacall::intvTacsat
-function.
+For each position, the time between the previous and the next position,
+split by \code{weight}: \code{c(0, 1)} (default) counts the step from the previous
+position, \code{c(1, 0)} the step to the next, \code{c(0.5, 0.5)} half of each. With
+\code{fill_ends = TRUE} the two end positions take their neighbour's value
+instead of \code{NA}.
 }

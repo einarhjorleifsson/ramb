@@ -2,16 +2,21 @@
 % Please edit documentation in R/track.R
 \name{rb_summarise_track}
 \alias{rb_summarise_track}
-\title{rb_summarise_track}
+\title{Summarise a vessel track}
 \usage{
 rb_summarise_track(d)
 }
 \arguments{
-\item{d}{...}
+\item{d}{A (grouped) data frame with \code{time}, \code{speed}, \code{dist}, \code{dura} and,
+for the counts, \code{tid} and \code{hid}.}
 }
 \value{
-A summary tibble, dependent on grouping upstream
+A tibble with one row per group: \code{pings}, \code{t.min}, \code{t.max},
+\code{s.min}, \code{s.med}, \code{s.max}, \code{di.min}, \code{di.med}, \code{di.max}, \code{du.min},
+\code{du.med}, \code{du.max}, \code{n.tips} and \code{n.harb}.
 }
 \description{
-rb_summarise_track
+A one-row summary per group of a track table: the number of pings, the
+time range, the ranges of speed, per-step distance and per-step duration,
+and the number of distinct trips and harbours.
 }

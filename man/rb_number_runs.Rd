@@ -2,16 +2,17 @@
 % Please edit documentation in R/track.R
 \name{rb_number_runs}
 \alias{rb_number_runs}
-\title{Event id}
+\title{Number runs of consecutive equal values}
 \usage{
 rb_number_runs(x)
 }
 \arguments{
-\item{x}{A vector, normally character or integer}
+\item{x}{A vector, normally character or integer.}
 }
 \value{
-A numerical vector that labels each discreet event
+An integer vector numbering the run each element belongs to.
 }
 \description{
-Event id
+Each run of consecutive equal values gets a sequential number, starting
+at 1.
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/time.R
 \name{rb_detect_crosses_year}
 \alias{rb_detect_crosses_year}
-\title{Check if Any Datetime Pairs Cross Year Boundary}
+\title{Detect intervals that cross a year boundary}
 \usage{
 rb_detect_crosses_year(datetime1, datetime2)
 }
@@ -15,7 +15,8 @@ rb_detect_crosses_year(datetime1, datetime2)
 A logical (boolean) vector of the same length as \code{datetime1} and \code{datetime2}, indicating for each pair if the interval crosses a year boundary.
 }
 \description{
-This function checks, for each pair of datetimes in two vectors, if the interval between them crosses a calendar year boundary.
+For each pair of datetimes, whether the interval between them crosses a
+calendar year boundary.
 }
 \details{
 \itemize{

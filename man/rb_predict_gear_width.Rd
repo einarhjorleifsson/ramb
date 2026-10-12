@@ -2,22 +2,32 @@
 % Please edit documentation in R/gear.R
 \name{rb_predict_gear_width}
 \alias{rb_predict_gear_width}
-\title{Predict gear width in meters based on Benthis}
+\title{Predict gear width from vessel size}
 \usage{
-rb_predict_gear_width(metier, length, kw, method = "benthis")
+rb_predict_gear_width(metier, length_m, kw, method = "benthis")
 }
 \arguments{
-\item{metier}{Metier 5}
+\item{metier}{Metier level 5 codes, matched against
+\link{metier5_benthis_lookup}.}
 
-\item{length}{Vessel length in meters}
+\item{length_m}{Vessel length overall, metres.}
 
-\item{kw}{Vessel power}
+\item{kw}{Vessel engine power, kW.}
 
-\item{method}{Only \code{"benthis"} so far: the Benthis gear-width models (Eigaard et al. 2016).}
+\item{method}{Only \code{"benthis"} so far.}
 }
 \value{
-A numeric vector in meters
+A numeric vector of gear widths in metres; \code{NA} where the metier
+has no model, or the model is in the other size variable.
 }
 \description{
-Predict gear width in meters based on Benthis
+The width (metres) of the gear a vessel would tow, from its metier and its
+length or engine power, with the Benthis vessel-size–gear-width models.
+}
+\references{
+Eigaard, O.R., Bastardie, F., Breen, M., et al. (2016).
+"Estimating seabed pressure from demersal trawls, seines, and dredges
+based on gear design and dimensions". ICES Journal of Marine Science,
+73(suppl. 1), i27–i43. \doi{10.1093/icesjms/fsv099}; the parameters are
+in \link{benthis_parameters}.
 }

@@ -2,10 +2,10 @@
 % Please edit documentation in R/catch.R
 \name{rb_share_catch}
 \alias{rb_share_catch}
-\title{Share Catch and Value from Events to Trails Using Hierarchical Allocation}
+\title{Share catch and value over fishing pings}
 \usage{
 rb_share_catch(
-  trails,
+  pings,
   events,
   remove_diagnostic = TRUE,
   raise_unallocated = FALSE,
@@ -13,9 +13,9 @@ rb_share_catch(
 )
 }
 \arguments{
-\item{trails}{A data frame of fishing trail records. Must contain:
+\item{pings}{A data frame of fishing ping records. Must contain:
 \describe{
-\item{.pid}{integer, unique trail identifier}
+\item{.pid}{integer, unique ping identifier}
 \item{VE_COU}{character, vessel country}
 \item{VE_REF}{character, vessel reference}
 \item{time}{POSIXct, UTC timestamp}
@@ -42,10 +42,10 @@ rb_share_catch(
 only partly allocated, so the full event total is shared (not yet implemented).}
 
 \item{raise_unmatched}{Logical (default FALSE). Reserved: share events whose trip has no
-match in \code{trails} at a broader level, e.g. vessel by month (not yet implemented).}
+match in \code{pings} at a broader level, e.g. vessel by month (not yet implemented).}
 }
 \value{
-A data frame matching the number of rows in \code{trails}, with added columns:
+A data frame matching the number of rows in \code{pings}, with added columns:
 \describe{
 \item{LE_KG}{numeric, allocated landed weight in kg}
 \item{LE_EURO}{numeric, allocated landed value in euro}
@@ -54,18 +54,12 @@ A data frame matching the number of rows in \code{trails}, with added columns:
 Additional columns are included if \code{remove_diagnostic = FALSE}.
 }
 \description{
-Allocates event weights (\code{LE_KG}) and values (\code{LE_EURO}) from the \code{events} data frame
-to corresponding fishing trails in the \code{trails} data frame using a three-step hierarchical
-matching and allocation procedure (by day, ICES rectangle, and trip). This ensures
-that catches and values are distributed as precisely as possible, with unmatched allocations
-handled at progressively broader levels.
+Shares each landing event's weight (\code{LE_KG}) and value (\code{LE_EURO}) evenly
+over the fishing pings (\code{state == 1}) of its trip, conserving the totals.
+An event is allocated at the finest level its information allows, and only
+to pings not already allocated at a finer level:
 }
-\details{
-The function spreads catch and value information through three hierarchical steps.
-At each step, allocations are only made to pings not already allocated at a finer level.
-Only \code{state == 1} pings are eligible for allocation.
-}
-\section{Hierarchical Allocation Procedure}{
+\section{Hierarchical allocation}{
 
 \enumerate{
 \item \strong{Date Level}:
@@ -89,6 +83,3 @@ Only \code{state == 1} pings are eligible for allocation.
 (see \code{raise_unallocated} and \code{raise_unmatched}).
 }
 
-\author{
-Einar Hjörleifsson
-}

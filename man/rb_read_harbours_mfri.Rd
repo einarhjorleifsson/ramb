@@ -2,14 +2,14 @@
 % Please edit documentation in R/read_mfri.R
 \name{rb_read_harbours_mfri}
 \alias{rb_read_harbours_mfri}
-\title{rb_read_harbours_mfri}
+\title{Read Icelandic harbour polygons}
 \usage{
 rb_read_harbours_mfri()
 }
 \value{
-An sf-tibble
+An sf tibble with \code{hid} and \code{geometry}.
 }
 \description{
-A conenient wrapper that read a dataframe of Icelandic harbours (hid) with
-associated polygon geometry from an open ftp-site.
+Harbour polygons with harbour ids (\code{hid}), read from MFRI's public FTP
+site.
 }

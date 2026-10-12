@@ -2,7 +2,7 @@
 % Please edit documentation in R/time.R
 \name{rb_calc_duration}
 \alias{rb_calc_duration}
-\title{Calculate the Duration Between Two Datetimes}
+\title{Duration between two datetimes}
 \usage{
 rb_calc_duration(x, from, to, unit = "hours", name = "duration")
 }
@@ -27,7 +27,7 @@ For table inputs, the input with one column added. For vector
 input, a numeric vector of durations in \code{unit}.
 }
 \description{
-\code{rb_calc_duration()} computes the elapsed time between two datetime columns
+Computes the elapsed time between two datetime columns
 (or vectors), returned as a plain numeric vector in the requested \code{unit}.
 It works identically on three kinds of input:
 }

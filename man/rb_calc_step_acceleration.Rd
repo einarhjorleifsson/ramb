@@ -2,24 +2,26 @@
 % Please edit documentation in R/track.R
 \name{rb_calc_step_acceleration}
 \alias{rb_calc_step_acceleration}
-\title{Calculate step acceleration}
+\title{Step acceleration}
 \usage{
 rb_calc_step_acceleration(lon, lat, time, method = c("haversine", "geodesic"))
 }
 \arguments{
-\item{lon}{longitude}
+\item{lon, lat}{Longitude and latitude, decimal degrees.}
 
-\item{lat}{latitude}
-
-\item{time}{time in POSIXct}
+\item{time}{Position times (\code{POSIXct}).}
 
 \item{method}{The distance method. The default \code{"haversine"} is the sphere of
 \code{\link[=rb_flag_ping_impossible]{rb_flag_ping_impossible()}} and much the faster of the two; \code{"geodesic"} (WGS84,
 Karney) is the more accurate — see \code{\link[=rb_calc_distance]{rb_calc_distance()}} for guidance.}
 }
 \value{
-A numerical vector
+A numeric vector of accelerations in m/s^2.
 }
 \description{
-To use this on multiple vessels or trips, use a grouped data frame with tidyverse code like ...
+For each step, the distance travelled divided by the squared elapsed time,
+in m/s^2: the acceleration implied if the vessel went from rest to the
+step's mean speed. \code{NA} for the first position. For several vessels or
+trips, compute within groups, e.g. inside \code{dplyr::mutate()} on a grouped
+data frame.
 }
