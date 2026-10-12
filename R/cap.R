@@ -79,7 +79,7 @@
 
   # B: If only zero values
   if (length(w) == 0) {
-    lmit <- 0
+    limit <- 0
   }
 
   # Hail Mary - should really deal with this above
