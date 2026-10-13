@@ -1,3 +1,7 @@
+# ramb 2026.10.13.2
+
+- `rb_summarise_track()`: `n_ports` now counts `port_id`, the port each ping lies in as `rb_flag_ping_port()` gives it, where it counted `hid`. Pass the ports' own key, not a source's port code: in fishycode, `pid`, not the logbook's or landings' `hid`, of which one port can have several.
+
 # ramb 2026.10.13.1
 
 - `rb_summarise_track()`: the output column `n_harbours` is now `n_ports`, following the "port, not harbour" rule of 2026-10-09; it still counts distinct `hid`. Values unchanged.

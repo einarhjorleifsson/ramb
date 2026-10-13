@@ -201,7 +201,7 @@ test_that("rb_summarise_track() returns one snake_case row per group", {
     dist = c(NA, 100, 200),
     dura = c(NA, 600, 600),
     tid = c(1, 1, 2),
-    hid = c(1, 1, 2)
+    port_id = c(1, 1, 2)
   )
   out <- rb_summarise_track(d)
   expect_named(

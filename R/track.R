@@ -395,7 +395,7 @@ rb_number_runs <- function(x) {
 #' and the number of distinct trips and ports.
 #'
 #' @param d A (grouped) data frame with `time`, `speed`, `dist`, `dura` and,
-#'   for the counts, `tid` and `hid`.
+#'   for the counts, `tid` and `port_id`.
 #'
 #' @return A tibble with one row per group: `pings`, `t_min`, `t_max`,
 #'   `s_min`, `s_med`, `s_max`, `di_min`, `di_med`, `di_max`, `du_min`,
@@ -418,7 +418,7 @@ rb_summarise_track <- function(d) {
       du_med = median(dura, na.rm = TRUE),
       du_max = max(dura, na.rm = TRUE),
       n_trips = dplyr::n_distinct(tid, na.rm = TRUE),
-      n_ports = dplyr::n_distinct(hid, na.rm = TRUE)
+      n_ports = dplyr::n_distinct(port_id, na.rm = TRUE)
     )
 }
 

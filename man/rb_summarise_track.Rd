@@ -8,7 +8,7 @@ rb_summarise_track(d)
 }
 \arguments{
 \item{d}{A (grouped) data frame with \code{time}, \code{speed}, \code{dist}, \code{dura} and,
-for the counts, \code{tid} and \code{hid}.}
+for the counts, \code{tid} and \code{port_id}.}
 }
 \value{
 A tibble with one row per group: \code{pings}, \code{t_min}, \code{t_max},
