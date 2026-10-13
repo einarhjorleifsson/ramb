@@ -133,12 +133,13 @@ test_that("rb_calc_distance() refuses lazy tables, for now", {
   )
 })
 
-test_that("rb_calc_speed() threads the distance method, haversine by default", {
+test_that("rb_calc_speed() threads the distance method, geodesic by default", {
   lon <- c(-21.93, -22.10, -22.30)
   lat <- c(64.15, 64.20, 64.30)
   time <- as.POSIXct("2024-01-01", tz = "UTC") + c(0, 600, 1200)
-  s_h <- rb_calc_speed(lon, lat, time)
+  s_h <- rb_calc_speed(lon, lat, time, method = "haversine")
   s_g <- rb_calc_speed(lon, lat, time, method = "geodesic")
+  expect_equal(rb_calc_speed(lon, lat, time), s_g)
   # first value is the second value, in both methods
   expect_equal(s_h[1], s_h[2])
   # haversine speed is the haversine distance over the step time, in knots
@@ -152,8 +153,9 @@ test_that("rb_calc_step_acceleration() threads the distance method", {
   lon <- c(-21.93, -22.10, -22.30)
   lat <- c(64.15, 64.20, 64.30)
   time <- as.POSIXct("2024-01-01", tz = "UTC") + c(0, 600, 1200)
-  a_h <- rb_calc_step_acceleration(lon, lat, time)
+  a_h <- rb_calc_step_acceleration(lon, lat, time, method = "haversine")
   a_g <- rb_calc_step_acceleration(lon, lat, time, method = "geodesic")
+  expect_equal(rb_calc_step_acceleration(lon, lat, time), a_g)
   expect_true(is.na(a_h[1]) && is.na(a_g[1]))
   expect_lt(max(abs(a_h - a_g) / abs(a_g), na.rm = TRUE), 0.005)
 })

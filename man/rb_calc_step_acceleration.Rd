@@ -4,16 +4,15 @@
 \alias{rb_calc_step_acceleration}
 \title{Step acceleration}
 \usage{
-rb_calc_step_acceleration(lon, lat, time, method = c("haversine", "geodesic"))
+rb_calc_step_acceleration(lon, lat, time, method = c("geodesic", "haversine"))
 }
 \arguments{
 \item{lon, lat}{Longitude and latitude, decimal degrees.}
 
 \item{time}{Position times (\code{POSIXct}).}
 
-\item{method}{The distance method. The default \code{"haversine"} is the sphere of
-\code{\link[=rb_flag_ping_impossible]{rb_flag_ping_impossible()}} and much the faster of the two; \code{"geodesic"} (WGS84,
-Karney) is the more accurate — see \code{\link[=rb_calc_distance]{rb_calc_distance()}} for guidance.}
+\item{method}{The distance method, as in \code{\link[=rb_calc_speed]{rb_calc_speed()}}: \code{"geodesic"} (WGS84,
+Karney, the default) or \code{"haversine"}, the sphere of \code{\link[=rb_flag_ping_impossible]{rb_flag_ping_impossible()}}.}
 }
 \value{
 A numeric vector of accelerations in m/s^2.

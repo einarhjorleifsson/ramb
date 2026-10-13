@@ -12,7 +12,9 @@
 #' from the sphere mismatch) and for large data — Haversine is about 40-50x faster and is
 #' the only method expressible in SQL. Use `"geodesic"` when the absolute distance itself
 #' matters, e.g. distance-steamed totals: the Haversine error is systematic, up to ~0.6 %
-#' depending on latitude and bearing, so it does not cancel in sums.
+#' depending on latitude and bearing, so it does not cancel in sums. A speed set beside
+#' recorded speed over ground is another such case, which is why [rb_calc_speed()]
+#' defaults to `"geodesic"`.
 #'
 #' Two forms. The vector form takes the four coordinate vectors; they recycle to a common
 #' length, so it works inside `mutate()` with `dplyr::lag()` and `dplyr::lead()`. The
@@ -241,9 +243,8 @@ rb_calc_step_time <- function(time, unit = "secs") {
 #'
 #' @param lon,lat Longitude and latitude, decimal degrees.
 #' @param time Position times (`POSIXct`).
-#' @param method The distance method. The default `"haversine"` is the sphere of
-#'   [rb_flag_ping_impossible()] and much the faster of the two; `"geodesic"` (WGS84,
-#'   Karney) is the more accurate — see [rb_calc_distance()] for guidance.
+#' @param method The distance method, as in [rb_calc_speed()]: `"geodesic"` (WGS84,
+#'   Karney, the default) or `"haversine"`, the sphere of [rb_flag_ping_impossible()].
 #'
 #' @return A numeric vector of accelerations in m/s^2.
 #' @export
@@ -252,7 +253,7 @@ rb_calc_step_acceleration <- function(
   lon,
   lat,
   time,
-  method = c("haversine", "geodesic")
+  method = c("geodesic", "haversine")
 ) {
   method <- match.arg(method)
   .rb_track_speed(lon, lat, time, method) / .rb_track_time(time)
@@ -335,9 +336,11 @@ rb_calc_track_time <- function(time, weight = c(0, 1), fill_ends = TRUE) {
 #'
 #' @param lon,lat Longitude and latitude, decimal degrees.
 #' @param time Position times (`POSIXct`).
-#' @param method The distance method. The default `"haversine"` is the sphere of
-#'   [rb_flag_ping_impossible()] and much the faster of the two; `"geodesic"` (WGS84,
-#'   Karney) is the more accurate — see [rb_calc_distance()] for guidance.
+#' @param method The distance method. The default `"geodesic"` (WGS84, Karney) gives
+#'   speeds on the scale of recorded speed over ground, so derived and recorded speeds can
+#'   share a column and a gear's speed window. `"haversine"` is the sphere of
+#'   [rb_flag_ping_impossible()], about 50x faster; at 63-67 degrees N it reads 0.24-0.40 %
+#'   low, more on east-west legs than north-south ones — see [rb_calc_distance()].
 #'
 #' @return A numeric vector of speeds in knots (nautical miles per hour).
 #' @export
@@ -345,7 +348,7 @@ rb_calc_speed <- function(
   lon,
   lat,
   time,
-  method = c("haversine", "geodesic")
+  method = c("geodesic", "haversine")
 ) {
   method <- match.arg(method)
   n <- length(lon)

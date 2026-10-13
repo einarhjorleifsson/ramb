@@ -45,7 +45,9 @@ filters (a speed computed on the ellipsoid can disagree with a filter threshold 
 from the sphere mismatch) and for large data — Haversine is about 40-50x faster and is
 the only method expressible in SQL. Use \code{"geodesic"} when the absolute distance itself
 matters, e.g. distance-steamed totals: the Haversine error is systematic, up to ~0.6 \%
-depending on latitude and bearing, so it does not cancel in sums.
+depending on latitude and bearing, so it does not cancel in sums. A speed set beside
+recorded speed over ground is another such case, which is why \code{\link[=rb_calc_speed]{rb_calc_speed()}}
+defaults to \code{"geodesic"}.
 
 Two forms. The vector form takes the four coordinate vectors; they recycle to a common
 length, so it works inside \code{mutate()} with \code{dplyr::lag()} and \code{dplyr::lead()}. The

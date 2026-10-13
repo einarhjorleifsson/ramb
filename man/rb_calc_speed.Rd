@@ -4,16 +4,18 @@
 \alias{rb_calc_speed}
 \title{Speed between consecutive positions}
 \usage{
-rb_calc_speed(lon, lat, time, method = c("haversine", "geodesic"))
+rb_calc_speed(lon, lat, time, method = c("geodesic", "haversine"))
 }
 \arguments{
 \item{lon, lat}{Longitude and latitude, decimal degrees.}
 
 \item{time}{Position times (\code{POSIXct}).}
 
-\item{method}{The distance method. The default \code{"haversine"} is the sphere of
-\code{\link[=rb_flag_ping_impossible]{rb_flag_ping_impossible()}} and much the faster of the two; \code{"geodesic"} (WGS84,
-Karney) is the more accurate — see \code{\link[=rb_calc_distance]{rb_calc_distance()}} for guidance.}
+\item{method}{The distance method. The default \code{"geodesic"} (WGS84, Karney) gives
+speeds on the scale of recorded speed over ground, so derived and recorded speeds can
+share a column and a gear's speed window. \code{"haversine"} is the sphere of
+\code{\link[=rb_flag_ping_impossible]{rb_flag_ping_impossible()}}, about 50x faster; at 63-67 degrees N it reads 0.24-0.40 \%
+low, more on east-west legs than north-south ones — see \code{\link[=rb_calc_distance]{rb_calc_distance()}}.}
 }
 \value{
 A numeric vector of speeds in knots (nautical miles per hour).
