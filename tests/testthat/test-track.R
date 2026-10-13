@@ -220,11 +220,11 @@ test_that("rb_summarise_track() returns one snake_case row per group", {
       "du_med",
       "du_max",
       "n_trips",
-      "n_harbours"
+      "n_ports"
     )
   )
   expect_equal(out$pings, 3)
   expect_equal(out$n_trips, 2)
-  expect_equal(out$n_harbours, 2)
+  expect_equal(out$n_ports, 2)
   expect_equal(out$s_med, 5)
 })

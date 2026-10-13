@@ -13,10 +13,10 @@ for the counts, \code{tid} and \code{hid}.}
 \value{
 A tibble with one row per group: \code{pings}, \code{t_min}, \code{t_max},
 \code{s_min}, \code{s_med}, \code{s_max}, \code{di_min}, \code{di_med}, \code{di_max}, \code{du_min},
-\code{du_med}, \code{du_max}, \code{n_trips} and \code{n_harbours}.
+\code{du_med}, \code{du_max}, \code{n_trips} and \code{n_ports}.
 }
 \description{
 A one-row summary per group of a track table: the number of pings, the
 time range, the ranges of speed, per-step distance and per-step duration,
-and the number of distinct trips and harbours.
+and the number of distinct trips and ports.
 }

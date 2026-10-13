@@ -1,3 +1,7 @@
+# ramb 2026.10.13.1
+
+- `rb_summarise_track()`: the output column `n_harbours` is now `n_ports`, following the "port, not harbour" rule of 2026-10-09; it still counts distinct `hid`. Values unchanged.
+
 # ramb 2026.10.13
 
 ## Review fixes (2026-10-13)
