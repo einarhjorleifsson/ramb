@@ -200,7 +200,7 @@ test_that("rb_summarise_track() returns one snake_case row per group", {
     speed = c(0, 5, 10),
     dist = c(NA, 100, 200),
     dura = c(NA, 600, 600),
-    tid = c(1, 1, 2),
+    voyage_id = c(1, 1, 2),
     port_id = c(1, 1, 2)
   )
   out <- rb_summarise_track(d)
@@ -219,12 +219,12 @@ test_that("rb_summarise_track() returns one snake_case row per group", {
       "du_min",
       "du_med",
       "du_max",
-      "n_trips",
+      "n_voyages",
       "n_ports"
     )
   )
   expect_equal(out$pings, 3)
-  expect_equal(out$n_trips, 2)
+  expect_equal(out$n_voyages, 2)
   expect_equal(out$n_ports, 2)
   expect_equal(out$s_med, 5)
 })

@@ -1,3 +1,7 @@
+# ramb 2026.10.13.3
+
+- `rb_summarise_track()`: counts voyages, not trips, by name. The column it counts is `voyage_id`, as `rb_assign_trip()` puts it on the pings, where it was `tid`; the output `n_trips` is now `n_voyages`. A voyage is any movement from one port stay to the next; a trip is a fishing trip (`trip_id`), and the function never counted those.
+
 # ramb 2026.10.13.2
 
 - `rb_summarise_track()`: `n_ports` now counts `port_id`, the port each ping lies in as `rb_flag_ping_port()` gives it, where it counted `hid`. Pass the ports' own key, not a source's port code: in fishycode, `pid`, not the logbook's or landings' `hid`, of which one port can have several.

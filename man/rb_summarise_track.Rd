@@ -8,15 +8,15 @@ rb_summarise_track(d)
 }
 \arguments{
 \item{d}{A (grouped) data frame with \code{time}, \code{speed}, \code{dist}, \code{dura} and,
-for the counts, \code{tid} and \code{port_id}.}
+for the counts, \code{voyage_id} (from \code{\link[=rb_assign_trip]{rb_assign_trip()}}) and \code{port_id}.}
 }
 \value{
 A tibble with one row per group: \code{pings}, \code{t_min}, \code{t_max},
 \code{s_min}, \code{s_med}, \code{s_max}, \code{di_min}, \code{di_med}, \code{di_max}, \code{du_min},
-\code{du_med}, \code{du_max}, \code{n_trips} and \code{n_ports}.
+\code{du_med}, \code{du_max}, \code{n_voyages} and \code{n_ports}.
 }
 \description{
 A one-row summary per group of a track table: the number of pings, the
 time range, the ranges of speed, per-step distance and per-step duration,
-and the number of distinct trips and ports.
+and the number of distinct voyages and ports.
 }

@@ -392,14 +392,14 @@ rb_number_runs <- function(x) {
 #'
 #' A one-row summary per group of a track table: the number of pings, the
 #' time range, the ranges of speed, per-step distance and per-step duration,
-#' and the number of distinct trips and ports.
+#' and the number of distinct voyages and ports.
 #'
 #' @param d A (grouped) data frame with `time`, `speed`, `dist`, `dura` and,
-#'   for the counts, `tid` and `port_id`.
+#'   for the counts, `voyage_id` (from [rb_assign_trip()]) and `port_id`.
 #'
 #' @return A tibble with one row per group: `pings`, `t_min`, `t_max`,
 #'   `s_min`, `s_med`, `s_max`, `di_min`, `di_med`, `di_max`, `du_min`,
-#'   `du_med`, `du_max`, `n_trips` and `n_ports`.
+#'   `du_med`, `du_max`, `n_voyages` and `n_ports`.
 #' @export
 #'
 rb_summarise_track <- function(d) {
@@ -417,7 +417,7 @@ rb_summarise_track <- function(d) {
       du_min = min(dura, na.rm = TRUE),
       du_med = median(dura, na.rm = TRUE),
       du_max = max(dura, na.rm = TRUE),
-      n_trips = dplyr::n_distinct(tid, na.rm = TRUE),
+      n_voyages = dplyr::n_distinct(voyage_id, na.rm = TRUE),
       n_ports = dplyr::n_distinct(port_id, na.rm = TRUE)
     )
 }

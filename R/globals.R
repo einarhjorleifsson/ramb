@@ -76,6 +76,7 @@ utils::globalVariables(
     "vid",
     "visir",
     "vit",
+    "voyage_id",
     "x",
     "y",
     "dt",
