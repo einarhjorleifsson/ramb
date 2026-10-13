@@ -38,9 +38,11 @@
   }
 
   grp_vars <- dplyr::group_vars(x)
+  # lon and lat break ties in time, as in .rb_whack_sda(): pings of one second at two places
+  # otherwise take the input's order, and the flags change with it
   out <- x |>
     dplyr::ungroup() |>
-    dplyr::arrange(vid, time) |>
+    dplyr::arrange(vid, time, lon, lat) |>
     dplyr::group_by(vid) |>
     dplyr::mutate(whack2 = .fwd(lon, lat, time)) |>
     dplyr::ungroup()
@@ -81,9 +83,10 @@
         (spd_out > ms_max)
     }
 
+    # lon and lat break ties in time, in both branches (see .rb_whack_forward())
     out <- x |>
       dplyr::ungroup() |>
-      dplyr::arrange(vid, time) |>
+      dplyr::arrange(vid, time, lon, lat) |>
       dplyr::group_by(vid) |>
       dplyr::mutate(whack = .fwdbwd(lon, lat, time)) |>
       dplyr::ungroup()
@@ -115,7 +118,7 @@
           LEAD(lat)  OVER vt AS lat2,
           LEAD(time) OVER vt AS t2
         FROM src
-        WINDOW vt AS (PARTITION BY vid ORDER BY time)
+        WINDOW vt AS (PARTITION BY vid ORDER BY time, lon, lat)
       ),
       spd AS (
         SELECT *,
@@ -257,7 +260,7 @@
     max_gap_h = max_gap_h,
     min_dt_s = min_dt_s
   )
-  # .rb_whack_forward() re-sorts by vid, time; out[!s1, ] already is, so the order is the same
+  # .rb_whack_forward() re-sorts by vid, time, lon, lat; out[!s1, ] already is, so the order is the same
   stage <- out$whack_sda
   stage[!s1] <- ifelse(fwd$whack2, "forward", NA_character_)
   out$whack_sda <- NULL

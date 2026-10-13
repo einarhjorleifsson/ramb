@@ -338,7 +338,7 @@ rb_flag_ping_impossible <- function(
       },
       sequential = {
         o <- s |>
-          dplyr::arrange(vid, time) |>
+          dplyr::arrange(vid, time, lon, lat) |>
           dplyr::group_by(vid) |>
           dplyr::mutate(
             .w = .rb_whack_sequential_fast(

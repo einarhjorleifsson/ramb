@@ -69,6 +69,48 @@ test_that("a lazy DuckDB table gives the same labels as a data frame", {
   }
 })
 
+test_that("pings of one second at two places do not make the flags depend on row order", {
+  # Until 2026-10-13 forward, fwdbwd and sequential sorted by (vid, time) only, and the
+  # fwdbwd SQL ordered its window by time only: on this track, reversing the rows changed
+  # 5, 2 and 5 flags, and on one month of Icelandic AIS (3.3 M pings) forward changed 22-25
+  # and fwdbwd 1-4. lon and lat now break the tie everywhere, as .rb_whack_sda() always did.
+  n <- 60
+  d <- data.frame(
+    vid = 1L,
+    time = as.POSIXct("2024-01-01", tz = "UTC") + 60 * (seq_len(n) - 1),
+    lon = -20 + 0.003 * seq_len(n),
+    lat = 64 + 0.001 * seq_len(n)
+  )
+  k <- c(9, 16, 40, 43)
+  d <- rbind(
+    d,
+    data.frame(
+      vid = 1L,
+      time = d$time[k],
+      lon = d$lon[k] + c(0.0084, -0.03, -0.0164, 0.0062),
+      lat = d$lat[k] + c(0.0052, 0.0005, 0.0002, 0.0014)
+    )
+  )
+  d$key <- seq_len(nrow(d))
+  rev_d <- d[rev(seq_len(nrow(d))), ]
+  flags <- function(x, m) {
+    r <- dplyr::collect(rb_flag_ping_impossible(x, method = m))
+    r$ping_flag[order(r$key)]
+  }
+  for (m in c("clean", "sda", "forward", "fwdbwd", "sequential")) {
+    a <- flags(d, m)
+    expect_identical(flags(rev_d, m), a, info = m)
+    expect_identical(flags(duckdbfs::as_dataset(rev_d), m), a, info = m)
+  }
+  # the SQL branch of the fwdbwd engine (lazy input) agrees with its data-frame branch
+  sql <- dplyr::collect(.rb_whack_fwdbwd(duckdbfs::as_dataset(rev_d)))
+  df <- .rb_whack_fwdbwd(d)
+  expect_identical(
+    sql$whack[order(sql$key)] %in% TRUE,
+    df$whack[order(df$key)]
+  )
+})
+
 test_that("flags already set are kept, rows are never dropped, other column names work", {
   d <- data.frame(
     vid = 1,

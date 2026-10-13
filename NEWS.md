@@ -5,6 +5,7 @@
 From a review of the 2026-10-09..12 changes against fishycode and the fishydata store:
 
 - `rb_cap_outliers(method = "miller")`: the cap no longer comes from outside the function. The fallback `if (!exists("limit"))` also searched the enclosing environments, so any object called `limit` on the search path was returned as the cap (with `limit <- 0.5` in the global environment, `rb_cap_outliers(c(1, 2, 3), "miller")` gave `0.5 0.5 0.5`). Each branch now returns; on 20,000 random vectors the caps are identical to before when no such object exists.
+- `rb_flag_ping_impossible(method = "forward" | "fwdbwd" | "sequential")`: the flags no longer depend on the input's row order. These engines sorted by `(vid, time)` only, and the `fwdbwd` SQL ordered its window by `time` only, so pings of one second at two places took whatever order they came in — and parquet reads come back in a different order from run to run. `lon` and `lat` now break the tie everywhere, as `.rb_whack_sda()` always did. On one month of Icelandic AIS (June 2023, 3.3 M pings, 8,638 same-second pairs) reshuffling the rows changed 22-25 `"forward"` flags and 1-4 `"fwdbwd"` flags before, none after; the lazy `fwdbwd` gave 1,698-1,701 flags over four runs before, 1,697 every time after, equal to the data-frame branch. `method = "clean"` (sda first) was already stable and is unchanged: fishycode's production chain gives the same flags on every ping. The only order effect left is which of two byte-identical rows gets `"vmask"` and which `"spike"`.
 
 ## Review fixes (2026-10-12)
 
