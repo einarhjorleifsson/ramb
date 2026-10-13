@@ -105,7 +105,7 @@ data.frame(
 The error is essentially independent of leg length (it is a radius mismatch, not noise) and is
 systematic: bounded within about ±0.6 % everywhere — worst at the equator going north–south
 (`{r} rel_diff(0, 1, "N") |> round(2)` %) and at 80° N (`{r} rel_diff(80, 1, "N") |> round(2)` %)
-— and roughly ±0.1–0.3 % at mid-to-high latitudes. Being systematic, it does not cancel in
+— and roughly ±0.1–0.3 % at mid-to-high latitudes. *(Corrected 2026-10-13: at Icelandic latitudes, 63–67° N, it has one sign — the haversine distance is shorter by 0.24 % on north–south legs to 0.40 % on east–west ones.)* Being systematic, it does not cancel in
 summed distances such as track kilometres or effort.
 
 ## Execution speed
@@ -198,4 +198,5 @@ off-by-one, which plan 013 assigns to ramb as its own commit.
 Two smaller loose ends remain on the fishycode side, for when it next updates ramb: the local
 `hav()` copy in `curate/checks/whack_floor_measure.R` can be replaced by `rb_calc_distance()`,
 and the `speed` column in `curate/ais_ping_union.R` shifts ~0.1–0.3 % with the new haversine
-default — pin `method = "geodesic"` there or re-run, by decision.
+default — pin `method = "geodesic"` there or re-run, by decision. *(Corrected 2026-10-13: the shift is
+0.24–0.40 %, always downward; fishycode decision 080 took haversine, named in the call.)*
