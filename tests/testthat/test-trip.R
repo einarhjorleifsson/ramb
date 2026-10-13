@@ -200,6 +200,29 @@ test_that("method jepol splits a long voyage at its longest gap", {
   expect_equal(v$T1[2], base + 12 * 3600)
 })
 
+test_that("method jepol: a last ping that is itself a departure neither merges nor stops", {
+  # define_trips() overwrote the last ping's departure with an arrival, one departure
+  # short: after one voyage the departures were recycled into a voyage across the port
+  # stay, after two the run stopped ("departures and arrivals do not pair"), as it did
+  # on 2023 of the Icelandic data. The one-ping voyage at the end now has no duration
+  # and is dropped; the voyages before it are untouched.
+  mk <- function(inh) {
+    data.frame(
+      vid = 1L,
+      time = as.POSIXct("2024-03-01", tz = "UTC") + 3600 * (seq_along(inh) - 1),
+      port_id = ifelse(inh == 1, "P1", NA_character_)
+    )
+  }
+  one <- rb_cut_trip_voyages(mk(c(1, 1, 0, 0, 0, 1, 1, 0)), method = "jepol")
+  expect_equal(nrow(one), 1)
+  expect_equal(one$port_to, "P1")
+  expect_equal(one$n_pings, 4)
+  two <- rb_cut_trip_voyages(mk(c(1, 0, 0, 1, 0, 0, 1, 0)), method = "jepol")
+  expect_equal(nrow(two), 2)
+  expect_true(all(two$port_to == "P1"))
+  expect_true(all(two$T1[-1] >= two$T2[-nrow(two)]))
+})
+
 test_that("method runs numbers the sea runs as the old rb_trip() did, vessel by vessel", {
   # reference: the body of the removed rb_trip()
   rb_trip_ref <- function(x) {

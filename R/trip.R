@@ -683,11 +683,21 @@ FROM ranked WHERE rn = 1",
   if (inh[1] == 0) {
     ev[1] <- 1
   }
-  if (inh[n] == 0) {
+  # At sea at the end: the last ping closes the open voyage. When the last ping is
+  # itself a departure it opens and closes a voyage of one ping, which has no
+  # duration and is dropped below. define_trips() overwrote that departure with an
+  # arrival, one departure short: the departures were then recycled into a voyage
+  # spanning the port stay, or the vessel stopped the run ("do not pair") - 791 of
+  # 34,286 Icelandic vessel-years with port pings end this way.
+  last_dep <- inh[n] == 0 && ev[n] == 1
+  if (inh[n] == 0 && !last_dep) {
     ev[n] <- 2
   }
   dep <- time[ev == 1]
   arr <- time[ev == 2]
+  if (last_dep) {
+    arr <- c(arr, time[n])
+  }
   if (length(dep) != length(arr) && length(dep) != 1 && length(arr) != 1) {
     stop(
       "Vessel ",
