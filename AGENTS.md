@@ -48,8 +48,17 @@ with an `.rb_need()` guard, never in Imports.
   release as a warning alias, then it is removed (done wholesale on
   2026-10-11). fishycode is expected to migrate; NEWS.md carries the fix
   list.
+- Bump `Version` (`YYYY.MM.DD`, `.N` for a second the same day) at every
+  user-facing breaking change, and give NEWS.md's top section that number.
+  A week of hard renames shipped as 2026.10.08.1, and old and new API could
+  not be told apart until 2026.10.13.
 - Data frames and lazy DuckDB tables should give the same result; the tests
   check that they do.
+- Ping filters break ties in time by lon, lat: every engine sorts by
+  `(vid, time, lon, lat)` and the fwdbwd SQL window orders the same way.
+  Parquet reads come back in a different order from run to run, and
+  same-second pings at two places otherwise changed flags (2026-10-13,
+  d0fba61).
 - One distance sphere: Haversine on R = 6,371,000 m is the canonical distance
   basis; `rb_calc_distance()` ([R/track.R](R/track.R)) is the reference of
   record and the same formula is hand-copied into `src/whack_forward.cpp`,
@@ -66,6 +75,14 @@ with an `.rb_need()` guard, never in Imports.
 - DuckDB's `LEAST()`/`GREATEST()` ignore NULLs: never use them as an
   `ASIN`-domain clamp in SQL — NULL coordinates would silently become the
   antipodal distance. Unclamped, NULL propagates correctly.
+- `rb_calc_speed()` and `rb_calc_step_acceleration()` default to
+  `"geodesic"`, not to the filters' sphere. A speed kept as a value sits
+  beside recorded speed over ground, and against SOG the haversine speed
+  errs by heading (35,501 STK legs; fishycode decision 080, 2026-10-13). Do
+  not move a default without a measurement on real data.
+- `rb_calc_distance()`'s named vector form needs all four coordinates:
+  `lon1 = lon`, `lat1 = lat` are the data-frame form's column defaults, and
+  evaluated in the vector form they picked up a global `lon`.
 
 ## Working on the package
 
@@ -76,6 +93,10 @@ with an `.rb_need()` guard, never in Imports.
   only the pass/fail lines, or run via `callr::r(..., show = FALSE)`.
 - Do not stage or commit while articles are being drafted — the
   maintainer commits when an iteration is ready.
+- Commit each finished piece before starting the next: roxygen and code
+  edits pile up in the same files within a session and entangle fast —
+  on 2026-10-12 separating four finished pieces took comment-vs-code
+  hunk splitting and per-commit verification.
 - Format with `air format .` (binary at `~/.local/bin/air`; settings are
   the committed `air.toml`, i.e. explicit defaults — keep diffs free of
   formatting noise). Note: the CRAN package called `air` is an unrelated
@@ -83,6 +104,16 @@ with an `.rb_need()` guard, never in Imports.
 - Re-running `devtools::test()` in the same R session can fail on leftover
   tables in duckdbfs's cached connection; run
   `duckdbfs::close_connection()` first.
+- To test what users get, install a clean `git archive HEAD` with
+  `R CMD INSTALL --preclean` (to a scratch library if need be) and run
+  `testthat::test_dir("tests/testthat", package = "ramb", load_package =
+  "installed")`. `devtools::test()` leaves -O0 objects in `src/` that a later
+  `R CMD INSTALL .` reuses (2.7x slower C++).
+- One test file run alone (`test_dir(filter = )`) can error on lazy-table
+  tests: duckdb's `dbWriteTable` S4 method is not registered until an
+  earlier file has loaded duckdb. Judge by the full suite.
+- Run `roxygen2::roxygenise()` in a UTF-8 locale; otherwise the ö in the
+  maintainer's name is written as `<U+00F6>` in `man/ramb-package.Rd`.
 - `devtools::check()` shows one known, harmless warning from R's own
   `Boolean.h` (`-Wfixed-enum-extension`, toolchain artifact) — not ours.
 - `docs/` is gitignored; `pkgdown::build_site()` output is not committed.
@@ -110,3 +141,10 @@ with an `.rb_need()` guard, never in Imports.
   build-ignored, safe to delete.
 - Known stale corners (do not "fix" blindly): `TOPSECRET.R` and
   `zgarbage/` sit in the repo root, build-ignored.
+- Deliberate keeps from the 2026-10-12 review (do not re-flag):
+  `rb_calc_step_acceleration()` is distance/dt², not Δspeed/Δt
+  (documented as such; no consumer in ramb, fishycode or fishymodel);
+  `.rb_get_ices_gears()`' key column is misnamed `target` (it holds gear
+  codes); `rb_pad_harbour()` keeps its name per plan 013 — its `hid` is
+  a port id, e.g. `port_id` from `rb_flag_ping_port()`, and is to be
+  renamed `port_id` (fishycode TODO 53).
