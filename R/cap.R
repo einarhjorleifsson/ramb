@@ -38,39 +38,27 @@
   return(x)
 }
 
-# Miller limit: highest value of x before a log10 step larger than step_limit
+# Miller limit: highest value of x before a log10 step larger than step_limit.
+# Each branch returns: the earlier `if (!exists("limit"))` fallback also searched
+# the enclosing environments, so a `limit` object anywhere on the search path
+# (the global environment, say) was returned as the cap.
 .rb_miller <- function(x, step_limit = 1.5) {
   w <- x |> unique() |> sort()
   w <- w[w > 0]
 
-  # A: If non-zero values
-  if (length(w) > 0) {
-    log_w <- log10(w)
-    difw <- diff(log_w)
-    # If any step difference greater than set by user, find the maximum value
-    if (any(difw > step_limit)) {
-      valids <- which(difw <= step_limit)
-      if (length(valids) > 0) {
-        # Add one to counter because diff returns a vector of length one less
-        #  than the original data
-        limit <- w[max(valids) + 1]
-      } else {
-        limit <- max(w, na.rm = TRUE)
-      }
-    }
-  }
-
-  # B: If only zero values
+  # No positive values: a cap of 0 leaves x unchanged
   if (length(w) == 0) {
-    limit <- 0
+    return(0)
   }
 
-  # Hail Mary - should really deal with this above
-  if (!exists("limit")) {
-    limit <- max(w, na.rm = TRUE)
+  difw <- diff(log10(w))
+  valids <- which(difw <= step_limit)
+  if (any(difw > step_limit) && length(valids) > 0) {
+    # diff() is one shorter than w, hence the + 1
+    return(w[max(valids) + 1])
   }
 
-  return(limit)
+  max(w)
 }
 
 # Cap x at the highest value before a log10 step larger than step_limit (see .rb_miller above)

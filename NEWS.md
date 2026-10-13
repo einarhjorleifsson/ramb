@@ -1,5 +1,11 @@
 # ramb (development version)
 
+## Review fixes (2026-10-13)
+
+From a review of the 2026-10-09..12 changes against fishycode and the fishydata store:
+
+- `rb_cap_outliers(method = "miller")`: the cap no longer comes from outside the function. The fallback `if (!exists("limit"))` also searched the enclosing environments, so any object called `limit` on the search path was returned as the cap (with `limit <- 0.5` in the global environment, `rb_cap_outliers(c(1, 2, 3), "miller")` gave `0.5 0.5 0.5`). Each branch now returns; on 20,000 random vectors the caps are identical to before when no such object exists.
+
 ## Review fixes (2026-10-12)
 
 From the flagged-issues review; behaviour changes are characterised exactly:
