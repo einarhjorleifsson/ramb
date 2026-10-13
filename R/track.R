@@ -26,7 +26,7 @@
 #' @param method `"haversine"` (default) or `"geodesic"`.
 #' @param lon1,lat1,lon2,lat2 The data-frame form: the coordinate columns (tidy-eval).
 #'   `lon1` and `lat1` default to the grammar names `lon` and `lat`; `lon2` and `lat2`
-#'   are required.
+#'   are required. The named vector form needs all four.
 #'
 #' @return Numeric vector of distances in metres; `NA` where any coordinate is `NA`.
 #'
@@ -68,8 +68,17 @@ rb_calc_distance <- function(
 ) {
   method <- match.arg(method)
 
-  # Named vector form: rb_calc_distance(lon1 = ..., lat1 = ..., lon2 = ..., lat2 = ...)
+  # Named vector form: rb_calc_distance(lon1 = ..., lat1 = ..., lon2 = ..., lat2 = ...).
+  # All four are required: the defaults lon1 = lon, lat1 = lat name columns of the
+  # data-frame form, and evaluated here they would silently pick up any `lon`/`lat`
+  # on the search path (a global `lon <- 5` gave 1,258,560 m instead of an error).
   if (missing(x)) {
+    if (missing(lon1) || missing(lat1) || missing(lon2) || missing(lat2)) {
+      stop(
+        "The named vector form needs all of `lon1`, `lat1`, `lon2` and `lat2`.",
+        call. = FALSE
+      )
+    }
     return(.rb_dist(lon1, lat1, lon2, lat2, method))
   }
 

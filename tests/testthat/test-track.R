@@ -28,6 +28,19 @@ test_that("rb_calc_distance() keeps the named vector form", {
   expect_error(rb_calc_distance(0, 64, 0), "vector form")
 })
 
+test_that("rb_calc_distance() named vector form needs all four coordinates", {
+  # lon1 = lon is the data-frame default; in the vector form it used to pick up a
+  # `lon` on the search path and return a wrong distance without complaint
+  expect_error(
+    rb_calc_distance(lat1 = 64, lon2 = -21, lat2 = 64),
+    "needs all of"
+  )
+  expect_error(
+    rb_calc_distance(lon1 = -22, lat1 = 64, lon2 = -21),
+    "needs all of"
+  )
+})
+
 test_that("rb_calc_distance(method = \"geodesic\") matches traipse's geodesic", {
   skip_if_not_installed("traipse")
   set.seed(7)

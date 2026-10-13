@@ -24,7 +24,7 @@ form: a data frame with the coordinate columns.}
 
 \item{lon1, lat1, lon2, lat2}{The data-frame form: the coordinate columns (tidy-eval).
 \code{lon1} and \code{lat1} default to the grammar names \code{lon} and \code{lat}; \code{lon2} and \code{lat2}
-are required.}
+are required. The named vector form needs all four.}
 }
 \value{
 Numeric vector of distances in metres; \code{NA} where any coordinate is \code{NA}.
