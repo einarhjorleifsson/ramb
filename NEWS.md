@@ -1,4 +1,4 @@
-# ramb (development version)
+# ramb 2026.10.13
 
 ## Review fixes (2026-10-13)
 
