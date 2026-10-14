@@ -181,8 +181,10 @@ test_that("acceptance: landings only, per trip, per week, per month and since th
     speed = ifelse(as.integer(format(tt, "%H")) %in% 8:15, 3, 10)
   )
   p$voyage <- cumsum(c(1, diff(as.integer(format(tt, "%u")) %in% c(1, 4)) > 0))
-  # fishing from the track (item 3 replaces this rule with rb_assign_fishing()'s speed method)
-  p$fishing <- p$speed >= 2 & p$speed <= 4
+  # fishing from the track: the gear's speed range on every ping, no record needed
+  p$speed_min <- 2
+  p$speed_max <- 4
+  p <- rb_assign_fishing(p, method = "speed")
   p <- rb_assign_effort(p, by = "voyage")
   voy <- dplyr::summarise(
     p,

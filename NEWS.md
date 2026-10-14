@@ -1,3 +1,10 @@
+# ramb 2026.10.14.8
+
+Step 4 at any data resolution (fishycode plan 013, item 3): the track decides where the record is missing.
+
+- `rb_assign_fishing()`: new `method = "speed"`, the speed range on the ping itself (`ping_speed_min`, `ping_speed_max`: the gear's range, e.g. from the voyage's trip or landing), with no record needed. `method` may now name both, as a cascade tried in order for each ping: `c("window", "speed")` takes the record's window where one holds the ping and the speed range elsewhere. With `"speed"` in `method`, `<name>_basis` says which decided (`"window"`, `"speed"` or `"none"`). New `name`, so each approach can stand as a column of its own. `method = "window"` alone is unchanged.
+- `rb_assign_fishing()` is the second function to check its input against the step registry: a missing speed column, a time that is not a date-time, a column it would overwrite, or `"window"` without matches stop with a message that says what to run.
+
 # ramb 2026.10.14.7
 
 Step 6 rewritten to the grammar (fishycode plan 013, item 2): catch is shared at the finest level the data can separate, at any resolution, and no kilogram is lost.

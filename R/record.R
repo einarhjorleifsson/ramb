@@ -486,10 +486,23 @@ rb_assign_record <- function(
 
 #' Decide whether each ping is fishing
 #'
-#' Step 4 of the flow. `method = "window"`: a ping is fishing when a window that holds it is of a phase that
-#' can be fishing and its speed is inside that window's speed range. It is NA when such a window holds it but
-#' the ping has no speed (unknown, not FALSE), and FALSE for a ping in no window, or only in windows that
-#' cannot be fishing (a set, or a gear with no speed range).
+#' Step 4 of the flow, at any data resolution. Two methods, used alone or as a cascade:
+#'
+#' * `"window"`: a ping is fishing when a record's window that holds it ([rb_link_record_pings()]) is of a
+#'   phase that can be fishing and its speed is inside that window's speed range. It is NA when such a window
+#'   holds it but the ping has no speed (unknown, not FALSE), and FALSE for a ping in no window, or only in
+#'   windows that cannot be fishing (a set, or a gear with no speed range).
+#' * `"speed"`: a ping is fishing when its speed is inside the speed range on the ping itself
+#'   (`ping_speed_min`, `ping_speed_max`: the gear's range, e.g. from the voyage's logbook trip or its landing).
+#'   No record is needed. NA where the ping has no range or no speed.
+#'
+#' Given both, `method` is a cascade, tried in order for each ping: `c("window", "speed")` takes the window
+#' where a record's window holds the ping, and the speed range elsewhere, so the track decides where the record
+#' is missing (fishycode plan 013, item 3). A ping that neither method can decide is NA. With `"speed"` in
+#' `method`, `<name>_basis` says which method decided each ping: `"window"`, `"speed"` or `"none"`.
+#'
+#' Each approach can be kept as a column of its own (`name`), so the effort and catch of each can be summed
+#' and compared ([rb_assign_effort()], [rb_share_catch()]).
 #'
 #' With `window_s`, the speed tested is the median over `window_s` seconds either side of the ping
 #' ([rb_calc_speed_smooth()]), not its own. ±10 minutes (`window_s = 600`) called 92.7 % of the Icelandic
@@ -499,56 +512,144 @@ rb_assign_record <- function(
 #'
 #' @param pings A data frame or lazy DuckDB table with `vid`, `time` and the speed column; all its columns
 #'   are kept.
-#' @param matches Matches from [rb_link_record_pings()] (with the speed range columns).
-#' @param method Only `"window"` so far; the track-only methods are planned for a later release.
-#' @param not_fishing,speed,speed_min,speed_max As in [rb_link_record_pings()].
+#' @param matches Matches from [rb_link_record_pings()] (with the speed range columns); needed for `"window"`.
+#' @param method `"window"` (the default), `"speed"`, or both in the order to try them.
+#' @param not_fishing,speed,speed_min,speed_max As in [rb_link_record_pings()]: the phases that are never
+#'   fishing, the pings' speed column, and the matches' speed range columns.
 #' @param window_s Half the speed window, in seconds; 0 (the default) tests each ping's own speed.
-#' @return `pings` with `fishing`.
+#' @param ping_speed_min,ping_speed_max The speed range columns on the pings, for `"speed"`.
+#' @param name The name of the column added.
+#' @return `pings` with `name` (and `<name>_basis` when `"speed"` is used).
 #' @export
 rb_assign_fishing <- function(
   pings,
-  matches,
+  matches = NULL,
   method = "window",
   not_fishing = "set",
   speed = "speed",
   speed_min = "speed_min",
   speed_max = "speed_max",
-  window_s = 0
+  window_s = 0,
+  ping_speed_min = speed_min,
+  ping_speed_max = speed_max,
+  name = "fishing"
 ) {
-  method <- match.arg(method)
+  method <- unique(match.arg(method, c("window", "speed"), several.ok = TRUE))
+  by_speed <- "speed" %in% method
+  proto <- .rb_check_input(
+    pings,
+    "rb_assign_fishing",
+    cols = c(speed = speed),
+    also = if (by_speed) {
+      c(ping_speed_min = ping_speed_min, ping_speed_max = ping_speed_max)
+    },
+    types = c(time = "time", speed = "numeric")
+  )
+  if (name %in% names(proto)) {
+    rlang::abort(c(
+      sprintf("`pings` already has a column `%s`.", name),
+      i = "Give this approach another `name`, or drop the column."
+    ))
+  }
+  if ("window" %in% method && is.null(matches)) {
+    rlang::abort(c(
+      "`matches` must be given for method \"window\".",
+      i = "Run first: matches <- rb_link_record_pings(pings, windows)"
+    ))
+  }
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
   p_sql <- .rb_in_sql(pings, con)
-  m_sql <- .rb_in_sql(matches, con)
   q <- function(x) .rb_q(con, x)
-  lst <- paste0("'", not_fishing, "'", collapse = ", ")
-  lo <- q(speed_min)
-  hi <- q(speed_max)
   sp <- q(speed)
   # the speed tested: the ping's own, or its windowed median over the pings given
-  ps_sql <- if (window_s == 0) {
+  ps_sql <- sprintf(
+    "SELECT *, %s AS rb_sp FROM (%s)",
+    .rb_speed_smooth_sql(sp, window_s),
     p_sql
-  } else {
-    sprintf(
-      "SELECT vid, time, %s AS %s FROM (%s)",
-      .rb_speed_smooth_sql(sp, window_s),
-      sp,
-      p_sql
-    )
-  }
-  sql <- .rb_fill(
-    "
-  WITH m AS (SELECT m.vid, m.time, m.phase, m.{lo} AS lo, m.{hi} AS hi, p.{sp} AS sp
-             FROM ({m_sql}) m JOIN ({ps_sql}) p ON p.vid = m.vid AND p.time = m.time),
-  a AS (
+  )
+  win <- "window" %in% method
+  a_sql <- if (win) {
+    m_sql <- .rb_in_sql(matches, con)
+    lst <- paste0("'", not_fishing, "'", collapse = ", ")
+    lo <- q(speed_min)
+    hi <- q(speed_max)
+    .rb_fill(
+      "
+    WITH m AS (SELECT m.vid, m.time, m.phase, m.{lo} AS lo, m.{hi} AS hi, p.rb_sp AS sp
+               FROM ({m_sql}) m JOIN ({ps_sql}) p ON p.vid = m.vid AND p.time = m.time)
     SELECT vid, time,
       CASE WHEN bool_or(CASE WHEN phase IN ({lst}) OR lo IS NULL THEN FALSE WHEN sp IS NULL THEN NULL
                              ELSE sp BETWEEN lo AND hi END) THEN TRUE
            WHEN count(*) FILTER (WHERE NOT (phase IN ({lst}) OR lo IS NULL) AND sp IS NULL) > 0 THEN NULL
            ELSE FALSE END AS fishing
-    FROM m GROUP BY vid, time)
-  SELECT p.*, CASE WHEN a.vid IS NULL THEN FALSE ELSE a.fishing END AS fishing
-  FROM ({p_sql}) p LEFT JOIN a ON a.vid = p.vid AND a.time = p.time"
+    FROM m GROUP BY vid, time"
+    )
+  } else {
+    "SELECT CAST(NULL AS INTEGER) AS vid, CAST(NULL AS TIMESTAMP) AS time, CAST(NULL AS BOOLEAN) AS fishing WHERE FALSE"
+  }
+  in_win <- "a.vid IS NOT NULL"
+  has_rng <- if (by_speed) {
+    sprintf(
+      "(p.%s IS NOT NULL AND p.%s IS NOT NULL)",
+      q(ping_speed_min),
+      q(ping_speed_max)
+    )
+  } else {
+    "FALSE"
+  }
+  by_spd <- if (by_speed) {
+    sprintf(
+      "CASE WHEN p.rb_sp IS NULL THEN NULL ELSE p.rb_sp BETWEEN p.%s AND p.%s END",
+      q(ping_speed_min),
+      q(ping_speed_max)
+    )
+  } else {
+    "NULL"
+  }
+  if (identical(method, "window")) {
+    val <- sprintf("CASE WHEN %s THEN a.fishing ELSE FALSE END", in_win)
+    basis <- NULL
+  } else if (identical(method, "speed")) {
+    val <- sprintf("CASE WHEN %s THEN %s END", has_rng, by_spd)
+    basis <- sprintf("CASE WHEN %s THEN 'speed' ELSE 'none' END", has_rng)
+  } else if (identical(method, c("window", "speed"))) {
+    val <- sprintf(
+      "CASE WHEN %s THEN a.fishing WHEN %s THEN %s END",
+      in_win,
+      has_rng,
+      by_spd
+    )
+    basis <- sprintf(
+      "CASE WHEN %s THEN 'window' WHEN %s THEN 'speed' ELSE 'none' END",
+      in_win,
+      has_rng
+    )
+  } else {
+    val <- sprintf(
+      "CASE WHEN %s THEN %s WHEN %s THEN a.fishing END",
+      has_rng,
+      by_spd,
+      in_win
+    )
+    basis <- sprintf(
+      "CASE WHEN %s THEN 'speed' WHEN %s THEN 'window' ELSE 'none' END",
+      has_rng,
+      in_win
+    )
+  }
+  sql <- sprintf(
+    "SELECT p.* EXCLUDE (rb_sp), %s AS %s%s
+     FROM (%s) p LEFT JOIN (%s) a ON a.vid = p.vid AND a.time = p.time",
+    val,
+    q(name),
+    if (is.null(basis)) {
+      ""
+    } else {
+      sprintf(", %s AS %s", basis, q(paste0(name, "_basis")))
+    },
+    ps_sql,
+    a_sql
   )
   .rb_out(con, sql, lazy_in, by = c("vid", "time"))
 }

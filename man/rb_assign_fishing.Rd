@@ -6,37 +6,60 @@
 \usage{
 rb_assign_fishing(
   pings,
-  matches,
+  matches = NULL,
   method = "window",
   not_fishing = "set",
   speed = "speed",
   speed_min = "speed_min",
   speed_max = "speed_max",
-  window_s = 0
+  window_s = 0,
+  ping_speed_min = speed_min,
+  ping_speed_max = speed_max,
+  name = "fishing"
 )
 }
 \arguments{
 \item{pings}{A data frame or lazy DuckDB table with \code{vid}, \code{time} and the speed column; all its columns
 are kept.}
 
-\item{matches}{Matches from \code{\link[=rb_link_record_pings]{rb_link_record_pings()}} (with the speed range columns).}
+\item{matches}{Matches from \code{\link[=rb_link_record_pings]{rb_link_record_pings()}} (with the speed range columns); needed for \code{"window"}.}
 
-\item{method}{Only \code{"window"} so far; the track-only methods are planned for a later release.}
+\item{method}{\code{"window"} (the default), \code{"speed"}, or both in the order to try them.}
 
-\item{not_fishing, speed, speed_min, speed_max}{As in \code{\link[=rb_link_record_pings]{rb_link_record_pings()}}.}
+\item{not_fishing, speed, speed_min, speed_max}{As in \code{\link[=rb_link_record_pings]{rb_link_record_pings()}}: the phases that are never
+fishing, the pings' speed column, and the matches' speed range columns.}
 
 \item{window_s}{Half the speed window, in seconds; 0 (the default) tests each ping's own speed.}
+
+\item{ping_speed_min, ping_speed_max}{The speed range columns on the pings, for \code{"speed"}.}
+
+\item{name}{The name of the column added.}
 }
 \value{
-\code{pings} with \code{fishing}.
+\code{pings} with \code{name} (and \verb{<name>_basis} when \code{"speed"} is used).
 }
 \description{
-Step 4 of the flow. \code{method = "window"}: a ping is fishing when a window that holds it is of a phase that
-can be fishing and its speed is inside that window's speed range. It is NA when such a window holds it but
-the ping has no speed (unknown, not FALSE), and FALSE for a ping in no window, or only in windows that
-cannot be fishing (a set, or a gear with no speed range).
+Step 4 of the flow, at any data resolution. Two methods, used alone or as a cascade:
 }
 \details{
+\itemize{
+\item \code{"window"}: a ping is fishing when a record's window that holds it (\code{\link[=rb_link_record_pings]{rb_link_record_pings()}}) is of a
+phase that can be fishing and its speed is inside that window's speed range. It is NA when such a window
+holds it but the ping has no speed (unknown, not FALSE), and FALSE for a ping in no window, or only in
+windows that cannot be fishing (a set, or a gear with no speed range).
+\item \code{"speed"}: a ping is fishing when its speed is inside the speed range on the ping itself
+(\code{ping_speed_min}, \code{ping_speed_max}: the gear's range, e.g. from the voyage's logbook trip or its landing).
+No record is needed. NA where the ping has no range or no speed.
+}
+
+Given both, \code{method} is a cascade, tried in order for each ping: \code{c("window", "speed")} takes the window
+where a record's window holds the ping, and the speed range elsewhere, so the track decides where the record
+is missing (fishycode plan 013, item 3). A ping that neither method can decide is NA. With \code{"speed"} in
+\code{method}, \verb{<name>_basis} says which method decided each ping: \code{"window"}, \code{"speed"} or \code{"none"}.
+
+Each approach can be kept as a column of its own (\code{name}), so the effort and catch of each can be summed
+and compared (\code{\link[=rb_assign_effort]{rb_assign_effort()}}, \code{\link[=rb_share_catch]{rb_share_catch()}}).
+
 With \code{window_s}, the speed tested is the median over \code{window_s} seconds either side of the ping
 (\code{\link[=rb_calc_speed_smooth]{rb_calc_speed_smooth()}}), not its own. ±10 minutes (\code{window_s = 600}) called 92.7 \% of the Icelandic
 fixes in recorded tows fishing, against 89.2 \% on their own speed (fishycode decision 090). The window sees

@@ -338,3 +338,80 @@ test_that("durations above the gear's limit become NA, the raw value is kept", {
     ignore_attr = TRUE
   )
 })
+
+test_that("fishing by speed and as a cascade: the window where a record holds the ping, the track elsewhere", {
+  skip_if_not_installed("duckdbfs")
+  w <- rb_build_record_windows(records[1, ], min_hauls = 1) # one tow, 06:00-10:00 (t2 0, t3 4)
+  pings <- tibble::tibble(
+    vid = 1L,
+    time = h(c(1, 2, 12, 13, 14, 15)),
+    speed = c(3, 9, 3, 9, 3, NA),
+    lo = c(2, 2, 2, 2, NA, 2),
+    hi = c(5, 5, 5, 5, NA, 5)
+  )
+  m <- rb_link_record_pings(pings, w, speed_min = "s1", speed_max = "s2")
+  win <- rb_assign_fishing(pings, m, speed_min = "s1", speed_max = "s2")
+  expect_equal(win$fishing, c(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE)) # unchanged: no window, not fishing
+  expect_false("fishing_basis" %in% names(win))
+  spd <- rb_assign_fishing(
+    pings,
+    method = "speed",
+    ping_speed_min = "lo",
+    ping_speed_max = "hi"
+  )
+  expect_equal(spd$fishing, c(TRUE, FALSE, TRUE, FALSE, NA, NA))
+  expect_equal(
+    spd$fishing_basis,
+    c("speed", "speed", "speed", "speed", "none", "speed")
+  )
+  cas <- rb_assign_fishing(
+    pings,
+    m,
+    method = c("window", "speed"),
+    speed_min = "s1",
+    speed_max = "s2",
+    ping_speed_min = "lo",
+    ping_speed_max = "hi",
+    name = "fishing_flow"
+  )
+  expect_equal(cas$fishing_flow, c(TRUE, FALSE, TRUE, FALSE, NA, NA))
+  expect_equal(
+    cas$fishing_flow_basis,
+    c("window", "window", "speed", "speed", "none", "speed")
+  )
+  # side by side: a second approach is a column of its own; the same name twice stops
+  both <- rb_assign_fishing(
+    win,
+    m,
+    method = c("window", "speed"),
+    speed_min = "s1",
+    speed_max = "s2",
+    ping_speed_min = "lo",
+    ping_speed_max = "hi",
+    name = "fishing_flow"
+  )
+  expect_equal(both$fishing, win$fishing)
+  expect_error(
+    rb_assign_fishing(win, m, speed_min = "s1", speed_max = "s2"),
+    "already has"
+  )
+  expect_error(
+    rb_assign_fishing(pings, method = "window"),
+    "rb_link_record_pings"
+  )
+  lz <- dplyr::collect(rb_assign_fishing(
+    duckdbfs::as_dataset(pings),
+    duckdbfs::as_dataset(m),
+    method = c("window", "speed"),
+    speed_min = "s1",
+    speed_max = "s2",
+    ping_speed_min = "lo",
+    ping_speed_max = "hi",
+    name = "fishing_flow"
+  ))
+  expect_equal(
+    as.data.frame(lz[order(lz$time), ]),
+    as.data.frame(cas),
+    ignore_attr = TRUE
+  )
+})
