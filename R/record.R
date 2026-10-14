@@ -247,6 +247,9 @@ rb_build_record_windows <- function(
 #' @param phase_rank Phases in order of preference when one record matches a ping in several of them.
 #' @param not_fishing Phases that are never fishing.
 #' @param speed,speed_min,speed_max The ping speed and the window's speed range columns.
+#' @param window_s Half the speed window for `fishing`, in seconds, as in [rb_assign_fishing()]: the median
+#'   speed over the pings given within `window_s` either side ([rb_calc_speed_smooth()]); 0 (the default) tests
+#'   each ping's own speed.
 #' @return One row per (ping, record): `vid`, `time`, the key, the carried columns, `phase`, `phase_frac`
 #'   (how far into the window, NA for a fallback window), `w_start`, `w_end` and `fishing` (the ping's speed
 #'   is in the range of a phase that can be fishing; NA when the speed or range is missing).
@@ -261,7 +264,8 @@ rb_link_record_pings <- function(
   not_fishing = "set",
   speed = "speed",
   speed_min = "speed_min",
-  speed_max = "speed_max"
+  speed_max = "speed_max",
+  window_s = 0
 ) {
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
@@ -271,6 +275,15 @@ rb_link_record_pings <- function(
   )
   w_sql <- .rb_in_sql(windows, con)
   q <- function(x) .rb_q(con, x)
+  # the speed tested: the ping's own, or its windowed median over all the pings given (before the windows)
+  if (window_s > 0) {
+    p_sql <- sprintf(
+      "SELECT vid, time, %s AS %s FROM (%s)",
+      .rb_speed_smooth_sql(q(speed), window_s),
+      q(speed),
+      p_sql
+    )
+  }
   lst <- function(x) paste0("'", x, "'", collapse = ", ")
   wcols <- unique(c(key, carry, speed_min, speed_max))
   wsel <- paste0("w.", q(wcols), collapse = ", ")

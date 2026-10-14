@@ -1,3 +1,7 @@
+# ramb 2026.10.14.5
+
+- `rb_link_record_pings()`: new argument `window_s`, as in `rb_assign_fishing()`. The `fishing` of each match then tests the median speed over the pings given within `window_s` either side, so the matches and `rb_assign_fishing()` agree when both get the same pings and window. The default 0 keeps each ping's own speed; results are unchanged unless it is set.
+
 # ramb 2026.10.14.4
 
 The track's own account of the tows, paired with the declared ones (fishycode TODO 59; the prototype and its numbers are fishycode decision 090). Ported from that prototype and checked against it on the Icelandic data: June 2023's 4,237 tow operations pair tow for tow as there, 99.0 % of them, with the start within 15 / 30 minutes for 54.4 / 76.8 % and the end for 51.1 / 66.1 %.

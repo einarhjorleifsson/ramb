@@ -237,6 +237,16 @@ test_that("fishing on the windowed speed: a spike inside a tow is fishing; data 
     sum(f10$fishing, na.rm = TRUE),
     sum(f0$fishing, na.rm = TRUE) + 1
   )
+  # the matches test the same windowed speed
+  m10 <- rb_link_record_pings(
+    pings,
+    w,
+    speed_min = "s1",
+    speed_max = "s2",
+    window_s = 600
+  )
+  expect_equal(m10$fishing, f10$fishing[match(m10$time, f10$time)])
+  expect_true(m10$fishing[m10$time == pings$time[61]])
 })
 
 test_that("event times: a start takes the next ping, an end the previous; the gap; data frame = lazy table", {

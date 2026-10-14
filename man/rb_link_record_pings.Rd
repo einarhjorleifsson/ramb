@@ -14,7 +14,8 @@ rb_link_record_pings(
   not_fishing = "set",
   speed = "speed",
   speed_min = "speed_min",
-  speed_max = "speed_max"
+  speed_max = "speed_max",
+  window_s = 0
 )
 }
 \arguments{
@@ -34,6 +35,10 @@ columns and the \code{carry} columns.}
 \item{not_fishing}{Phases that are never fishing.}
 
 \item{speed, speed_min, speed_max}{The ping speed and the window's speed range columns.}
+
+\item{window_s}{Half the speed window for \code{fishing}, in seconds, as in \code{\link[=rb_assign_fishing]{rb_assign_fishing()}}: the median
+speed over the pings given within \code{window_s} either side (\code{\link[=rb_calc_speed_smooth]{rb_calc_speed_smooth()}}); 0 (the default) tests
+each ping's own speed.}
 }
 \value{
 One row per (ping, record): \code{vid}, \code{time}, the key, the carried columns, \code{phase}, \code{phase_frac}
