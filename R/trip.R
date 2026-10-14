@@ -31,6 +31,27 @@
     try(duckdb::duckdb_unregister(con, nm), silent = TRUE)
     rm(list = nm, envir = .rb_reg)
   }
+  for (nm in ls(.rb_tmp)) {
+    try(
+      DBI::dbExecute(con, sprintf("DROP TABLE IF EXISTS %s", nm)),
+      silent = TRUE
+    )
+    rm(list = nm, envir = .rb_tmp)
+  }
+}
+# A query materialised once as a temporary table, where a function reads it twice and both reads must agree.
+# Dropped with the registered frames when the function collects its result; kept while a lazy result needs it.
+.rb_tmp <- new.env(parent = emptyenv())
+.rb_temp_table <- function(con, sql, keep = FALSE) {
+  nm <- paste0(
+    "rb_tmp_",
+    paste(sample(c(letters, 0:9), 10, TRUE), collapse = "")
+  )
+  DBI::dbExecute(con, sprintf("CREATE TEMP TABLE %s AS %s", nm, sql))
+  if (!keep) {
+    assign(nm, TRUE, envir = .rb_tmp)
+  }
+  nm
 }
 .rb_as_lazy <- function(x, con) {
   if (inherits(x, "tbl_lazy")) {

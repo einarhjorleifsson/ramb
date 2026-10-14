@@ -1,3 +1,7 @@
+# ramb 2026.10.14.14
+
+- `rb_build_catch_units()`: an event with no `start` now starts where the vessel's latest event that ends strictly earlier ends. Two events ending together (two landings in a day, one per buyer) get the same start and share a unit. Before, they were ordered by an arbitrary tie, which could differ between two evaluations of the same query; and the function evaluated its islands twice (for the key links, then for the result), so an event could fall in two units and its catch be counted twice (fishycode decision 102: 1,751 t too many in 2007, stopped by fishycode's kilograms check). The islands are now computed once, as a temporary table.
+
 # ramb 2026.10.14.13
 
 The step registry, item 0 of fishycode plan 013, now covers the flow's step functions.

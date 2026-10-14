@@ -69,12 +69,16 @@ rb_build_catch_units <- function(
   e_sql <- .rb_in_sql(events, con)
   part <- paste(c(q(vid), q("level"), q(match_by)), collapse = ", ")
   ord <- paste(c(q(start), q(end), q(key)), collapse = ", ")
+  # the previous event is the latest that ends strictly earlier: two events of a vessel ending together (two
+  # landings in a day, one per buyer) get the same start, so they share a unit, and no tie is left to chance
+  # (fishycode decision 102)
   isl_sql <- .rb_fill(
     "
   WITH e0 AS (
     SELECT e.* REPLACE (
              CASE WHEN e.{q(start)} IS NULL
-                  THEN coalesce(lag(e.{q(end)}) OVER (PARTITION BY e.{q(vid)}, e.{q('level')} ORDER BY e.{q(end)}),
+                  THEN coalesce(max(e.{q(end)}) OVER (PARTITION BY e.{q(vid)}, e.{q('level')} ORDER BY e.{q(end)}
+                                    RANGE BETWEEN UNBOUNDED PRECEDING AND INTERVAL 1 MICROSECOND PRECEDING),
                                 e.{q(end)} - INTERVAL '{max_days}' DAY)
                   ELSE e.{q(start)} END AS {q(start)}),
            e.{q(start)} IS NULL AS start_filled
@@ -87,6 +91,9 @@ rb_build_catch_units <- function(
          FROM e1)
   SELECT * EXCLUDE (rb_prev_end, rb_isl), dense_rank() OVER (ORDER BY {part}, rb_isl) AS rb_island FROM e2"
   )
+  # the islands are computed once: the links below and the result must see the same island numbers
+  isl_name <- .rb_temp_table(con, isl_sql, keep = lazy_in)
+  isl_sql <- sprintf("SELECT * FROM %s", isl_name)
   # islands that share an event key are one unit: their links are few, and are resolved in R
   same <- paste(
     sprintf("a.%s = b.%s", q(c(key, vid, "level")), q(c(key, vid, "level"))),

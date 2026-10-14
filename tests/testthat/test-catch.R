@@ -279,3 +279,44 @@ test_that("misuse names the step to run first; method eflalo keeps the ICES shar
   o <- rb_share_catch(ep, ee, method = "eflalo")
   expect_equal(sum(o$LE_KG, na.rm = TRUE), 90)
 })
+
+test_that("units are the same every run: landings tied on their day, and a landing over two islands", {
+  skip_if_not_installed("duckdbfs")
+  d <- as.POSIXct("2024-05-01", tz = "UTC")
+  ev <- tibble::tibble(
+    id = c("L1", "L2", "L3", "L4", "L4"),
+    vid = 1L,
+    start = d + c(NA, NA, NA, 20, 23) * 86400,
+    end = c(
+      d + 86400,
+      d + 86400,
+      d + 5 * 86400,
+      d + 21 * 86400,
+      d + 24 * 86400
+    ),
+    level = 4L,
+    resolution = c(
+      "landing",
+      "landing",
+      "landing",
+      "landing_trip",
+      "landing_trip"
+    )
+  )
+  runs <- lapply(1:5, function(i) {
+    u <- dplyr::collect(rb_build_catch_units(
+      duckdbfs::as_dataset(ev),
+      key = "id"
+    ))
+    u[order(u$id, u$start), c("id", "start", "unit_id")]
+  })
+  for (r in runs[-1]) {
+    expect_equal(as.data.frame(r), as.data.frame(runs[[1]]), ignore_attr = TRUE)
+  }
+  u <- runs[[1]]
+  expect_true(all(tapply(u$unit_id, u$id, function(x) length(unique(x))) == 1)) # one unit per event
+  # L1 and L2 land the same day: the same start, one unit; L3 starts where they end
+  expect_equal(u$start[u$id == "L2"], u$start[u$id == "L1"])
+  expect_equal(u$unit_id[u$id == "L2"], u$unit_id[u$id == "L1"])
+  expect_equal(u$start[u$id == "L3"], d + 86400)
+})
