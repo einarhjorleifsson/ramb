@@ -22,15 +22,16 @@ columns.}
 \item{key}{The columns that identify a record.}
 
 \item{starts, ends}{The event-time columns that open a phase (they take the next ping) and close one (the
-previous ping); each a timestamp or \code{NA}.}
+previous ping); each a timestamp or \code{NA}. \code{starts[i]} and \code{ends[i]} bound one phase.}
 
 \item{max_dt_s}{The farthest the ping may be from the event, in seconds; farther, and \code{time} and \code{dt_s} are \code{NA}.}
 }
 \value{
 One row per (record, event time present): the key, \code{vid}, \code{event} (the column name), \code{event_time},
 \code{time} (the ping's time), \code{dt_s} (\code{time - event_time}, in seconds: at least 0 for a start, at most 0 for an
-end) and \code{gap_s} (the time between the last ping at or before the event and the first at or after it; 0 when
-a ping falls on it, \code{NA} when the track does not reach both sides).
+end), \code{gap_s} (the time between the last ping at or before the event and the first at or after it; 0 when
+a ping falls on it, \code{NA} when the track does not reach both sides) and \code{ping_lost} (\code{TRUE} when the bounding
+ping, within \code{max_dt_s}, went to a nearer event of another record or phase; \code{time} and \code{dt_s} are then \code{NA}).
 }
 \description{
 A logbook record's event times bound its phases: \code{t1} to \code{t2} is the setting, \code{t3} to \code{t4} the hauling, and for a
@@ -40,4 +41,12 @@ its end's ping are the phase; the pings strictly between a \code{t2} and a \code
 the start's ping comes after the end's. Each row also carries the gap between the pings on either side of the
 event: how precisely the track can place it. A missing event time gives no row. The first building block of
 reconciling declared times with the track.
+}
+\details{
+A ping bounds the events of at most one record, and of one phase of it (the \code{i}-th start and the \code{i}-th end
+bound one phase, so the start and end of a phase holding one ping share it). When events of two records, or
+of two phases of one, would share a ping, the one nearer to it in time keeps it; on a tie the earlier event
+time, then the lower key. The others get no ping (\code{ping_lost}), and their \code{gap_s} shows that the track cannot
+resolve them. Exclusivity holds within one call: split a large job by vessel, or keep the events near a split
+in both parts and each event's row from one of them.
 }

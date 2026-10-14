@@ -41,7 +41,9 @@ One row per (ping, record): \code{vid}, \code{time}, the key, the carried column
 is in the range of a phase that can be fishing; NA when the speed or range is missing).
 }
 \description{
-A ping matches every window of its vessel that contains its time. Windows of a \code{fallback} phase (the
-whole-day windows) claim only pings that no other window claims. A record matched in two of its own phases
-counts once, the phase earliest in \code{phase_rank} winning. Ambiguity is kept: one row per (ping, record).
+A ping matches every window of its vessel that contains its time; a window is half-open, so a ping at
+\code{w_end} is not in it. Windows of a \code{fallback} phase (the whole-day windows) claim only pings that no other
+window claims. A record matched in two of its own phases counts once, the phase earliest in \code{phase_rank}
+winning. The result is a table of candidates: windows that overlap (two records on one whole day, or windows
+built by other rules than \code{\link[=rb_build_record_windows]{rb_build_record_windows()}}) give one row per (ping, record).
 }

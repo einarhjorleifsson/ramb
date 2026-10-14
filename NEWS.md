@@ -1,3 +1,16 @@
+# ramb 2026.10.14.2
+
+A ping belongs to at most one logbook record, and to one phase of it (fishycode's maintainer, 2026-10-14; fishycode decisions 090 and 091). Counted on the Icelandic logbooks and AIS (fishycode, all years 2007-2026; fixes for 2023).
+
+- `rb_build_record_windows()`: the windows of a vessel other than `day` no longer overlap (47,515 of 5.06 M overlapped before, none now). They are put in one order (start, end, then the record, the lower key last), and a window ends where a later start that may cut it begins:
+  - the recorded start of a tow, haul or jig cuts any window: jig windows are now cut too (2,107), where before they never were;
+  - a set's start (`t1`) cuts only an earlier set. It never cuts a haul, because a gillnetter may set one net and go on hauling another. Cutting the hauls instead would have left 30.7k haul fixes of 2023 in no window, two thirds of them at hauling speed;
+  - a window that starts inside one it may not cut starts at that window's end, and so does a start that is not a logbook time (the typical haul before `t4`, a jig `duration_m` before `t4`). The new column `win_opened_by` says `"previous_event"` (27,598 windows, 26,745 of them sets inside a haul, tow or jig);
+  - of two windows with the same start, the one that ends first is cut to nothing; of identical windows (twin records), the one with the higher key. The row is kept with `w_end = w_start`. In all 34,776 windows are cut to nothing: 11,720 of twins, 16,248 other sets inside a haul, and 6,808 more, 6,722 of them same-start ties.
+  `day` windows now end at midnight (`date + 1 day`), not one second before, because windows are half-open.
+- `rb_link_record_pings()`: windows are half-open, `[w_start, w_end)`, so a ping at a window's end is no longer in it. With the windows above, 2023's fixes in two or more tier-1 windows went from 98,955 to none, 1,120 of 5.17 M fixes lost their window, and 521 of 4.14 M fishing fixes were no longer fishing.
+- `rb_link_record_events()`: a ping now bounds the events of at most one record and one phase (`starts[i]` and `ends[i]` bound phase `i`, so a phase of one ping keeps both its events). When two would share a ping, the event nearer in time keeps it, then the earlier event time, then the lower key. The others get `time` and `dt_s` `NA` and the new column `ping_lost` `TRUE`; their `gap_s` is unchanged. Exclusivity holds within one call. On fishycode's 10.99 M event times (`max_dt_s` 1 h), 79,860 lost their ping (0.7 %).
+
 # ramb 2026.10.14.1
 
 - `rb_link_record_events()`: an event now takes the ping that bounds its phase, not the nearest one. `starts` (default `t1`, `t3`) take the next ping and `ends` (`t2`, `t4`) the previous, so the pings from a start's ping to its end's are the setting or the hauling, and the pings strictly between a `t2` and a `t3` are a tow; the `events` argument is gone (fishycode's maintainer, 2026-10-14). The nearest ping was the one before the event for half of all events, so on one year of Icelandic data (2023) it fell inside the record's own recorded tow or haul for 49-50 % of them; the bounding ping does for 97-99 %, the rest being phases shorter than the gap between pings. `dt_s` is now at least 0 for a start and at most 0 for an end.

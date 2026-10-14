@@ -17,7 +17,7 @@ rb_build_record_windows(records, key = c(".sid", "schema"), min_hauls = 50)
 }
 \value{
 The windows: the record's columns (without \code{date}), \code{phase}, \code{w_start}, \code{w_end}, \code{win_basis},
-\code{win_closed_by}, \code{n_events} and \code{events} (which of \code{t1}-\code{t4} the record has).
+\code{win_closed_by}, \code{win_opened_by}, \code{n_events} and \code{events} (which of \code{t1}-\code{t4} the record has).
 }
 \description{
 One row per (record, phase). Towed gear: one \code{tow} window (\code{t2}-\code{t3}). Static gear: a \code{set} window from \code{t1}
@@ -26,9 +26,23 @@ gear: one \code{jig} window (\code{t1}-\code{t4}). A record that gets none of th
 }
 \details{
 \code{win_basis} says where each window came from: \code{recorded} (both ends are logbook times), \code{derived} (one end
-from \code{duration_m}), \code{synthesised} (an assumed length, or the whole day) or \code{capped} (a recorded end passed
-the vessel's next recorded event and was cut back to it; \code{win_closed_by} says so). A tow or haul ends at the
-vessel's next tow, haul or jig with a recorded start; a set at the vessel's next event of any kind. A
-synthesised start never cuts a recorded time. The typical haul is the median recorded haul of the gear,
-used only where at least \code{min_hauls} are recorded.
+from \code{duration_m}), \code{synthesised} (an assumed length, or the whole day) or \code{capped} (a tow, haul or jig whose
+end passed the vessel's next window and was cut back to it).
+
+A ping belongs to at most one record, so the windows of a vessel other than \code{day} never overlap. Windows are
+half-open, \verb{[w_start, w_end)}. They are put in order by start, then end, then record; on a full tie the
+record with the lower key comes last. A window ends where a later start that may cut it begins, if that is
+sooner (\code{win_closed_by = "next_event"}; a set that runs its full assumed length has \code{"max"}):
+\itemize{
+\item the recorded start of a tow, haul or jig cuts any window;
+\item a set's start (\code{t1}) cuts only an earlier set. A set never cuts a tow, haul or jig: a gillnetter may set one
+net and then go on hauling another;
+\item a start that is not a logbook time (a typical haul ending at \code{t4}, a jig \code{duration_m} before \code{t4}) cuts
+nothing.
+}
+
+A window that starts inside one it may not cut starts at that window's end instead (\code{win_opened_by = "previous_event"}). Of two windows with the same start, the one that ends first is cut to nothing when the
+other may cut it (\code{w_end = w_start}; the row is kept); of two identical windows, the record with the higher
+key. The typical haul
+is the median recorded haul of the gear, used only where at least \code{min_hauls} are recorded.
 }

@@ -84,11 +84,24 @@ rb_limit_record_duration <- function(
 #' gear: one `jig` window (`t1`-`t4`). A record that gets none of these gets its whole `date` (`day`).
 #'
 #' `win_basis` says where each window came from: `recorded` (both ends are logbook times), `derived` (one end
-#' from `duration_m`), `synthesised` (an assumed length, or the whole day) or `capped` (a recorded end passed
-#' the vessel's next recorded event and was cut back to it; `win_closed_by` says so). A tow or haul ends at the
-#' vessel's next tow, haul or jig with a recorded start; a set at the vessel's next event of any kind. A
-#' synthesised start never cuts a recorded time. The typical haul is the median recorded haul of the gear,
-#' used only where at least `min_hauls` are recorded.
+#' from `duration_m`), `synthesised` (an assumed length, or the whole day) or `capped` (a tow, haul or jig whose
+#' end passed the vessel's next window and was cut back to it).
+#'
+#' A ping belongs to at most one record, so the windows of a vessel other than `day` never overlap. Windows are
+#' half-open, `[w_start, w_end)`. They are put in order by start, then end, then record; on a full tie the
+#' record with the lower key comes last. A window ends where a later start that may cut it begins, if that is
+#' sooner (`win_closed_by = "next_event"`; a set that runs its full assumed length has `"max"`):
+#' - the recorded start of a tow, haul or jig cuts any window;
+#' - a set's start (`t1`) cuts only an earlier set. A set never cuts a tow, haul or jig: a gillnetter may set one
+#'   net and then go on hauling another;
+#' - a start that is not a logbook time (a typical haul ending at `t4`, a jig `duration_m` before `t4`) cuts
+#'   nothing.
+#'
+#' A window that starts inside one it may not cut starts at that window's end instead (`win_opened_by =
+#' "previous_event"`). Of two windows with the same start, the one that ends first is cut to nothing when the
+#' other may cut it (`w_end = w_start`; the row is kept); of two identical windows, the record with the higher
+#' key. The typical haul
+#' is the median recorded haul of the gear, used only where at least `min_hauls` are recorded.
 #'
 #' @param records A data frame or lazy DuckDB table, one row per record: the `key` columns, `vid`, `gear`,
 #'   `gear_class` (`towed`, `static` or `jigged`), `set_max_min` (the set length, minutes), `t1`-`t4`,
@@ -96,7 +109,7 @@ rb_limit_record_duration <- function(
 #' @param key The columns that identify a record.
 #' @param min_hauls Recorded hauls a gear needs before its median haul is used.
 #' @return The windows: the record's columns (without `date`), `phase`, `w_start`, `w_end`, `win_basis`,
-#'   `win_closed_by`, `n_events` and `events` (which of `t1`-`t4` the record has).
+#'   `win_closed_by`, `win_opened_by`, `n_events` and `events` (which of `t1`-`t4` the record has).
 #' @export
 rb_build_record_windows <- function(
   records,
@@ -124,7 +137,7 @@ rb_build_record_windows <- function(
   con <- .rb_con_for(records)
   in_sql <- .rb_in_sql(records, con)
   k <- .rb_q(con, key)
-  kr <- paste0("r.", k, collapse = ", ")
+  k_desc <- paste(k, "DESC", collapse = ", ")
   k_eq <- function(a, b) {
     paste(sprintf("%s.%s = %s.%s", a, k, b, k), collapse = " AND ")
   }
@@ -143,7 +156,8 @@ rb_build_record_windows <- function(
       CASE WHEN t2 IS NOT NULL AND t3 > t2 THEN t3
            WHEN t2 IS NOT NULL AND duration_m > 0 THEN t2 + {mins('duration_m')} END AS w_end,
       CASE WHEN t2 IS NOT NULL AND t3 > t2 THEN 'recorded'
-           WHEN t2 IS NOT NULL AND duration_m > 0 THEN 'derived' END AS win_basis
+           WHEN t2 IS NOT NULL AND duration_m > 0 THEN 'derived' END AS win_basis,
+      TRUE AS rb_start_rec
     FROM b WHERE gear_class = 'towed'),
   haul AS (
     SELECT *, 'haul' AS phase,
@@ -154,10 +168,12 @@ rb_build_record_windows <- function(
       CASE WHEN t3 IS NOT NULL AND t4 > t3 THEN t4
            WHEN t4 IS NOT NULL THEN t4
            ELSE t3 + {mins('haul_min')} END AS w_end,
-      CASE WHEN t3 IS NOT NULL AND t4 > t3 THEN 'recorded' ELSE 'synthesised' END AS win_basis
+      CASE WHEN t3 IS NOT NULL AND t4 > t3 THEN 'recorded' ELSE 'synthesised' END AS win_basis,
+      coalesce(t4 IS NULL OR (t3 IS NOT NULL AND t4 > t3), FALSE) AS rb_start_rec
     FROM b WHERE gear_class = 'static' AND haul_min IS NOT NULL AND (t4 IS NOT NULL OR t3 IS NOT NULL)),
   st_set AS (
-    SELECT *, 'set' AS phase, t1 AS w_start, t1 + {mins('set_max_min')} AS w_end, 'synthesised' AS win_basis
+    SELECT *, 'set' AS phase, t1 AS w_start, t1 + {mins('set_max_min')} AS w_end, 'synthesised' AS win_basis,
+      TRUE AS rb_start_rec
     FROM b WHERE gear_class = 'static' AND t1 IS NOT NULL AND set_max_min IS NOT NULL),
   jig AS (
     SELECT *, 'jig' AS phase,
@@ -168,7 +184,8 @@ rb_build_record_windows <- function(
            WHEN t4 IS NOT NULL AND duration_m > 0 THEN t4
            WHEN t1 IS NOT NULL AND duration_m > 0 THEN t1 + {mins('duration_m')} END AS w_end,
       CASE WHEN t1 IS NOT NULL AND t4 > t1 THEN 'recorded'
-           WHEN duration_m > 0 AND (t1 IS NOT NULL OR t4 IS NOT NULL) THEN 'derived' END AS win_basis
+           WHEN duration_m > 0 AND (t1 IS NOT NULL OR t4 IS NOT NULL) THEN 'derived' END AS win_basis,
+      coalesce((t1 IS NOT NULL AND t4 > t1) OR (t1 IS NOT NULL AND t4 IS NULL), FALSE) AS rb_start_rec
     FROM b WHERE gear_class = 'jigged'),
   named AS (
     SELECT * FROM tow  WHERE w_start IS NOT NULL UNION ALL BY NAME
@@ -176,40 +193,50 @@ rb_build_record_windows <- function(
     SELECT * FROM st_set                          UNION ALL BY NAME
     SELECT * FROM jig  WHERE w_start IS NOT NULL),
   dayw AS (
-    SELECT b.*, 'day' AS phase, b.d AS w_start, b.d + INTERVAL 1 DAY - INTERVAL 1 SECOND AS w_end,
-           'synthesised' AS win_basis
+    SELECT b.*, 'day' AS phase, b.d AS w_start, b.d + INTERVAL 1 DAY AS w_end, 'synthesised' AS win_basis
     FROM b WHERE NOT EXISTS (SELECT 1 FROM named n WHERE {k_eq('n', 'b')})),
-  win0 AS (SELECT * FROM named UNION ALL BY NAME SELECT * FROM dayw),
-  ev_work AS (SELECT DISTINCT vid, w_start FROM win0 WHERE phase IN ('tow', 'haul', 'jig') AND win_basis = 'recorded'),
-  ev_all AS (SELECT vid, w_start FROM ev_work UNION SELECT DISTINCT vid, w_start FROM win0 WHERE phase = 'set'),
-  nxt AS (
-    SELECT {kr}, r.phase, w.w_start AS next_work, a.w_start AS next_any
-    FROM win0 r
-    ASOF LEFT JOIN ev_work w ON r.vid = w.vid AND r.w_start < w.w_start
-    ASOF LEFT JOIN ev_all  a ON r.vid = a.vid AND r.w_start < a.w_start
-    WHERE r.phase <> 'day')
-  SELECT r.* EXCLUDE (d, haul_min, w_end, win_basis),
-    CASE WHEN r.phase IN ('tow', 'haul') AND n.next_work < r.w_end THEN n.next_work
-         WHEN r.phase = 'set' AND n.next_any < r.w_end THEN n.next_any
-         ELSE r.w_end END AS w_end,
-    CASE WHEN r.phase IN ('tow', 'haul') AND n.next_work < r.w_end THEN 'capped' ELSE r.win_basis END AS win_basis,
-    CASE WHEN r.phase = 'set' AND n.next_any < r.w_end THEN 'next_event'
-         WHEN r.phase = 'set' THEN 'max'
-         WHEN r.phase IN ('tow', 'haul') AND n.next_work < r.w_end THEN 'next_event' END AS win_closed_by,
+  -- one order per vessel with no ties; the record with the lower key comes last, and so keeps a shared window
+  o AS (SELECT *, row_number() OVER (PARTITION BY vid ORDER BY w_start, w_end, {k_desc}, phase) AS rb_ord FROM named),
+  -- the starts that cut: a tow, haul or jig with a recorded start cuts any window; a set's start cuts only sets
+  rs_w AS (SELECT vid, rb_ord, w_start AS rb_next FROM o WHERE rb_start_rec AND phase <> 'set'),
+  rs_a AS (SELECT vid, rb_ord, w_start AS rb_next FROM o WHERE rb_start_rec),
+  c1 AS (SELECT o.*, w.rb_next AS rb_next_w, a.rb_next AS rb_next_a FROM o
+         ASOF LEFT JOIN rs_w w ON o.vid = w.vid AND o.rb_ord < w.rb_ord
+         ASOF LEFT JOIN rs_a a ON o.vid = a.vid AND o.rb_ord < a.rb_ord),
+  c2 AS (SELECT *, CASE WHEN phase = 'set' THEN rb_next_a ELSE rb_next_w END AS rb_next FROM c1),
+  c3 AS (SELECT *, CASE WHEN rb_next < w_end THEN rb_next ELSE w_end END AS rb_end FROM c2),
+  -- a window that starts inside one it could not cut starts at its end
+  c4 AS (SELECT *, max(rb_end) OVER (PARTITION BY vid ORDER BY rb_ord ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING)
+                   AS rb_prev FROM c3),
+  win AS (
+    SELECT * EXCLUDE (w_start, w_end, win_basis),
+      CASE WHEN rb_prev > w_start THEN least(rb_prev, rb_end) ELSE w_start END AS w_start,
+      rb_end AS w_end,
+      CASE WHEN phase IN ('tow', 'haul', 'jig') AND rb_end < w_end THEN 'capped' ELSE win_basis END AS win_basis,
+      CASE WHEN rb_end < w_end THEN 'next_event' WHEN phase = 'set' THEN 'max' END AS win_closed_by,
+      CASE WHEN rb_prev > w_start THEN 'previous_event' END AS win_opened_by
+    FROM c4
+    UNION ALL BY NAME
+    SELECT * FROM dayw)
+  SELECT r.* EXCLUDE (d, haul_min, rb_start_rec, rb_ord, rb_next_w, rb_next_a, rb_next, rb_end, rb_prev, w_end,
+                      win_basis, win_closed_by, win_opened_by),
+    r.w_end, r.win_basis, r.win_closed_by, r.win_opened_by,
     (CASE WHEN r.t1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN r.t2 IS NOT NULL THEN 1 ELSE 0 END
      + CASE WHEN r.t3 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN r.t4 IS NOT NULL THEN 1 ELSE 0 END)::TINYINT AS n_events,
     concat_ws('+', CASE WHEN r.t1 IS NOT NULL THEN 't1' END, CASE WHEN r.t2 IS NOT NULL THEN 't2' END,
               CASE WHEN r.t3 IS NOT NULL THEN 't3' END, CASE WHEN r.t4 IS NOT NULL THEN 't4' END) AS events
-  FROM win0 r LEFT JOIN nxt n ON {k_eq('n', 'r')} AND n.phase = r.phase"
+  FROM win r"
   )
   .rb_out(con, sql, lazy_in, by = c("vid", "w_start"))
 }
 
 #' Link pings to every logbook record window that holds them
 #'
-#' A ping matches every window of its vessel that contains its time. Windows of a `fallback` phase (the
-#' whole-day windows) claim only pings that no other window claims. A record matched in two of its own phases
-#' counts once, the phase earliest in `phase_rank` winning. Ambiguity is kept: one row per (ping, record).
+#' A ping matches every window of its vessel that contains its time; a window is half-open, so a ping at
+#' `w_end` is not in it. Windows of a `fallback` phase (the whole-day windows) claim only pings that no other
+#' window claims. A record matched in two of its own phases counts once, the phase earliest in `phase_rank`
+#' winning. The result is a table of candidates: windows that overlap (two records on one whole day, or windows
+#' built by other rules than [rb_build_record_windows()]) give one row per (ping, record).
 #'
 #' @param pings A data frame or lazy DuckDB table with `vid`, `time` and the speed column.
 #' @param windows Windows from [rb_build_record_windows()]: `vid`, `w_start`, `w_end`, `phase`, the `key`
@@ -259,7 +286,7 @@ rb_link_record_pings <- function(
   m0 AS (
     SELECT p.vid, p.time, p.{q(speed)} AS rb_speed, {wsel}, w.phase, w.w_start, w.w_end, w.prank,
            (w.phase NOT IN ({lst(fallback)})) AS tier1
-    FROM ({p_sql}) p JOIN w ON p.vid = w.vid AND p.time BETWEEN w.w_start AND w.w_end),
+    FROM ({p_sql}) p JOIN w ON p.vid = w.vid AND p.time >= w.w_start AND p.time < w.w_end),
   m1 AS (SELECT * FROM m0 WHERE tier1
          UNION ALL
          SELECT * FROM m0 WHERE NOT tier1
@@ -286,17 +313,25 @@ rb_link_record_pings <- function(
 #' event: how precisely the track can place it. A missing event time gives no row. The first building block of
 #' reconciling declared times with the track.
 #'
+#' A ping bounds the events of at most one record, and of one phase of it (the `i`-th start and the `i`-th end
+#' bound one phase, so the start and end of a phase holding one ping share it). When events of two records, or
+#' of two phases of one, would share a ping, the one nearer to it in time keeps it; on a tie the earlier event
+#' time, then the lower key. The others get no ping (`ping_lost`), and their `gap_s` shows that the track cannot
+#' resolve them. Exclusivity holds within one call: split a large job by vessel, or keep the events near a split
+#' in both parts and each event's row from one of them.
+#'
 #' @param pings A data frame or lazy DuckDB table with `vid` and `time`.
 #' @param records A data frame or lazy DuckDB table with the `key` columns, `vid` and the `starts` and `ends`
 #'   columns.
 #' @param key The columns that identify a record.
 #' @param starts,ends The event-time columns that open a phase (they take the next ping) and close one (the
-#'   previous ping); each a timestamp or `NA`.
+#'   previous ping); each a timestamp or `NA`. `starts[i]` and `ends[i]` bound one phase.
 #' @param max_dt_s The farthest the ping may be from the event, in seconds; farther, and `time` and `dt_s` are `NA`.
 #' @return One row per (record, event time present): the key, `vid`, `event` (the column name), `event_time`,
 #'   `time` (the ping's time), `dt_s` (`time - event_time`, in seconds: at least 0 for a start, at most 0 for an
-#'   end) and `gap_s` (the time between the last ping at or before the event and the first at or after it; 0 when
-#'   a ping falls on it, `NA` when the track does not reach both sides).
+#'   end), `gap_s` (the time between the last ping at or before the event and the first at or after it; 0 when
+#'   a ping falls on it, `NA` when the track does not reach both sides) and `ping_lost` (`TRUE` when the bounding
+#'   ping, within `max_dt_s`, went to a nearer event of another record or phase; `time` and `dt_s` are then `NA`).
 #' @export
 rb_link_record_events <- function(
   pings,
@@ -338,7 +373,25 @@ rb_link_record_events <- function(
   )
   q <- function(x) .rb_q(con, x)
   kcols <- paste(q(key), collapse = ", ")
+  ke <- paste0("e.", q(key), collapse = ", ")
+  k_eq <- paste(sprintf("k.%s = e.%s", q(key), q(key)), collapse = " AND ")
   ev <- paste(q(events), collapse = ", ")
+  ph_case <- paste(
+    vapply(
+      seq_len(max(length(starts), length(ends))),
+      function(i) {
+        e_i <- c(starts[i], ends[i])
+        e_i <- e_i[!is.na(e_i)]
+        sprintf(
+          "WHEN event IN (%s) THEN %d",
+          paste0("'", e_i, "'", collapse = ", "),
+          i
+        )
+      },
+      character(1)
+    ),
+    collapse = " "
+  )
   is_start <- if (length(starts)) {
     sprintf("event IN (%s)", paste0("'", starts, "'", collapse = ", "))
   } else {
@@ -361,12 +414,18 @@ rb_link_record_events <- function(
   p AS (SELECT DISTINCT vid, time FROM ({p_sql}) WHERE time IS NOT NULL),
   b AS (SELECT r.*, p.time AS t_before FROM r ASOF LEFT JOIN p ON r.vid = p.vid AND r.event_time >= p.time),
   f AS (SELECT b.*, p.time AS t_after FROM b ASOF LEFT JOIN p ON b.vid = p.vid AND b.event_time <= p.time),
-  n AS (SELECT *, CASE WHEN {is_start} THEN t_after ELSE t_before END AS nt FROM f)
-  SELECT {kcols}, vid, event, event_time,
-         CASE WHEN {within} THEN nt END AS time,
-         CASE WHEN {within} THEN epoch(nt - event_time) END AS dt_s,
-         epoch(t_after - t_before) AS gap_s
-  FROM n"
+  n AS (SELECT *, CASE WHEN {is_start} THEN t_after ELSE t_before END AS nt FROM f),
+  e AS (SELECT *, CASE WHEN {within} THEN nt END AS rb_fix, CASE {ph_case} END AS rb_phase FROM n),
+  -- one claim per (record, phase) on a ping; the nearest claim keeps it
+  c AS (SELECT {kcols}, vid, rb_phase, rb_fix, min(abs(epoch(rb_fix - event_time))) AS rb_adt, min(event_time) AS rb_et
+        FROM e WHERE rb_fix IS NOT NULL GROUP BY ALL),
+  k AS (SELECT * FROM c QUALIFY row_number() OVER (PARTITION BY vid, rb_fix ORDER BY rb_adt, rb_et, {kcols}) = 1)
+  SELECT {ke}, e.vid, e.event, e.event_time,
+         CASE WHEN k.vid IS NOT NULL THEN e.rb_fix END AS time,
+         CASE WHEN k.vid IS NOT NULL THEN epoch(e.rb_fix - e.event_time) END AS dt_s,
+         epoch(e.t_after - e.t_before) AS gap_s,
+         (e.rb_fix IS NOT NULL AND k.vid IS NULL) AS ping_lost
+  FROM e LEFT JOIN k ON {k_eq} AND k.vid = e.vid AND k.rb_phase = e.rb_phase AND k.rb_fix = e.rb_fix"
   )
   .rb_out(con, sql, lazy_in, by = c("vid", "event_time", "event"))
 }
