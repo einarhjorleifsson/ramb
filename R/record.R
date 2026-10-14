@@ -276,6 +276,85 @@ rb_link_record_pings <- function(
   .rb_out(con, sql, lazy_in, by = c("vid", "time"))
 }
 
+#' Link each recorded event time to the vessel's nearest ping
+#'
+#' For every record and every event time it carries (by default `t1`-`t4`: setting start, gear on the bottom,
+#' hauling start, hauling end), the vessel's ping nearest in time, how far it is from the event, and the gap
+#' between the pings on either side of the event: how precisely the track can place it. A missing event time
+#' gives no row. The ping nearest the event is the one before it on a tie. The first building block of
+#' reconciling declared times with the track.
+#'
+#' @param pings A data frame or lazy DuckDB table with `vid` and `time`.
+#' @param records A data frame or lazy DuckDB table with the `key` columns, `vid` and the `events` columns.
+#' @param key The columns that identify a record.
+#' @param events The event-time columns, each a timestamp or `NA`.
+#' @param max_dt_s The farthest a ping may be from the event, in seconds, to count as its nearest; farther, and
+#'   `time` and `dt_s` are `NA`.
+#' @return One row per (record, event time present): the key, `vid`, `event` (the column name), `event_time`,
+#'   `time` (the nearest ping's time), `dt_s` (`time - event_time`, in seconds, signed) and `gap_s` (the time
+#'   between the last ping at or before the event and the first at or after it; 0 when a ping falls on it, `NA`
+#'   when the track does not reach both sides).
+#' @export
+rb_link_record_events <- function(
+  pings,
+  records,
+  key = c(".sid", "schema"),
+  events = c("t1", "t2", "t3", "t4"),
+  max_dt_s = Inf
+) {
+  miss <- setdiff(c(key, "vid", events), colnames(records))
+  if (length(miss)) {
+    stop("records lacks: ", paste(miss, collapse = ", "), call. = FALSE)
+  }
+  miss <- setdiff(c("vid", "time"), colnames(pings))
+  if (length(miss)) {
+    stop("pings lacks: ", paste(miss, collapse = ", "), call. = FALSE)
+  }
+  stopifnot(is.numeric(max_dt_s), length(max_dt_s) == 1, max_dt_s >= 0)
+  lazy_in <- inherits(pings, "tbl_lazy")
+  con <- .rb_con_for(pings)
+  p_sql <- .rb_in_sql(
+    dplyr::select(pings, dplyr::all_of(c("vid", "time"))),
+    con
+  )
+  r_sql <- .rb_in_sql(
+    dplyr::select(records, dplyr::all_of(unique(c(key, "vid", events)))),
+    con
+  )
+  q <- function(x) .rb_q(con, x)
+  kcols <- paste(q(key), collapse = ", ")
+  ev <- paste(q(events), collapse = ", ")
+  # No cast: a cast between a zoned and a plain timestamp follows the session's time zone. The event columns
+  # and `time` must share a type, and UNPIVOT says so if they do not.
+  within <- if (is.finite(max_dt_s)) {
+    sprintf(
+      "abs(epoch(nt - event_time)) <= %s",
+      format(max_dt_s, scientific = FALSE)
+    )
+  } else {
+    "TRUE"
+  }
+  sql <- .rb_fill(
+    "
+  WITH r0 AS (SELECT {kcols}, vid, {ev} FROM ({r_sql})),
+  r AS (SELECT * FROM (UNPIVOT r0 ON {ev} INTO NAME event VALUE event_time)),
+  p AS (SELECT DISTINCT vid, time FROM ({p_sql}) WHERE time IS NOT NULL),
+  b AS (SELECT r.*, p.time AS t_before FROM r ASOF LEFT JOIN p ON r.vid = p.vid AND r.event_time >= p.time),
+  f AS (SELECT b.*, p.time AS t_after FROM b ASOF LEFT JOIN p ON b.vid = p.vid AND b.event_time <= p.time),
+  n AS (SELECT *, CASE WHEN t_after IS NULL THEN t_before
+                       WHEN t_before IS NULL THEN t_after
+                       WHEN epoch(event_time - t_before) <= epoch(t_after - event_time) THEN t_before
+                       ELSE t_after END AS nt
+        FROM f)
+  SELECT {kcols}, vid, event, event_time,
+         CASE WHEN {within} THEN nt END AS time,
+         CASE WHEN {within} THEN epoch(nt - event_time) END AS dt_s,
+         epoch(t_after - t_before) AS gap_s
+  FROM n"
+  )
+  .rb_out(con, sql, lazy_in, by = c("vid", "event_time", "event"))
+}
+
 #' Assign each ping its logbook record
 #'
 #' Step 2 of the flow. Each ping gets `n_records`, the number of records whose windows hold it (0 for none),

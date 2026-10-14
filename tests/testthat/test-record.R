@@ -75,6 +75,44 @@ test_that("pings: tier-1 windows win over the day; the counts, the record and fi
   expect_equal(r$fishing, c(TRUE, NA, FALSE, TRUE, FALSE, FALSE))
 })
 
+test_that("event times: the nearest ping, its distance and the gap; data frame = lazy table", {
+  skip_if_not_installed("duckdbfs")
+  pings <- tibble::tibble(
+    vid = c(1L, 1L, 1L, 1L, 2L, 2L, 2L, 3L),
+    time = h(c(-1, 0.25, 3.5, 6, 11, 11, 13, 0)) # vid 2 has a duplicate ping at 11:00 + 6
+  )
+  e <- rb_link_record_events(pings, records)
+  el <- dplyr::collect(rb_link_record_events(
+    duckdbfs::as_dataset(pings),
+    duckdbfs::as_dataset(records)
+  ))
+  el <- el[order(el$vid, el$event_time, el$event), names(e)]
+  expect_equal(as.data.frame(el), as.data.frame(e), ignore_attr = TRUE)
+  # 11 event times present; record 6 has none
+  expect_equal(nrow(e), 11)
+  expect_false(6L %in% e$.sid)
+  k <- function(sid, ev) e[e$.sid == sid & e$event == ev, ]
+  expect_equal(k(1, "t2")$time, h(0.25)) # 15 min after, against 1 h before
+  expect_equal(k(1, "t2")$dt_s, 900)
+  expect_equal(k(1, "t2")$gap_s, 4500)
+  expect_equal(k(1, "t3")$dt_s, -1800) # the ping before
+  expect_equal(k(3, "t4")$dt_s, -3600) # a tie: the ping before wins
+  expect_equal(k(3, "t4")$gap_s, 7200)
+  expect_true(is.na(k(3, "t1")$gap_s)) # no ping before the event
+  expect_equal(k(3, "t1")$dt_s, 11 * 3600)
+  expect_equal(k(5, "t1")$dt_s, 0) # a ping on the event
+  expect_equal(k(5, "t1")$gap_s, 0)
+  # farther than max_dt_s: no nearest ping, the gap stays
+  m <- rb_link_record_events(pings, records, max_dt_s = 3600)
+  expect_equal(sum(is.na(m$time)), 3)
+  expect_equal(m$dt_s[m$.sid == 2 & m$event == "t3"], 3600) # at the limit: kept
+  expect_true(is.na(m$time[m$.sid == 4 & m$event == "t1"]))
+  expect_error(
+    rb_link_record_events(pings, records[, -1]),
+    "records lacks: .sid"
+  )
+})
+
 test_that("durations above the gear's limit become NA, the raw value is kept", {
   d <- data.frame(gid = c(6, 6, 7, 9), duration_m = c(100, 900, NA, 5000))
   lim <- data.frame(gid = c(6, 7), dur_max_min = c(600, 60))

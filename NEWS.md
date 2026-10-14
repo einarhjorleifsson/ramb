@@ -1,3 +1,7 @@
+# ramb 2026.10.14
+
+- `rb_link_record_events()`: new, step 2. For every record and every event time it carries (`t1`-`t4` by default), the vessel's ping nearest in time, `dt_s` (that ping's time minus the event's, signed) and `gap_s` (the time between the pings on either side of the event, 0 when one falls on it, `NA` when the track does not reach both sides), with `max_dt_s` to leave out pings too far away. A missing event time gives no row; on a tie the ping before the event wins. Lazy DuckDB tables and data frames give the same result. It is the first building block of reconciling declared times with the track (fishycode plan 013, phase 4).
+
 # ramb 2026.10.13.3
 
 - `rb_summarise_track()`: counts voyages, not trips, by name. The column it counts is `voyage_id`, as `rb_assign_trip()` puts it on the pings, where it was `tid`; the output `n_trips` is now `n_voyages`. A voyage is any movement from one port stay to the next; a trip is a fishing trip (`trip_id`), and the function never counted those.

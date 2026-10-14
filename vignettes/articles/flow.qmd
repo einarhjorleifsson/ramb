@@ -35,7 +35,7 @@ tibble::tribble(
   "1", "trip", "Which trip does the ping belong to?",
   "[rb_find_trip_stays()](../reference/rb_find_trip_stays.html), [rb_cut_trip_voyages()](../reference/rb_cut_trip_voyages.html), [rb_assign_trip()](../reference/rb_assign_trip.html), [rb_link_trip_logbook()](../reference/rb_link_trip_logbook.html)",
   "2", "record", "Which logbook record covers the ping?",
-  "[rb_build_record_windows()](../reference/rb_build_record_windows.html), [rb_link_record_pings()](../reference/rb_link_record_pings.html), [rb_assign_record()](../reference/rb_assign_record.html)",
+  "[rb_build_record_windows()](../reference/rb_build_record_windows.html), [rb_link_record_pings()](../reference/rb_link_record_pings.html), [rb_link_record_events()](../reference/rb_link_record_events.html), [rb_assign_record()](../reference/rb_assign_record.html)",
   "3", "gear", "What gear, and how wide?",
   "[rb_extract_metier()](../reference/rb_extract_metier.html), [rb_predict_gear_width()](../reference/rb_predict_gear_width.html)",
   "4", "fishing", "Is the ping fishing?",
