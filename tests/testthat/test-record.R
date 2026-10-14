@@ -137,6 +137,22 @@ test_that("event times: ties go to the earlier event time, then the lower key", 
   # earlier event time keeps it
   expect_equal(k(3, "t3")$time, h(2))
   expect_true(k(4, "t2")$ping_lost)
+  # a set and a haul that start at the same time: the setting (the earlier phase) keeps the ping, every time
+  r2 <- tibble::tibble(
+    .sid = 5L,
+    schema = "b",
+    vid = 3L,
+    t1 = h(0),
+    t2 = na,
+    t3 = h(0),
+    t4 = na
+  )
+  p2 <- tibble::tibble(vid = 3L, time = h(0.5))
+  for (i in 1:5) {
+    e2 <- rb_link_record_events(p2[sample(nrow(p2)), ], r2)
+    expect_equal(e2$ping_lost, c(FALSE, TRUE))
+    expect_equal(e2$event, c("t1", "t3"))
+  }
   el <- dplyr::collect(rb_link_record_events(
     duckdbfs::as_dataset(p),
     duckdbfs::as_dataset(r)

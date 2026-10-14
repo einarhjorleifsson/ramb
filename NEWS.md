@@ -1,3 +1,7 @@
+# ramb 2026.10.14.3
+
+- `rb_link_record_events()`: a tie between two phases of one record now always goes the same way. When both phases want a ping at the same distance and from the same event time, the earlier phase keeps it. A set and a haul of one record that start at the same time (`t1 = t3`) left the choice to chance: on fishycode's data 1,069 event rows of 532 records came out differently in two runs, 531 of the records with `t1 = t3`.
+
 # ramb 2026.10.14.2
 
 A ping belongs to at most one logbook record, and to one phase of it (fishycode's maintainer, 2026-10-14; fishycode decisions 090 and 091). Counted on the Icelandic logbooks and AIS (fishycode, all years 2007-2026; fixes for 2023).

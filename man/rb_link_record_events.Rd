@@ -46,7 +46,7 @@ reconciling declared times with the track.
 A ping bounds the events of at most one record, and of one phase of it (the \code{i}-th start and the \code{i}-th end
 bound one phase, so the start and end of a phase holding one ping share it). When events of two records, or
 of two phases of one, would share a ping, the one nearer to it in time keeps it; on a tie the earlier event
-time, then the lower key. The others get no ping (\code{ping_lost}), and their \code{gap_s} shows that the track cannot
+time, then the earlier phase, then the lower key. The others get no ping (\code{ping_lost}), and their \code{gap_s} shows that the track cannot
 resolve them. Exclusivity holds within one call: split a large job by vessel, or keep the events near a split
 in both parts and each event's row from one of them.
 }

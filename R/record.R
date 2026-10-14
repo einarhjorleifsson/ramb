@@ -316,7 +316,7 @@ rb_link_record_pings <- function(
 #' A ping bounds the events of at most one record, and of one phase of it (the `i`-th start and the `i`-th end
 #' bound one phase, so the start and end of a phase holding one ping share it). When events of two records, or
 #' of two phases of one, would share a ping, the one nearer to it in time keeps it; on a tie the earlier event
-#' time, then the lower key. The others get no ping (`ping_lost`), and their `gap_s` shows that the track cannot
+#' time, then the earlier phase, then the lower key. The others get no ping (`ping_lost`), and their `gap_s` shows that the track cannot
 #' resolve them. Exclusivity holds within one call: split a large job by vessel, or keep the events near a split
 #' in both parts and each event's row from one of them.
 #'
@@ -419,7 +419,7 @@ rb_link_record_events <- function(
   -- one claim per (record, phase) on a ping; the nearest claim keeps it
   c AS (SELECT {kcols}, vid, rb_phase, rb_fix, min(abs(epoch(rb_fix - event_time))) AS rb_adt, min(event_time) AS rb_et
         FROM e WHERE rb_fix IS NOT NULL GROUP BY ALL),
-  k AS (SELECT * FROM c QUALIFY row_number() OVER (PARTITION BY vid, rb_fix ORDER BY rb_adt, rb_et, {kcols}) = 1)
+  k AS (SELECT * FROM c QUALIFY row_number() OVER (PARTITION BY vid, rb_fix ORDER BY rb_adt, rb_et, rb_phase, {kcols}) = 1)
   SELECT {ke}, e.vid, e.event, e.event_time,
          CASE WHEN k.vid IS NOT NULL THEN e.rb_fix END AS time,
          CASE WHEN k.vid IS NOT NULL THEN epoch(e.rb_fix - e.event_time) END AS dt_s,
