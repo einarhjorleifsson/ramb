@@ -11,7 +11,8 @@ rb_assign_fishing(
   not_fishing = "set",
   speed = "speed",
   speed_min = "speed_min",
-  speed_max = "speed_max"
+  speed_max = "speed_max",
+  window_s = 0
 )
 }
 \arguments{
@@ -23,6 +24,8 @@ are kept.}
 \item{method}{Only \code{"window"} so far; the track-only methods are planned for a later release.}
 
 \item{not_fishing, speed, speed_min, speed_max}{As in \code{\link[=rb_link_record_pings]{rb_link_record_pings()}}.}
+
+\item{window_s}{Half the speed window, in seconds; 0 (the default) tests each ping's own speed.}
 }
 \value{
 \code{pings} with \code{fishing}.
@@ -32,4 +35,11 @@ Step 4 of the flow. \code{method = "window"}: a ping is fishing when a window th
 can be fishing and its speed is inside that window's speed range. It is NA when such a window holds it but
 the ping has no speed (unknown, not FALSE), and FALSE for a ping in no window, or only in windows that
 cannot be fishing (a set, or a gear with no speed range).
+}
+\details{
+With \code{window_s}, the speed tested is the median over \code{window_s} seconds either side of the ping
+(\code{\link[=rb_calc_speed_smooth]{rb_calc_speed_smooth()}}), not its own. ±10 minutes (\code{window_s = 600}) called 92.7 \% of the Icelandic
+fixes in recorded tows fishing, against 89.2 \% on their own speed (fishycode decision 090). The window sees
+only the pings given: a table cut by month needs pings from either side of the month to be right at its
+edges. A ping with no speed stays NA.
 }

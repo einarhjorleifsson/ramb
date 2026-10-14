@@ -478,11 +478,18 @@ rb_assign_record <- function(
 #' the ping has no speed (unknown, not FALSE), and FALSE for a ping in no window, or only in windows that
 #' cannot be fishing (a set, or a gear with no speed range).
 #'
+#' With `window_s`, the speed tested is the median over `window_s` seconds either side of the ping
+#' ([rb_calc_speed_smooth()]), not its own. ±10 minutes (`window_s = 600`) called 92.7 % of the Icelandic
+#' fixes in recorded tows fishing, against 89.2 % on their own speed (fishycode decision 090). The window sees
+#' only the pings given: a table cut by month needs pings from either side of the month to be right at its
+#' edges. A ping with no speed stays NA.
+#'
 #' @param pings A data frame or lazy DuckDB table with `vid`, `time` and the speed column; all its columns
 #'   are kept.
 #' @param matches Matches from [rb_link_record_pings()] (with the speed range columns).
 #' @param method Only `"window"` so far; the track-only methods are planned for a later release.
 #' @param not_fishing,speed,speed_min,speed_max As in [rb_link_record_pings()].
+#' @param window_s Half the speed window, in seconds; 0 (the default) tests each ping's own speed.
 #' @return `pings` with `fishing`.
 #' @export
 rb_assign_fishing <- function(
@@ -492,7 +499,8 @@ rb_assign_fishing <- function(
   not_fishing = "set",
   speed = "speed",
   speed_min = "speed_min",
-  speed_max = "speed_max"
+  speed_max = "speed_max",
+  window_s = 0
 ) {
   method <- match.arg(method)
   lazy_in <- inherits(pings, "tbl_lazy")
@@ -504,10 +512,21 @@ rb_assign_fishing <- function(
   lo <- q(speed_min)
   hi <- q(speed_max)
   sp <- q(speed)
+  # the speed tested: the ping's own, or its windowed median over the pings given
+  ps_sql <- if (window_s == 0) {
+    p_sql
+  } else {
+    sprintf(
+      "SELECT vid, time, %s AS %s FROM (%s)",
+      .rb_speed_smooth_sql(sp, window_s),
+      sp,
+      p_sql
+    )
+  }
   sql <- .rb_fill(
     "
   WITH m AS (SELECT m.vid, m.time, m.phase, m.{lo} AS lo, m.{hi} AS hi, p.{sp} AS sp
-             FROM ({m_sql}) m JOIN ({p_sql}) p ON p.vid = m.vid AND p.time = m.time),
+             FROM ({m_sql}) m JOIN ({ps_sql}) p ON p.vid = m.vid AND p.time = m.time),
   a AS (
     SELECT vid, time,
       CASE WHEN bool_or(CASE WHEN phase IN ({lst}) OR lo IS NULL THEN FALSE WHEN sp IS NULL THEN NULL

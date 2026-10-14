@@ -228,3 +228,24 @@ test_that("rb_summarise_track() returns one snake_case row per group", {
   expect_equal(out$n_ports, 2)
   expect_equal(out$s_med, 5)
 })
+
+test_that("rb_calc_speed_smooth: the median within the window, in any order; NA for no speed", {
+  t <- as.POSIXct("2024-01-01", tz = "UTC") + 60 * c(0:9, 30)
+  s <- c(3, 3, 0.5, 3, 3, 3, 9, 3, 3, NA, 7)
+  w <- rb_calc_speed_smooth(s, t, window_s = 120)
+  brute <- vapply(
+    seq_along(t),
+    function(i) {
+      if (is.na(s[i])) {
+        return(NA_real_)
+      }
+      stats::median(s[abs(as.numeric(t - t[i])) <= 120], na.rm = TRUE)
+    },
+    numeric(1)
+  )
+  expect_equal(w, brute)
+  expect_equal(w[c(3, 7, 11)], c(3, 3, 7)) # the dip and the spike are smoothed; a lone ping keeps its own
+  o <- c(11, 3, 7, 1, 10, 2, 5, 4, 9, 8, 6)
+  expect_equal(rb_calc_speed_smooth(s[o], t[o], window_s = 120), w[o])
+  expect_equal(rb_calc_speed_smooth(s, t, window_s = 0), s)
+})

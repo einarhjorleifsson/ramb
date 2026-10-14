@@ -32,6 +32,8 @@ reference:
   - rb_build_record_windows
   - rb_link_record_pings
   - rb_link_record_events
+  - rb_cut_record_stretches
+  - rb_link_record_stretches
   - rb_assign_record
   - rb_limit_record_duration
   - rb_interpolate_track
@@ -52,6 +54,7 @@ reference:
 - title: "Tools: track calculations"
   contents:
   - rb_calc_speed
+  - rb_calc_speed_smooth
   - rb_calc_distance
   - rb_calc_duration
   - rb_calc_step_time

@@ -199,6 +199,46 @@ test_that("pings: tier-1 windows win over the day; the counts, the record and fi
   expect_equal(r$fishing, c(TRUE, NA, FALSE, TRUE, FALSE, FALSE))
 })
 
+test_that("fishing on the windowed speed: a spike inside a tow is fishing; data frame = lazy table", {
+  skip_if_not_installed("duckdbfs")
+  w <- rb_build_record_windows(records[1, ], min_hauls = 1)
+  pings <- tibble::tibble(
+    vid = 1L,
+    time = h(seq(0.5, 2.5, by = 1 / 60)),
+    speed = 3
+  )
+  pings$speed[61] <- 9 # 07:30, mid-tow
+  pings$speed[62] <- NA
+  m <- rb_link_record_pings(pings, w, speed_min = "s1", speed_max = "s2")
+  f0 <- rb_assign_fishing(pings, m, speed_min = "s1", speed_max = "s2")
+  f10 <- rb_assign_fishing(
+    pings,
+    m,
+    speed_min = "s1",
+    speed_max = "s2",
+    window_s = 600
+  )
+  fl <- dplyr::collect(rb_assign_fishing(
+    duckdbfs::as_dataset(pings),
+    duckdbfs::as_dataset(m),
+    speed_min = "s1",
+    speed_max = "s2",
+    window_s = 600
+  ))
+  expect_equal(
+    as.data.frame(fl[order(fl$time), ]),
+    as.data.frame(f10),
+    ignore_attr = TRUE
+  )
+  expect_false(f0$fishing[61])
+  expect_true(f10$fishing[61])
+  expect_true(is.na(f10$fishing[62])) # no speed: unknown, as before
+  expect_equal(
+    sum(f10$fishing, na.rm = TRUE),
+    sum(f0$fishing, na.rm = TRUE) + 1
+  )
+})
+
 test_that("event times: a start takes the next ping, an end the previous; the gap; data frame = lazy table", {
   skip_if_not_installed("duckdbfs")
   pings <- tibble::tibble(

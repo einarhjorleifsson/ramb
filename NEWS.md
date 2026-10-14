@@ -1,3 +1,12 @@
+# ramb 2026.10.14.4
+
+The track's own account of the tows, paired with the declared ones (fishycode TODO 59; the prototype and its numbers are fishycode decision 090). Ported from that prototype and checked against it on the Icelandic data: June 2023's 4,237 tow operations pair tow for tow as there, 99.0 % of them, with the start within 15 / 30 minutes for 54.4 / 76.8 % and the end for 51.1 / 66.1 %.
+
+- `rb_calc_speed_smooth()`: new. The median speed within `window_s` seconds either side of each position (default ±10 minutes). On the Icelandic AIS of 2007-2026 it called 92.7 % of the fixes inside recorded tows fishing, against 89.2 % on their own speed, and lost 0.4 points far from any tow.
+- `rb_assign_fishing()`: new argument `window_s`, the same median in DuckDB. The default 0 keeps each ping's own speed, so results are unchanged unless it is set.
+- `rb_cut_record_stretches()`: new, step 2. The stretches of a track at towing speed (the windowed speed inside the ping's speed range), broken at a gap of more than 30 minutes and dropped below 15. With the declared tows as a prior, a stretch that holds two of them is cut at the slowest ping between them; on June 2023 the prior raised the tows paired from 95.0 to 99.0 %. Twin records count once in the prior. The prototype collapsed them before it ran, and a twin otherwise cut its own tow in two.
+- `rb_link_record_stretches()`: new, step 2. Each tow is paired with at most one stretch and each stretch with at most one tow, in order, maximising the overlap with the tows widened by 30 minutes, so no ping belongs to two tows. Where two pairings tie on that overlap, the one with more overlap with the tows themselves is taken. The prototype left such ties to the order in which it filled its table. On all of 2023 (61,464 tow operations) this changed 627 pairings and no vessel's total overlap or number of pairs; for those tows, the start within 15 minutes rose from 7.5 to 51.4 %. On a full tie, the lower key keeps the stretch.
+
 # ramb 2026.10.14.3
 
 - `rb_link_record_events()`: a tie between two phases of one record now always goes the same way. When both phases want a ping at the same distance and from the same event time, the earlier phase keeps it. A set and a haul of one record that start at the same time (`t1 = t3`) left the choice to chance: on fishycode's data 1,069 event rows of 532 records came out differently in two runs, 531 of the records with `t1 = t3`.
