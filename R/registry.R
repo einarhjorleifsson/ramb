@@ -109,6 +109,15 @@
     after = "rb_cut_trip_voyages"
   ),
   .rb_step(
+    "rb_link_trip_landings",
+    "trip",
+    "builder",
+    "trips",
+    c("vid", "T2"),
+    c("match_type", "dt_days", "n_trips", "n_landings"),
+    after = "rb_cut_trip_voyages"
+  ),
+  .rb_step(
     "rb_link_trip_logbook",
     "trip",
     "step",

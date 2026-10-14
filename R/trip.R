@@ -919,3 +919,189 @@ rb_pad_harbour <- function(tid, hid) {
     ) |>
     dplyr::pull(.hid)
 }
+
+#' Link trips to the landings that ended them
+#'
+#' A step-1 builder: which landing (a sales note, a landing declaration) belongs to which trip. The trips can be
+#' declared trips (a logbook's) or voyages cut from the track ([rb_cut_trip_voyages()]); the landings come from
+#' a buyer or an authority, dated, sometimes with a port. Matching is a cascade of steps from the strictest
+#' (same day, same port) to the loosest (two days apart, any port). A step works only on the trips and landings no
+#' earlier step took, and accepts a pair only when it is the sole candidate both ways, so an ambiguous match is
+#' left for a looser step or left unmatched, never guessed. `match_type` names the step.
+#'
+#' With `since_previous_days`, a last step links each trip still unmatched to the vessel's next landing within that
+#' many days of the trip's end, matched or not: one landing then covers several trips (a weekly landing, or trips
+#' landed together). `n_trips` counts the trips on each landing, so a consumer can tell one-to-one from
+#' many-to-one (fishycode plan 013, item 5).
+#'
+#' @param trips A data frame or lazy DuckDB table: the `trip_key` columns, `vid`, `T2` (when the trip ended) and
+#'   optionally the arrival port.
+#' @param landings A data frame or lazy table: the `landing_key` columns, `vid`, `date` and optionally the port.
+#' @param trip_key,landing_key The columns that identify a trip and a landing; their names must differ.
+#' @param port_trip,port_landing The port columns, or `NULL`. Steps with `port = TRUE` need both.
+#' @param steps The cascade: a data frame with `name`, `dt_days` (how far apart the trip's end date and the
+#'   landing date may be) and `port` (whether the ports must agree), in the order tried.
+#' @param since_previous_days `NULL`, or the last step's reach in days (e.g. 14).
+#' @param vid,T2,date The columns.
+#' @return One row per link: the trip key, the landing key, `vid`, `match_type`, `dt_days` (the landing date minus
+#'   the trip's end date), `n_trips` (trips on the landing) and `n_landings` (landings on the trip). A data frame.
+#' @export
+#' @examples
+#' trips <- tibble::tibble(
+#'   tid = 1:4, vid = 1L, port = c("A", "A", "B", "B"),
+#'   T2 = as.POSIXct(c("2024-03-01 18:00", "2024-03-03 20:00", "2024-03-05 23:30", "2024-03-06 17:00"), tz = "UTC")
+#' )
+#' landings <- tibble::tibble(
+#'   lid = c(10, 11, 12), vid = 1L, port = c("A", "A", "B"),
+#'   date = as.Date(c("2024-03-01", "2024-03-04", "2024-03-07"))
+#' )
+#' rb_link_trip_landings(trips, landings, "tid", "lid", port_trip = "port", port_landing = "port",
+#'   since_previous_days = 3)
+rb_link_trip_landings <- function(
+  trips,
+  landings,
+  trip_key,
+  landing_key,
+  port_trip = NULL,
+  port_landing = NULL,
+  steps = data.frame(
+    name = c("date_port", "date1_port", "date", "date1", "date2"),
+    dt_days = c(0, 1, 0, 1, 2),
+    port = c(TRUE, TRUE, FALSE, FALSE, FALSE)
+  ),
+  since_previous_days = NULL,
+  vid = "vid",
+  T2 = "T2",
+  date = "date"
+) {
+  if (length(intersect(trip_key, landing_key)) > 0) {
+    rlang::abort(c(
+      "`trip_key` and `landing_key` must have different names.",
+      x = sprintf(
+        "Both have %s.",
+        paste0("`", intersect(trip_key, landing_key), "`", collapse = ", ")
+      ),
+      i = "Rename one of them, e.g. `schema` to `schema_land`."
+    ))
+  }
+  .rb_check_input(
+    trips,
+    "rb_link_trip_landings",
+    cols = c(vid = vid, T2 = T2),
+    also = c(
+      stats::setNames(trip_key, trip_key),
+      if (!is.null(port_trip)) c(port_trip = port_trip)
+    )
+  )
+  .rb_need_cols(landings, "landings", c(landing_key, vid, date, port_landing))
+  if (any(steps$port) && (is.null(port_trip) || is.null(port_landing))) {
+    steps <- steps[!steps$port, ]
+  }
+  con <- .rb_con_for(trips)
+  q <- function(x) if (length(x) == 0) character(0) else .rb_q(con, x)
+  t_sql <- .rb_in_sql(trips, con)
+  l_sql <- .rb_in_sql(landings, con)
+  tk <- paste(sprintf("t.%s", q(trip_key)), collapse = ", ")
+  lk <- paste(sprintf("l.%s", q(landing_key)), collapse = ", ")
+  tp <- if (is.null(port_trip)) {
+    "CAST(NULL AS VARCHAR)"
+  } else {
+    sprintf("CAST(t.%s AS VARCHAR)", q(port_trip))
+  }
+  lp <- if (is.null(port_landing)) {
+    "CAST(NULL AS VARCHAR)"
+  } else {
+    sprintf("CAST(l.%s AS VARCHAR)", q(port_landing))
+  }
+  # one row per trip and per landing, with a single text key each
+  tt <- .rb_fill(
+    "SELECT {tk}, t.{q(vid)} AS rb_vid, CAST(t.{q(T2)} AS DATE) AS rb_d, {tp} AS rb_p,
+            concat_ws('|', {paste(sprintf('CAST(t.%s AS VARCHAR)', q(trip_key)), collapse = ', ')}) AS rb_tk
+     FROM ({t_sql}) t"
+  )
+  ll <- .rb_fill(
+    "SELECT {lk}, l.{q(vid)} AS rb_vid, CAST(l.{q(date)} AS DATE) AS rb_d, {lp} AS rb_p,
+            concat_ws('|', {paste(sprintf('CAST(l.%s AS VARCHAR)', q(landing_key)), collapse = ', ')}) AS rb_lk
+     FROM ({l_sql}) l"
+  )
+  taken_t <- character(0)
+  taken_l <- character(0)
+  links <- list()
+  for (i in seq_len(nrow(steps))) {
+    tu <- .rb_sql(dplyr::tbl(
+      con,
+      .rb_register(con, data.frame(rb_tk = taken_t))
+    ))
+    lu <- .rb_sql(dplyr::tbl(
+      con,
+      .rb_register(con, data.frame(rb_lk = taken_l))
+    ))
+    pc <- if (steps$port[i]) {
+      "AND t.rb_p IS NOT NULL AND t.rb_p = l.rb_p"
+    } else {
+      ""
+    }
+    d <- DBI::dbGetQuery(
+      con,
+      .rb_fill(
+        "WITH t AS (SELECT * FROM ({tt}) WHERE rb_tk NOT IN (SELECT rb_tk FROM ({tu}))),
+              l AS (SELECT * FROM ({ll}) WHERE rb_lk NOT IN (SELECT rb_lk FROM ({lu}))),
+              c AS (SELECT t.rb_tk, l.rb_lk, l.rb_d - t.rb_d AS dt_days
+                    FROM t JOIN l ON l.rb_vid = t.rb_vid AND abs(l.rb_d - t.rb_d) <= {steps$dt_days[i]} {pc}),
+              n AS (SELECT *, count(*) OVER (PARTITION BY rb_tk) AS nt, count(*) OVER (PARTITION BY rb_lk) AS nl FROM c)
+         SELECT rb_tk, rb_lk, dt_days FROM n WHERE nt = 1 AND nl = 1"
+      )
+    )
+    if (nrow(d) > 0) {
+      d$match_type <- steps$name[i]
+      links[[length(links) + 1]] <- d
+      taken_t <- c(taken_t, d$rb_tk)
+      taken_l <- c(taken_l, d$rb_lk)
+    }
+  }
+  if (!is.null(since_previous_days)) {
+    tu <- .rb_sql(dplyr::tbl(
+      con,
+      .rb_register(con, data.frame(rb_tk = taken_t))
+    ))
+    d <- DBI::dbGetQuery(
+      con,
+      .rb_fill(
+        "WITH t AS (SELECT * FROM ({tt}) WHERE rb_tk NOT IN (SELECT rb_tk FROM ({tu})))
+         SELECT t.rb_tk, l.rb_lk, l.rb_d - t.rb_d AS dt_days
+         FROM t JOIN ({ll}) l ON l.rb_vid = t.rb_vid AND l.rb_d >= t.rb_d AND l.rb_d - t.rb_d <= {since_previous_days}
+         QUALIFY row_number() OVER (PARTITION BY t.rb_tk ORDER BY l.rb_d, l.rb_lk) = 1"
+      )
+    )
+    if (nrow(d) > 0) {
+      d$match_type <- "since_previous"
+      links[[length(links) + 1]] <- d
+    }
+  }
+  lk_df <- if (length(links)) {
+    do.call(rbind, links)
+  } else {
+    data.frame(
+      rb_tk = character(0),
+      rb_lk = character(0),
+      dt_days = numeric(0),
+      match_type = character(0)
+    )
+  }
+  m_sql <- .rb_sql(dplyr::tbl(con, .rb_register(con, lk_df)))
+  out <- DBI::dbGetQuery(
+    con,
+    .rb_fill(
+      "WITH m AS ({m_sql}),
+            t AS ({tt}), l AS ({ll})
+       SELECT {paste(sprintf('t.%s', q(trip_key)), collapse = ', ')}, {paste(sprintf('l.%s', q(landing_key)), collapse = ', ')},
+              t.rb_vid AS {q(vid)}, m.match_type, CAST(m.dt_days AS INTEGER) AS dt_days,
+              count(*) OVER (PARTITION BY m.rb_lk) AS n_trips, count(*) OVER (PARTITION BY m.rb_tk) AS n_landings
+       FROM m JOIN t ON t.rb_tk = m.rb_tk JOIN l ON l.rb_lk = m.rb_lk"
+    )
+  )
+  .rb_unregister(con)
+  tibble::as_tibble(out[
+    do.call(order, unname(as.list(out[c(vid, trip_key)]))),
+  ])
+}

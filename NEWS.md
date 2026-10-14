@@ -1,3 +1,7 @@
+# ramb 2026.10.14.11
+
+- `rb_link_trip_landings()`: new, a step-1 builder (fishycode plan 013, item 5). Trips (declared, or voyages cut from the track) are linked to landings by a cascade of steps, strictest first (same day and port, then a day apart, then any port, then two days); a step accepts a pair only when it is the sole candidate both ways, so an ambiguous match is left for a looser step or unmatched. With `since_previous_days`, a last step links each trip still unmatched to the vessel's next landing, so one landing can cover several trips (a weekly landing); `n_trips` and `n_landings` count the links.
+
 # ramb 2026.10.14.10
 
 Records that no track covers (fishycode plan 013, item 7).

@@ -348,3 +348,78 @@ test_that("rb_add_trips assigns trip ids correctly with robust defaults and warn
   expect_true("T1.x" %in% names(out_clash))
   expect_true("T1.y" %in% names(out_clash))
 })
+
+test_that("trips to landings: a cascade of unambiguous steps, then many trips to one landing", {
+  trips <- tibble::tibble(
+    tid = 1:5,
+    vid = c(1L, 1L, 1L, 1L, 2L),
+    port = c("A", "A", "B", "B", "C"),
+    T2 = as.POSIXct(
+      c(
+        "2024-03-01 18:00",
+        "2024-03-03 20:00",
+        "2024-03-05 23:30",
+        "2024-03-06 17:00",
+        "2024-03-01 12:00"
+      ),
+      tz = "UTC"
+    )
+  )
+  landings <- tibble::tibble(
+    lid = c(10, 11, 12, 20, 21),
+    vid = c(1L, 1L, 1L, 2L, 2L),
+    port = c("A", "A", "B", "C", "C"),
+    date = as.Date(c(
+      "2024-03-01",
+      "2024-03-04",
+      "2024-03-07",
+      "2024-03-01",
+      "2024-03-01"
+    ))
+  )
+  k <- rb_link_trip_landings(
+    trips,
+    landings,
+    "tid",
+    "lid",
+    port_trip = "port",
+    port_landing = "port"
+  )
+  expect_equal(k$tid, c(1L, 2L, 4L))
+  expect_equal(k$lid, c(10, 11, 12))
+  expect_equal(k$match_type, c("date_port", "date1_port", "date1_port"))
+  # vessel 2 has two landings on its trip's day: ambiguous, so not matched
+  expect_false(5L %in% k$tid)
+  s <- rb_link_trip_landings(
+    trips,
+    landings,
+    "tid",
+    "lid",
+    port_trip = "port",
+    port_landing = "port",
+    since_previous_days = 3
+  )
+  expect_equal(s$lid[s$tid == 3L], 12)
+  expect_equal(s$match_type[s$tid == 3L], "since_previous")
+  expect_equal(s$n_trips[s$lid == 12], c(2, 2))
+  expect_error(
+    rb_link_trip_landings(
+      trips,
+      dplyr::rename(landings, tid = lid),
+      "tid",
+      "tid"
+    ),
+    "different names"
+  )
+  skip_if_not_installed("duckdbfs")
+  l <- rb_link_trip_landings(
+    duckdbfs::as_dataset(trips),
+    duckdbfs::as_dataset(landings),
+    "tid",
+    "lid",
+    port_trip = "port",
+    port_landing = "port",
+    since_previous_days = 3
+  )
+  expect_equal(as.data.frame(l), as.data.frame(s), ignore_attr = TRUE)
+})
