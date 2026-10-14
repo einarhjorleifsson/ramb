@@ -1,3 +1,10 @@
+# ramb 2026.10.14.13
+
+The step registry, item 0 of fishycode plan 013, now covers the flow's step functions.
+
+- The ping flaggers, `rb_find_trip_stays()`, `rb_cut_trip_voyages()`, `rb_assign_trip()`, `rb_link_record_pings()`, `rb_assign_record()`, `rb_link_record_events()` and `rb_cut_record_stretches()` check their input against the registry before any work, as the effort, fishing, catch and record builders already do. A missing column or a time that is not a date-time stops with a message that names the column under the user's name and, where a step adds it, that step. A lazy table is checked by its schema only. Messages changed: e.g. `rb_cut_record_stretches()` without speed said "pings lacks: speed".
+- A shared misuse test runs every checked step function on a table without its columns.
+
 # ramb 2026.10.14.12
 
 - `rb_link_record_sets()`: new, a step-2 builder for static gear (fishycode plan 013, item 8). Each haul's set is the vessel's latest earlier pass along the haul's line: pings within `max_back_h` (240 h) before the haul, outside every haul window, within the smallest buffer from 330 m up to 550 m that finds any; passes are runs of such pings, scored by lateness and length. Gives the set's start and end, the soak and `set_basis`. Recoded from the method of Ifremer's iapesca (`Retrieve_SettingOperations`), not copied; the distance is to the nearest haul ping, not to a line geometry.

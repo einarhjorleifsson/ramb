@@ -63,6 +63,12 @@ rb_cut_record_stretches <- function(
   speed_max = "speed_max",
   batch_pings = 5e7
 ) {
+  .rb_check_input(
+    pings,
+    "rb_cut_record_stretches",
+    cols = c(speed = speed),
+    types = c(time = "time", speed = "numeric")
+  )
   need <- unique(c("vid", "time", speed, speed_min, speed_max, stay))
   miss <- setdiff(need, colnames(pings))
   if (length(miss)) {

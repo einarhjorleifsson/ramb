@@ -408,7 +408,11 @@ names(.rb_steps) <- vapply(.rb_steps, `[[`, "", "fn")
   if (length(miss) > 0) {
     g <- miss[1]
     # the grammar's own input columns are never "added by" a step, though a builder may make them anew
-    by <- if (g %in% c("vid", "time", "lon", "lat", "speed", "start", "end")) character(0) else .rb_added_by(g)
+    by <- if (g %in% c("vid", "time", "lon", "lat", "speed", "start", "end")) {
+      character(0)
+    } else {
+      .rb_added_by(g)
+    }
     hint <- if (length(by) > 0) {
       c(
         i = sprintf(

@@ -149,5 +149,8 @@ test_that("missing inputs: no stretches, no usable records, no pings in range", 
   bad <- transform(tows, t3 = t2)
   pb <- rb_link_record_stretches(bad, rb_cut_record_stretches(pings))
   expect_true(all(is.na(pb$stretch_id) & pb$n_candidates == 0))
-  expect_error(rb_cut_record_stretches(pings[, -3]), "pings lacks: speed")
+  expect_error(
+    rb_cut_record_stretches(pings[, -3]),
+    "must have a column `speed`"
+  )
 })

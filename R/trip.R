@@ -90,6 +90,17 @@ rb_find_trip_stays <- function(
   lon = lon,
   lat = lat
 ) {
+  .rb_check_input(
+    pings,
+    "rb_find_trip_stays",
+    cols = c(
+      vid = rlang::as_name(rlang::enquo(vid)),
+      time = rlang::as_name(rlang::enquo(time)),
+      lon = rlang::as_name(rlang::enquo(lon)),
+      lat = rlang::as_name(rlang::enquo(lat))
+    ),
+    types = c(time = "time", lon = "numeric", lat = "numeric")
+  )
   map <- .rb_cols(
     vid = {{ vid }},
     time = {{ time }},
@@ -331,6 +342,15 @@ rb_cut_trip_voyages <- function(
   time = time,
   port_id = port_id
 ) {
+  .rb_check_input(
+    pings,
+    "rb_cut_trip_voyages",
+    cols = c(
+      vid = rlang::as_name(rlang::enquo(vid)),
+      time = rlang::as_name(rlang::enquo(time))
+    ),
+    types = c(time = "time")
+  )
   method <- match.arg(method)
   if (is.null(min_pings)) {
     min_pings <- if (method == "stays") 10 else 1
@@ -432,6 +452,15 @@ rb_assign_trip <- function(
   vid = vid,
   time = time
 ) {
+  .rb_check_input(
+    pings,
+    "rb_assign_trip",
+    cols = c(
+      vid = rlang::as_name(rlang::enquo(vid)),
+      time = rlang::as_name(rlang::enquo(time))
+    ),
+    types = c(time = "time")
+  )
   map <- .rb_cols(vid = {{ vid }}, time = {{ time }})
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)

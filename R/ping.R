@@ -139,6 +139,15 @@ rb_flag_ping_invalid <- function(
   lon = lon,
   lat = lat
 ) {
+  .rb_check_input(
+    x,
+    "rb_flag_ping_invalid",
+    cols = c(
+      lon = rlang::as_name(rlang::enquo(lon)),
+      lat = rlang::as_name(rlang::enquo(lat))
+    ),
+    types = c(lon = "numeric", lat = "numeric")
+  )
   rules <- match.arg(rules, several.ok = TRUE)
   map <- .rb_cols(lon = {{ lon }}, lat = {{ lat }})
   x <- .rb_flag_init(.rb_std_in(x, map))
@@ -188,6 +197,18 @@ rb_flag_ping_duplicate <- function(
   lat = lat,
   batch_pings = 5e6
 ) {
+  .rb_check_input(
+    x,
+    "rb_flag_ping_duplicate",
+    cols = c(
+      vid = rlang::as_name(rlang::enquo(vid)),
+      time = rlang::as_name(rlang::enquo(time)),
+      lon = rlang::as_name(rlang::enquo(lon)),
+      lat = rlang::as_name(rlang::enquo(lat))
+    ),
+    also = c(feed = rlang::as_name(rlang::enquo(feed))),
+    types = c(time = "time", lon = "numeric", lat = "numeric")
+  )
   if (missing(priority)) {
     stop(
       "`priority` is required: the feeds, highest priority first.",
@@ -283,6 +304,17 @@ rb_flag_ping_impossible <- function(
   lat = lat,
   batch_pings = 5e6
 ) {
+  .rb_check_input(
+    x,
+    "rb_flag_ping_impossible",
+    cols = c(
+      vid = rlang::as_name(rlang::enquo(vid)),
+      time = rlang::as_name(rlang::enquo(time)),
+      lon = rlang::as_name(rlang::enquo(lon)),
+      lat = rlang::as_name(rlang::enquo(lat))
+    ),
+    types = c(time = "time", lon = "numeric", lat = "numeric")
+  )
   method <- match.arg(method)
   map <- .rb_cols(
     vid = {{ vid }},
@@ -387,6 +419,15 @@ rb_flag_ping_impossible <- function(
 #' @family flag pings
 #' @export
 rb_flag_ping_port <- function(pings, ports, keep = NULL, lon = lon, lat = lat) {
+  .rb_check_input(
+    pings,
+    "rb_flag_ping_port",
+    cols = c(
+      lon = rlang::as_name(rlang::enquo(lon)),
+      lat = rlang::as_name(rlang::enquo(lat))
+    ),
+    types = c(lon = "numeric", lat = "numeric")
+  )
   map <- .rb_cols(lon = {{ lon }}, lat = {{ lat }})
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)

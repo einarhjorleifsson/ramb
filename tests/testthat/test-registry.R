@@ -87,3 +87,45 @@ test_that("types are checked on a lazy table's schema; a step's own columns mean
   )
   expect_silent(.rb_check_input(done, "rb_assign_effort"))
 })
+
+test_that("the misuse suite: every checked step function refuses a table without its columns, by the registry", {
+  checked <- c(
+    "rb_flag_ping_invalid",
+    "rb_flag_ping_duplicate",
+    "rb_flag_ping_impossible",
+    "rb_flag_ping_port",
+    "rb_find_trip_stays",
+    "rb_cut_trip_voyages",
+    "rb_assign_trip",
+    "rb_link_record_pings",
+    "rb_assign_record",
+    "rb_link_record_events",
+    "rb_cut_record_stretches",
+    "rb_assign_fishing",
+    "rb_assign_effort",
+    "rb_build_catch_units",
+    "rb_share_catch",
+    "rb_build_record_pings",
+    "rb_link_record_sets"
+  )
+  reg <- .rb_registry()
+  expect_true(all(checked %in% reg$fn))
+  for (f in checked) {
+    fn <- getExportedValue("ramb", f)
+    args <- list(data.frame(nothing = 1))
+    # a key with no default is an argument, not a column of the table
+    if (
+      "key" %in%
+        names(formals(fn)) &&
+        identical(formals(fn)$key, quote(expr = ))
+    ) {
+      args$key <- "id"
+    }
+    expect_error(do.call(fn, args), "must have a column", info = f)
+  }
+  # a wrong type is refused the same way
+  expect_error(
+    rb_assign_trip(data.frame(vid = 1L, time = "2024-01-01")),
+    "date-time"
+  )
+})

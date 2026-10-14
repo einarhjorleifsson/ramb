@@ -271,6 +271,12 @@ rb_link_record_pings <- function(
   speed_max = "speed_max",
   window_s = 0
 ) {
+  .rb_check_input(
+    pings,
+    "rb_link_record_pings",
+    also = c(speed = speed),
+    types = c(time = "time")
+  )
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
   p_sql <- .rb_in_sql(
@@ -358,6 +364,7 @@ rb_link_record_events <- function(
   ends = c("t2", "t4"),
   max_dt_s = Inf
 ) {
+  .rb_check_input(pings, "rb_link_record_events", types = c(time = "time"))
   if (length(intersect(starts, ends))) {
     stop(
       "an event is both a start and an end: ",
@@ -464,6 +471,7 @@ rb_assign_record <- function(
   key = c(".sid", "schema"),
   carry = character(0)
 ) {
+  .rb_check_input(pings, "rb_assign_record", types = c(time = "time"))
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
   p_sql <- .rb_in_sql(pings, con)
