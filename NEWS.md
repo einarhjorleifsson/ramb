@@ -1,3 +1,10 @@
+# ramb 2026.10.14.6
+
+Step 5 of the flow, and the first piece of the step registry (fishycode plan 013, items 0 and 1).
+
+- `rb_assign_effort()`: new, step 5. Every ping gets the time it stands for (`hours`: the interval to the vessel's next ping, or since its previous one), `kw_hours` with the engine power from a vessel table or from the pings, and, where a towed gear's width is given, the area it sweeps (`pressure`, km²). It is done for every ping, fishing or not, so each approach to "is it fishing?" can stand as a column of its own and a summary picks one by filtering on it. Intervals longer than `max_interval_s` (2 h) are capped or dropped (`long`), shorter than `min_interval_s` dropped; `by` keeps an interval inside a voyage. `interval_flag` says which pings were capped, dropped or at a group's edge, and `effort_basis` is `"derived"`, or `"none"` where there are no hours. Without engine power or width, `kw_hours` and `pressure` are `NA`: the same columns at every data resolution.
+- A step registry (internal): one row per step function of the flow, saying what it needs from its input, what it adds and which step normally comes before it. `rb_assign_effort()` is the first function to check its input against it: a missing column, a time that is not a date-time, or a second run on the same table stops with a message that names the column and, where another step adds it, that step. A lazy table is checked by its schema only. The other step functions keep their own checks until they are moved onto it.
+
 # ramb 2026.10.14.5
 
 - `rb_link_record_pings()`: new argument `window_s`, as in `rb_assign_fishing()`. The `fishing` of each match then tests the median speed over the pings given within `window_s` either side, so the matches and `rb_assign_fishing()` agree when both get the same pings and window. The default 0 keeps each ping's own speed; results are unchanged unless it is set.
