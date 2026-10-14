@@ -212,6 +212,15 @@
     after = "rb_cut_record_stretches"
   ),
   .rb_step(
+    "rb_build_record_pings",
+    "record",
+    "builder",
+    "records",
+    c("vid", "start", "end", "lon1", "lat1"),
+    c("time", "lon", "lat", "speed", "pos_basis"),
+    after = "rb_build_record_windows"
+  ),
+  .rb_step(
     "rb_assign_record",
     "record",
     "step",
@@ -380,7 +389,8 @@ names(.rb_steps) <- vapply(.rb_steps, `[[`, "", "fn")
   miss <- needs[!vapply(needs, function(g) user(g) %in% have, logical(1))]
   if (length(miss) > 0) {
     g <- miss[1]
-    by <- .rb_added_by(g)
+    # the grammar's own input columns are never "added by" a step, though a builder may make them anew
+    by <- if (g %in% c("vid", "time", "lon", "lat", "speed", "start", "end")) character(0) else .rb_added_by(g)
     hint <- if (length(by) > 0) {
       c(
         i = sprintf(

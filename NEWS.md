@@ -1,3 +1,10 @@
+# ramb 2026.10.14.10
+
+Records that no track covers (fishycode plan 013, item 7).
+
+- `rb_build_record_pings()`: new, a step-2 builder. A record with no pings (the years before vessel tracking, a vessel the tracking does not reach) gets positions every `interval_s` over its window, in a straight line from its start to its end position, or at its start where it has no end; `pos_basis = "synthesised"`, and `speed` is the straight line over the window. They run through `rb_assign_effort()` and `rb_share_catch()` like any pings; whether they are fishing is the record's to say. The distance is a new SQL copy of the haversine on `rb_calc_distance()`'s sphere, pinned to it by a test.
+- The step registry's message no longer says a basic input (`vid`, `time`, a position, `speed`) "is added by" a builder that happens to make it.
+
 # ramb 2026.10.14.9
 
 - Lazy results compose: a step function's lazy result is now a query wrapped in `SELECT * FROM (...)`, so two of them can be combined with `dplyr::union_all()`. Before, dbplyr put the second query after `UNION ALL` as it was, and DuckDB refused its leading `WITH` (found sharing catch under two fishing approaches in fishycode).

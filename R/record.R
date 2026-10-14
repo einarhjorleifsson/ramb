@@ -657,3 +657,109 @@ rb_assign_fishing <- function(
   )
   .rb_out(con, sql, lazy_in, by = c("vid", "time"))
 }
+
+#' Build positions for records that have no pings
+#'
+#' A step-2 builder for the records no track covers: the years before vessel tracking, or a vessel the
+#' tracking does not reach. Each record gets positions every `interval_s` seconds over its window
+#' `[start, end)`, moved in a straight line from its start position (`lon1`, `lat1`) to its end position
+#' (`lon2`, `lat2`), or kept at the start where there is no end position. A record whose window has no length
+#' gets one position, at its start. `pos_basis` is `"synthesised"`, and `speed` (knots) is the straight-line
+#' distance over the window's length, where there is an end position.
+#'
+#' The positions are pings like any other: [rb_assign_effort()] gives them their hours (`by` the key), and
+#' [rb_share_catch()] the record's catch. They stand for the record's own window, so whether they are fishing is
+#' the record's to say (e.g. `fishing = TRUE` for a haul's window), not the track's.
+#'
+#' @param records A data frame or lazy DuckDB table, one row per record (or per window): the `key` columns,
+#'   `vid`, `start` and `end` (date-times) and the positions. Records with no `start` are left out.
+#' @param key The columns that identify a record; they are kept on its positions.
+#' @param interval_s Seconds between positions.
+#' @param vid,start,end,lon1,lat1,lon2,lat2 The columns.
+#' @return One row per position: the key, `vid`, `time`, `lon`, `lat`, `speed` and `pos_basis`. A data frame
+#'   for data frame input, a lazy table for lazy input.
+#' @export
+#' @examples
+#' r <- tibble::tibble(
+#'   id = 1, vid = 7L,
+#'   start = as.POSIXct("1998-05-02 06:00", tz = "UTC"), end = as.POSIXct("1998-05-02 07:00", tz = "UTC"),
+#'   lon1 = -22, lat1 = 64, lon2 = -22.2, lat2 = 64.05
+#' )
+#' rb_build_record_pings(r, key = "id", interval_s = 900)
+rb_build_record_pings <- function(
+  records,
+  key,
+  interval_s = 600,
+  vid = "vid",
+  start = "start",
+  end = "end",
+  lon1 = "lon1",
+  lat1 = "lat1",
+  lon2 = "lon2",
+  lat2 = "lat2"
+) {
+  stopifnot(is.numeric(interval_s), length(interval_s) == 1, interval_s > 0)
+  .rb_check_input(
+    records,
+    "rb_build_record_pings",
+    cols = c(vid = vid, start = start, end = end, lon1 = lon1, lat1 = lat1),
+    also = c(stats::setNames(key, key)),
+    types = c(start = "time", end = "time", lon1 = "numeric", lat1 = "numeric")
+  )
+  have <- if (inherits(records, "tbl_lazy")) {
+    colnames(records)
+  } else {
+    names(records)
+  }
+  lazy_in <- inherits(records, "tbl_lazy")
+  con <- .rb_con_for(records)
+  q <- function(x) .rb_q(con, x)
+  r_sql <- .rb_in_sql(records, con)
+  has_end <- all(c(lon2, lat2) %in% have)
+  l2 <- if (has_end) sprintf("r.%s", q(lon2)) else "NULL"
+  a2 <- if (has_end) sprintf("r.%s", q(lat2)) else "NULL"
+  kcols <- paste(sprintf("r.%s", q(key)), collapse = ", ")
+  step <- sprintf(
+    "to_microseconds(%s)",
+    format(round(interval_s * 1e6), scientific = FALSE)
+  )
+  sql <- .rb_fill(
+    "
+  WITH r AS (
+    SELECT {kcols}, r.{q(vid)} AS rb_vid, r.{q(start)} AS rb_s, r.{q(end)} AS rb_e,
+           r.{q(lon1)} AS rb_x1, r.{q(lat1)} AS rb_y1, {l2} AS rb_x2, {a2} AS rb_y2,
+           CASE WHEN r.{q(end)} > r.{q(start)} THEN epoch(r.{q(end)} - r.{q(start)}) END AS rb_len
+    FROM ({r_sql}) r WHERE r.{q(start)} IS NOT NULL),
+  t AS (
+    SELECT r.*, unnest(CASE WHEN rb_len IS NULL THEN [rb_s] ELSE range(rb_s, rb_e, {step}) END) AS rb_t FROM r),
+  f AS (SELECT t.*, CASE WHEN rb_len IS NULL OR rb_x2 IS NULL THEN 0 ELSE epoch(rb_t - rb_s) / rb_len END AS rb_f FROM t)
+  SELECT {paste(q(key), collapse = ', ')}, rb_vid AS {q(vid)}, rb_t AS time,
+         CASE WHEN rb_x2 IS NULL THEN rb_x1 ELSE rb_x1 + rb_f * (rb_x2 - rb_x1) END AS lon,
+         CASE WHEN rb_y2 IS NULL THEN rb_y1 ELSE rb_y1 + rb_f * (rb_y2 - rb_y1) END AS lat,
+         CASE WHEN rb_len IS NULL OR rb_x2 IS NULL OR rb_y2 IS NULL THEN NULL
+              ELSE {.rb_haversine_sql('rb_x1', 'rb_y1', 'rb_x2', 'rb_y2')} / rb_len * 3600 / 1852 END AS speed,
+         'synthesised' AS pos_basis
+  FROM f"
+  )
+  .rb_out(con, sql, lazy_in, by = c(vid, "time"))
+}
+
+# The haversine distance (metres) as DuckDB SQL, on the sphere of rb_calc_distance(method = "haversine"): one more
+# hand copy of that formula (see ramb's AGENTS.md, "One distance sphere"), pinned to it by a test. The argument of
+# asin() is clamped with CASE, not LEAST(), which would turn a NULL into a distance.
+.rb_haversine_sql <- function(lon1, lat1, lon2, lat2) {
+  a <- sprintf(
+    "(power(sin(radians(%s - %s) / 2), 2) + cos(radians(%s)) * cos(radians(%s)) * power(sin(radians(%s - %s) / 2), 2))",
+    lat2,
+    lat1,
+    lat1,
+    lat2,
+    lon2,
+    lon1
+  )
+  sprintf(
+    "(2 * 6371000 * asin(sqrt(CASE WHEN %s > 1 THEN 1 ELSE %s END)))",
+    a,
+    a
+  )
+}

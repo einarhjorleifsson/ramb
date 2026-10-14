@@ -415,3 +415,49 @@ test_that("fishing by speed and as a cascade: the window where a record holds th
     ignore_attr = TRUE
   )
 })
+
+test_that("positions for records with no pings: along the record's line, every interval, one for no length", {
+  skip_if_not_installed("duckdbfs")
+  r <- tibble::tibble(
+    id = 1:3,
+    vid = c(7L, 7L, 8L),
+    start = h(c(0, 2, 0)),
+    end = h(c(1, 2, 3)),
+    lon1 = c(-22, -21, -20),
+    lat1 = c(64, 64, 65),
+    lon2 = c(-22.2, NA, -20),
+    lat2 = c(64.05, NA, 65.3)
+  )
+  p <- rb_build_record_pings(r, key = "id", interval_s = 900)
+  expect_equal(as.vector(table(p$id)), c(4, 1, 12)) # an hour in 15 min, no length, three hours
+  one <- p[p$id == 1, ]
+  expect_equal(one$lon, -22 - 0.2 * c(0, 0.25, 0.5, 0.75))
+  expect_true(all(p$pos_basis == "synthesised"))
+  # the speed is the straight line over the window, on rb_calc_distance's sphere
+  d <- rb_calc_distance(
+    lon1 = -20,
+    lat1 = 65,
+    lon2 = -20,
+    lat2 = 65.3,
+    method = "haversine"
+  )
+  expect_equal(
+    unique(p$speed[p$id == 3]),
+    d / (3 * 3600) * 3600 / 1852,
+    tolerance = 1e-9
+  )
+  expect_true(is.na(p$speed[p$id == 2]))
+  l <- dplyr::collect(rb_build_record_pings(
+    duckdbfs::as_dataset(r),
+    key = "id",
+    interval_s = 900
+  ))
+  expect_equal(
+    as.data.frame(l[order(l$vid, l$time), ]),
+    as.data.frame(p),
+    ignore_attr = TRUE
+  )
+  # they run through effort like any pings
+  e <- rb_assign_effort(p, by = "id")
+  expect_equal(sum(e$hours, na.rm = TRUE), 0.75 + 2.75)
+})
