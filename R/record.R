@@ -763,3 +763,91 @@ rb_build_record_pings <- function(
     a
   )
 }
+
+#' Find the set of each static-gear haul on the track
+#'
+#' A step-2 builder for static gear (nets, pots, longlines), where the logbook often records only the haul. The
+#' haul's pings trace the gear's line; the set is the vessel's latest earlier pass along that line. Recoded from
+#' the method of Ifremer's iapesca (`Retrieve_SettingOperations`; fishycode decision 078), not copied:
+#'
+#' * candidate pings are the vessel's pings within `max_back_h` hours before the haul starts, outside every haul
+#'   window given, and near the haul's line: within a buffer of the nearest haul ping;
+#' * the buffer is the smallest of `buffer_m[1]`, `buffer_m[1] + 10`, ... up to `buffer_m[2]` metres that finds
+#'   any candidate (iapesca: 330 to 550 m);
+#' * a pass is a run of candidates that follow each other in the vessel's track; each pass is scored by how late
+#'   it is among the haul's passes (at least 0.25) times its number of pings (at most 4, scaled), and the best is
+#'   the set, the later one on a tie.
+#'
+#' The distance is to the nearest haul ping, not to a line geometry, so dense pings give the closest result.
+#'
+#' @param hauls A data frame or lazy DuckDB table, one row per haul: the `key` columns, `vid`, and the haul's
+#'   `start` and `end`.
+#' @param pings A data frame or lazy table with `vid`, `time`, `lon`, `lat`.
+#' @param key The columns that identify a haul.
+#' @param max_back_h How long before the haul a set may be, hours (iapesca: 240).
+#' @param buffer_m The smallest and largest buffer, metres.
+#' @param start,end The haul's window columns.
+#' @return One row per haul: the key, `vid`, `set_start` and `set_end` (the pass's first and last ping), `soak_h`
+#'   (the haul's start minus `set_end`), `n_set_pings`, `buffer_m` and `set_basis` (`"reconstructed"`, or `"none"`
+#'   where no pass was found). A data frame for data frame input, a lazy table for lazy input.
+#' @export
+rb_link_record_sets <- function(
+  hauls,
+  pings,
+  key,
+  max_back_h = 240,
+  buffer_m = c(330, 550),
+  start = "start",
+  end = "end"
+) {
+  .rb_check_input(
+    hauls,
+    "rb_link_record_sets",
+    cols = c(start = start, end = end),
+    also = c(stats::setNames(key, key)),
+    types = c(start = "time", end = "time")
+  )
+  .rb_need_cols(pings, "pings", c("vid", "time", "lon", "lat"))
+  lazy_in <- inherits(hauls, "tbl_lazy")
+  con <- .rb_con_for(hauls)
+  q <- function(x) .rb_q(con, x)
+  h_sql <- .rb_in_sql(hauls, con)
+  p_sql <- .rb_in_sql(pings, con)
+  ks <- paste(sprintf("h.%s", q(key)), collapse = ", ")
+  kh <- paste(q(key), collapse = ", ")
+  on_k <- function(a, b) {
+    paste(sprintf("%s.%s = %s.%s", a, q(key), b, q(key)), collapse = " AND ")
+  }
+  dist <- .rb_haversine_sql("c.lon", "c.lat", "hp.lon", "hp.lat")
+  b_lo <- buffer_m[1]
+  b_hi <- buffer_m[2]
+  sql <- .rb_fill(
+    "
+  WITH h AS (SELECT {ks}, h.vid, h.{q(start)} AS hs, h.{q(end)} AS he FROM ({h_sql}) h),
+  p AS (SELECT vid, time, lon, lat, row_number() OVER (PARTITION BY vid ORDER BY time, lon, lat) AS rn FROM ({p_sql})),
+  hp AS (SELECT {kh}, h.vid, p.lon, p.lat FROM h JOIN p ON p.vid = h.vid AND p.time >= h.hs AND p.time < h.he),
+  inhaul AS (SELECT DISTINCT p.vid, p.rn FROM p JOIN h ON p.vid = h.vid AND p.time >= h.hs AND p.time < h.he),
+  c AS (SELECT {kh}, h.hs, p.vid, p.time, p.lon, p.lat, p.rn
+        FROM h JOIN p ON p.vid = h.vid AND p.time < h.hs AND p.time >= h.hs - INTERVAL '{max_back_h}' HOUR
+        WHERE NOT EXISTS (SELECT 1 FROM inhaul i WHERE i.vid = p.vid AND i.rn = p.rn)),
+  cd AS (SELECT c.*, min({dist}) AS d
+         FROM c JOIN hp ON {on_k('hp', 'c')} AND hp.vid = c.vid
+           AND abs(hp.lat - c.lat) <= {b_hi} / 111000.0
+           AND abs(hp.lon - c.lon) <= {b_hi} / (111000.0 * cos(radians(c.lat)))
+         GROUP BY ALL),
+  b AS (SELECT {kh}, greatest({b_lo}, ceil(min(d) / 10) * 10) AS buf FROM cd GROUP BY ALL HAVING min(d) <= {b_hi}),
+  k AS (SELECT cd.*, b.buf FROM cd JOIN b ON {on_k('b', 'cd')} WHERE cd.d <= b.buf),
+  s AS (SELECT *, rn - row_number() OVER (PARTITION BY {kh} ORDER BY rn) AS seg FROM k),
+  g AS (SELECT {kh}, seg, any_value(buf) AS buf, min(time) AS s0, max(time) AS s1, count(*) AS n FROM s GROUP BY ALL),
+  sc AS (SELECT g.*,
+           greatest(0.25, row_number() OVER (PARTITION BY {kh} ORDER BY s0) / count(*) OVER (PARTITION BY {kh})) *
+           (least(n, 4) / max(least(n, 4)) OVER (PARTITION BY {kh})) AS score
+         FROM g),
+  best AS (SELECT * FROM sc QUALIFY row_number() OVER (PARTITION BY {kh} ORDER BY score DESC, s0 DESC) = 1)
+  SELECT {ks}, h.vid, best.s0 AS set_start, best.s1 AS set_end,
+         epoch(h.hs - best.s1) / 3600.0 AS soak_h, best.n AS n_set_pings, best.buf AS buffer_m,
+         CASE WHEN best.s0 IS NULL THEN 'none' ELSE 'reconstructed' END AS set_basis
+  FROM h LEFT JOIN best ON {on_k('best', 'h')}"
+  )
+  .rb_out(con, sql, lazy_in, by = c("vid", key))
+}

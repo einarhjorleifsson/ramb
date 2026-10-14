@@ -461,3 +461,50 @@ test_that("positions for records with no pings: along the record's line, every i
   e <- rb_assign_effort(p, by = "id")
   expect_equal(sum(e$hours, na.rm = TRUE), 0.75 + 2.75)
 })
+
+test_that("sets of static-gear hauls: the latest earlier pass along the haul's line", {
+  skip_if_not_installed("duckdbfs")
+  line <- function(t0, n, lat0 = 64, dlat = 0.05) {
+    tibble::tibble(
+      vid = 1L,
+      time = t0 + (0:(n - 1)) * 120,
+      lon = -22 + 0.0005 * (0:(n - 1)) %% 2, # a few tens of metres off the line, back and forth
+      lat = lat0 + dlat * (0:(n - 1)) / (n - 1)
+    )
+  }
+  d1 <- as.POSIXct("2024-03-01 06:00", tz = "UTC")
+  d2 <- as.POSIXct("2024-03-02 12:00", tz = "UTC")
+  steam <- tibble::tibble(
+    vid = 1L,
+    time = d1 + 3600 * (1:20),
+    lon = -21,
+    lat = 64.5
+  )
+  pings <- dplyr::bind_rows(line(d1, 16), steam, line(d2, 31)) # set 06:00-06:30, haul 12:00-13:00
+  hauls <- tibble::tibble(id = 1L, vid = 1L, start = d2, end = d2 + 3600)
+  s <- rb_link_record_sets(hauls, pings, key = "id")
+  expect_equal(s$set_start, d1)
+  expect_equal(s$set_end, d1 + 15 * 120)
+  expect_equal(
+    s$soak_h,
+    as.numeric(difftime(d2, d1 + 15 * 120, units = "hours"))
+  )
+  expect_equal(s$set_basis, "reconstructed")
+  expect_equal(s$buffer_m, 330)
+  # a haul with no earlier pass near it: none
+  lone <- tibble::tibble(vid = 1L, time = d2 + 5 * 3600, lon = -19, lat = 63)
+  far <- tibble::tibble(
+    id = 2L,
+    vid = 1L,
+    start = d2 + 5 * 3600 - 1,
+    end = d2 + 5 * 3600 + 1
+  )
+  n <- rb_link_record_sets(far, dplyr::bind_rows(pings, lone), key = "id")
+  expect_equal(n$set_basis, "none")
+  l <- dplyr::collect(rb_link_record_sets(
+    duckdbfs::as_dataset(hauls),
+    duckdbfs::as_dataset(pings),
+    key = "id"
+  ))
+  expect_equal(as.data.frame(l), as.data.frame(s), ignore_attr = TRUE)
+})

@@ -1,3 +1,7 @@
+# ramb 2026.10.14.12
+
+- `rb_link_record_sets()`: new, a step-2 builder for static gear (fishycode plan 013, item 8). Each haul's set is the vessel's latest earlier pass along the haul's line: pings within `max_back_h` (240 h) before the haul, outside every haul window, within the smallest buffer from 330 m up to 550 m that finds any; passes are runs of such pings, scored by lateness and length. Gives the set's start and end, the soak and `set_basis`. Recoded from the method of Ifremer's iapesca (`Retrieve_SettingOperations`), not copied; the distance is to the nearest haul ping, not to a line geometry.
+
 # ramb 2026.10.14.11
 
 - `rb_link_trip_landings()`: new, a step-1 builder (fishycode plan 013, item 5). Trips (declared, or voyages cut from the track) are linked to landings by a cascade of steps, strictest first (same day and port, then a day apart, then any port, then two days); a step accepts a pair only when it is the sole candidate both ways, so an ambiguous match is left for a looser step or unmatched. With `since_previous_days`, a last step links each trip still unmatched to the vessel's next landing, so one landing can cover several trips (a weekly landing); `n_trips` and `n_landings` count the links.

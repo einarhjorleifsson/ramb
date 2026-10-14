@@ -35,6 +35,7 @@ reference:
   - rb_link_record_events
   - rb_cut_record_stretches
   - rb_link_record_stretches
+  - rb_link_record_sets
   - rb_assign_record
   - rb_build_record_pings
   - rb_limit_record_duration

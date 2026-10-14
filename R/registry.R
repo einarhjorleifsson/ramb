@@ -230,6 +230,15 @@
     after = "rb_build_record_windows"
   ),
   .rb_step(
+    "rb_link_record_sets",
+    "record",
+    "builder",
+    "hauls",
+    c("vid", "start", "end"),
+    c("set_start", "set_end", "soak_h", "n_set_pings", "buffer_m", "set_basis"),
+    after = "rb_build_record_windows"
+  ),
+  .rb_step(
     "rb_assign_record",
     "record",
     "step",
