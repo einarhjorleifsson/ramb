@@ -9,7 +9,11 @@
 .rb_q <- function(con, x) as.character(DBI::dbQuoteIdentifier(con, x))
 .rb_in_sql <- function(x, con) .rb_sql(.rb_as_lazy(x, con))
 .rb_out <- function(con, sql, lazy_in, by = NULL) {
-  out <- dplyr::tbl(con, dplyr::sql(sql))
+  # wrapped, so the lazy result composes: dbplyr puts a query as it is after UNION ALL, where a bare WITH fails
+  out <- dplyr::tbl(
+    con,
+    dplyr::sql(sprintf("SELECT * FROM (%s) AS rb_out", sql))
+  )
   if (lazy_in) {
     return(out)
   }

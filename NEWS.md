@@ -1,3 +1,7 @@
+# ramb 2026.10.14.9
+
+- Lazy results compose: a step function's lazy result is now a query wrapped in `SELECT * FROM (...)`, so two of them can be combined with `dplyr::union_all()`. Before, dbplyr put the second query after `UNION ALL` as it was, and DuckDB refused its leading `WITH` (found sharing catch under two fishing approaches in fishycode).
+
 # ramb 2026.10.14.8
 
 Step 4 at any data resolution (fishycode plan 013, item 3): the track decides where the record is missing.

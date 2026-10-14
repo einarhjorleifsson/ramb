@@ -92,3 +92,18 @@ test_that("misuse: a missing column, a second run, kW in both tables", {
     rb_assign_effort(pings)$hours
   )
 })
+
+test_that("lazy results compose: two of them in a union", {
+  skip_if_not_installed("duckdbfs")
+  a <- rb_assign_effort(
+    duckdbfs::as_dataset(pings),
+    duckdbfs::as_dataset(vessels)
+  )
+  b <- rb_assign_effort(
+    duckdbfs::as_dataset(pings),
+    duckdbfs::as_dataset(vessels),
+    interval = "previous"
+  )
+  u <- dplyr::collect(dplyr::union_all(a, b))
+  expect_equal(nrow(u), 2 * nrow(pings))
+})
