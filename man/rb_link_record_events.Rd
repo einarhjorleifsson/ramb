@@ -2,38 +2,42 @@
 % Please edit documentation in R/record.R
 \name{rb_link_record_events}
 \alias{rb_link_record_events}
-\title{Link each recorded event time to the vessel's nearest ping}
+\title{Link each recorded event time to the ping that bounds its phase}
 \usage{
 rb_link_record_events(
   pings,
   records,
   key = c(".sid", "schema"),
-  events = c("t1", "t2", "t3", "t4"),
+  starts = c("t1", "t3"),
+  ends = c("t2", "t4"),
   max_dt_s = Inf
 )
 }
 \arguments{
 \item{pings}{A data frame or lazy DuckDB table with \code{vid} and \code{time}.}
 
-\item{records}{A data frame or lazy DuckDB table with the \code{key} columns, \code{vid} and the \code{events} columns.}
+\item{records}{A data frame or lazy DuckDB table with the \code{key} columns, \code{vid} and the \code{starts} and \code{ends}
+columns.}
 
 \item{key}{The columns that identify a record.}
 
-\item{events}{The event-time columns, each a timestamp or \code{NA}.}
+\item{starts, ends}{The event-time columns that open a phase (they take the next ping) and close one (the
+previous ping); each a timestamp or \code{NA}.}
 
-\item{max_dt_s}{The farthest a ping may be from the event, in seconds, to count as its nearest; farther, and
-\code{time} and \code{dt_s} are \code{NA}.}
+\item{max_dt_s}{The farthest the ping may be from the event, in seconds; farther, and \code{time} and \code{dt_s} are \code{NA}.}
 }
 \value{
 One row per (record, event time present): the key, \code{vid}, \code{event} (the column name), \code{event_time},
-\code{time} (the nearest ping's time), \code{dt_s} (\code{time - event_time}, in seconds, signed) and \code{gap_s} (the time
-between the last ping at or before the event and the first at or after it; 0 when a ping falls on it, \code{NA}
-when the track does not reach both sides).
+\code{time} (the ping's time), \code{dt_s} (\code{time - event_time}, in seconds: at least 0 for a start, at most 0 for an
+end) and \code{gap_s} (the time between the last ping at or before the event and the first at or after it; 0 when
+a ping falls on it, \code{NA} when the track does not reach both sides).
 }
 \description{
-For every record and every event time it carries (by default \code{t1}-\code{t4}: setting start, gear on the bottom,
-hauling start, hauling end), the vessel's ping nearest in time, how far it is from the event, and the gap
-between the pings on either side of the event: how precisely the track can place it. A missing event time
-gives no row. The ping nearest the event is the one before it on a tie. The first building block of
+A logbook record's event times bound its phases: \code{t1} to \code{t2} is the setting, \code{t3} to \code{t4} the hauling, and for a
+towed gear, which records only \code{t2} and \code{t3}, the tow lies between them. A start takes the vessel's next ping (the
+first at or after it) and an end the previous one (the last at or before it), so the pings from a start's ping to
+its end's ping are the phase; the pings strictly between a \code{t2} and a \code{t3} are a tow. When a phase holds no ping,
+the start's ping comes after the end's. Each row also carries the gap between the pings on either side of the
+event: how precisely the track can place it. A missing event time gives no row. The first building block of
 reconciling declared times with the track.
 }

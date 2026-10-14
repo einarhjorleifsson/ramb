@@ -276,32 +276,47 @@ rb_link_record_pings <- function(
   .rb_out(con, sql, lazy_in, by = c("vid", "time"))
 }
 
-#' Link each recorded event time to the vessel's nearest ping
+#' Link each recorded event time to the ping that bounds its phase
 #'
-#' For every record and every event time it carries (by default `t1`-`t4`: setting start, gear on the bottom,
-#' hauling start, hauling end), the vessel's ping nearest in time, how far it is from the event, and the gap
-#' between the pings on either side of the event: how precisely the track can place it. A missing event time
-#' gives no row. The ping nearest the event is the one before it on a tie. The first building block of
+#' A logbook record's event times bound its phases: `t1` to `t2` is the setting, `t3` to `t4` the hauling, and for a
+#' towed gear, which records only `t2` and `t3`, the tow lies between them. A start takes the vessel's next ping (the
+#' first at or after it) and an end the previous one (the last at or before it), so the pings from a start's ping to
+#' its end's ping are the phase; the pings strictly between a `t2` and a `t3` are a tow. When a phase holds no ping,
+#' the start's ping comes after the end's. Each row also carries the gap between the pings on either side of the
+#' event: how precisely the track can place it. A missing event time gives no row. The first building block of
 #' reconciling declared times with the track.
 #'
 #' @param pings A data frame or lazy DuckDB table with `vid` and `time`.
-#' @param records A data frame or lazy DuckDB table with the `key` columns, `vid` and the `events` columns.
+#' @param records A data frame or lazy DuckDB table with the `key` columns, `vid` and the `starts` and `ends`
+#'   columns.
 #' @param key The columns that identify a record.
-#' @param events The event-time columns, each a timestamp or `NA`.
-#' @param max_dt_s The farthest a ping may be from the event, in seconds, to count as its nearest; farther, and
-#'   `time` and `dt_s` are `NA`.
+#' @param starts,ends The event-time columns that open a phase (they take the next ping) and close one (the
+#'   previous ping); each a timestamp or `NA`.
+#' @param max_dt_s The farthest the ping may be from the event, in seconds; farther, and `time` and `dt_s` are `NA`.
 #' @return One row per (record, event time present): the key, `vid`, `event` (the column name), `event_time`,
-#'   `time` (the nearest ping's time), `dt_s` (`time - event_time`, in seconds, signed) and `gap_s` (the time
-#'   between the last ping at or before the event and the first at or after it; 0 when a ping falls on it, `NA`
-#'   when the track does not reach both sides).
+#'   `time` (the ping's time), `dt_s` (`time - event_time`, in seconds: at least 0 for a start, at most 0 for an
+#'   end) and `gap_s` (the time between the last ping at or before the event and the first at or after it; 0 when
+#'   a ping falls on it, `NA` when the track does not reach both sides).
 #' @export
 rb_link_record_events <- function(
   pings,
   records,
   key = c(".sid", "schema"),
-  events = c("t1", "t2", "t3", "t4"),
+  starts = c("t1", "t3"),
+  ends = c("t2", "t4"),
   max_dt_s = Inf
 ) {
+  if (length(intersect(starts, ends))) {
+    stop(
+      "an event is both a start and an end: ",
+      paste(intersect(starts, ends), collapse = ", "),
+      call. = FALSE
+    )
+  }
+  events <- c(starts, ends)
+  if (!length(events)) {
+    stop("no event columns: give `starts`, `ends` or both", call. = FALSE)
+  }
   miss <- setdiff(c(key, "vid", events), colnames(records))
   if (length(miss)) {
     stop("records lacks: ", paste(miss, collapse = ", "), call. = FALSE)
@@ -324,6 +339,11 @@ rb_link_record_events <- function(
   q <- function(x) .rb_q(con, x)
   kcols <- paste(q(key), collapse = ", ")
   ev <- paste(q(events), collapse = ", ")
+  is_start <- if (length(starts)) {
+    sprintf("event IN (%s)", paste0("'", starts, "'", collapse = ", "))
+  } else {
+    "FALSE"
+  }
   # No cast: a cast between a zoned and a plain timestamp follows the session's time zone. The event columns
   # and `time` must share a type, and UNPIVOT says so if they do not.
   within <- if (is.finite(max_dt_s)) {
@@ -341,11 +361,7 @@ rb_link_record_events <- function(
   p AS (SELECT DISTINCT vid, time FROM ({p_sql}) WHERE time IS NOT NULL),
   b AS (SELECT r.*, p.time AS t_before FROM r ASOF LEFT JOIN p ON r.vid = p.vid AND r.event_time >= p.time),
   f AS (SELECT b.*, p.time AS t_after FROM b ASOF LEFT JOIN p ON b.vid = p.vid AND b.event_time <= p.time),
-  n AS (SELECT *, CASE WHEN t_after IS NULL THEN t_before
-                       WHEN t_before IS NULL THEN t_after
-                       WHEN epoch(event_time - t_before) <= epoch(t_after - event_time) THEN t_before
-                       ELSE t_after END AS nt
-        FROM f)
+  n AS (SELECT *, CASE WHEN {is_start} THEN t_after ELSE t_before END AS nt FROM f)
   SELECT {kcols}, vid, event, event_time,
          CASE WHEN {within} THEN nt END AS time,
          CASE WHEN {within} THEN epoch(nt - event_time) END AS dt_s,

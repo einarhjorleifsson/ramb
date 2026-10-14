@@ -1,3 +1,7 @@
+# ramb 2026.10.14.1
+
+- `rb_link_record_events()`: an event now takes the ping that bounds its phase, not the nearest one. `starts` (default `t1`, `t3`) take the next ping and `ends` (`t2`, `t4`) the previous, so the pings from a start's ping to its end's are the setting or the hauling, and the pings strictly between a `t2` and a `t3` are a tow; the `events` argument is gone (fishycode's maintainer, 2026-10-14). The nearest ping was the one before the event for half of all events, so on one year of Icelandic data (2023) it fell inside the record's own recorded tow or haul for 49-50 % of them; the bounding ping does for 97-99 %, the rest being phases shorter than the gap between pings. `dt_s` is now at least 0 for a start and at most 0 for an end.
+
 # ramb 2026.10.14
 
 - `rb_link_record_events()`: new, step 2. For every record and every event time it carries (`t1`-`t4` by default), the vessel's ping nearest in time, `dt_s` (that ping's time minus the event's, signed) and `gap_s` (the time between the pings on either side of the event, 0 when one falls on it, `NA` when the track does not reach both sides), with `max_dt_s` to leave out pings too far away. A missing event time gives no row; on a tie the ping before the event wins. Lazy DuckDB tables and data frames give the same result. It is the first building block of reconciling declared times with the track (fishycode plan 013, phase 4).
