@@ -2,84 +2,85 @@
 % Please edit documentation in R/catch.R
 \name{rb_share_catch}
 \alias{rb_share_catch}
-\title{Share catch and value over fishing pings}
+\title{Share catch over the fishing pings}
 \usage{
 rb_share_catch(
   pings,
-  events,
-  remove_diagnostic = TRUE,
-  raise_unallocated = FALSE,
-  raise_unmatched = FALSE
+  units,
+  catch = NULL,
+  method = c("units", "eflalo"),
+  key = "unit_id",
+  species = "species",
+  kg = "kg",
+  value = NULL,
+  fishing = "fishing",
+  hours = "hours",
+  match_by = NULL,
+  vid = "vid",
+  time = "time",
+  start = "start",
+  end = "end",
+  ...
 )
 }
 \arguments{
-\item{pings}{A data frame of fishing ping records. Must contain:
-\describe{
-\item{.pid}{integer, unique ping identifier}
-\item{VE_COU}{character, vessel country}
-\item{VE_REF}{character, vessel reference}
-\item{time}{POSIXct, UTC timestamp}
-\item{FT_REF}{character, fishing trip reference}
-\item{ir}{character, ICES rectangle}
-\item{state}{integer, should be 0 or 1}
-}}
+\item{pings}{A data frame or lazy DuckDB table with \code{vid}, \code{time}, the fishing column and \code{hours}
+(\code{\link[=rb_assign_effort]{rb_assign_effort()}}).}
 
-\item{events}{A data frame of landing event records. Must contain:
-\describe{
-\item{.eid}{integer, unique event identifier}
-\item{VE_COU}{character, vessel country}
-\item{VE_REF}{character, vessel reference}
-\item{FT_REF}{character, fishing trip reference}
-\item{date}{Date, event date}
-\item{LE_RECT}{character, ICES rectangle}
-\item{LE_KG}{numeric, landed weight in kg}
-\item{LE_EURO}{numeric, landed value in euro}
-}}
+\item{units}{Units from \code{\link[=rb_build_catch_units]{rb_build_catch_units()}}: \code{unit_id}, \code{level}, \code{resolution}, \code{vid}, \code{start}, \code{end},
+the \code{key} columns and any \code{match_by} columns.}
 
-\item{remove_diagnostic}{Logical. If TRUE (default), diagnostic columns are removed from output.}
+\item{catch}{A data frame or lazy table with the \code{key} columns, the species and the weight (and optionally
+the value), in one unit of weight.}
 
-\item{raise_unallocated}{Logical (default FALSE). Reserved: raise trips whose events were
-only partly allocated, so the full event total is shared (not yet implemented).}
+\item{method}{\code{"units"} (the default) or \code{"eflalo"}.}
 
-\item{raise_unmatched}{Logical (default FALSE). Reserved: share events whose trip has no
-match in \code{pings} at a broader level, e.g. vessel by month (not yet implemented).}
+\item{key}{The columns that tie the catch to the units' events; \code{"unit_id"} when the catch is already per unit.}
+
+\item{species, kg, value}{The catch's species, weight and (optional) value columns.}
+
+\item{fishing, hours}{The pings' fishing column (one approach) and effort column.}
+
+\item{match_by}{As in \code{\link[=rb_build_catch_units]{rb_build_catch_units()}}.}
+
+\item{vid, time, start, end}{The vessel, time and interval columns.}
+
+\item{...}{For \code{method = "eflalo"}: \code{remove_diagnostic}, \code{raise_unallocated}, \code{raise_unmatched}.}
 }
 \value{
-A data frame matching the number of rows in \code{pings}, with added columns:
-\describe{
-\item{LE_KG}{numeric, allocated landed weight in kg}
-\item{LE_EURO}{numeric, allocated landed value in euro}
-\item{.how}{character, allocation step: "trip_rectangle_day", "trip_rectangle", or "trip"}
-}
-Additional columns are included if \code{remove_diagnostic = FALSE}.
+One row per (fishing ping, unit, species): \code{vid}, \code{time}, \code{unit_id} and \code{resolution} (the unit the
+catch was recorded in; a unit of several kinds of event joins them with \code{+}, e.g. \code{"haul+set"}),
+\code{shared_unit_id} and \code{shared_resolution} (the unit it was shared in: the same, a
+coarser one, or \code{"vessel_month"}), the species, the weight (and value), \code{catch_basis} (\code{"derived"}, or
+\code{"none"} for catch with no fishing ping, which has no time) and \code{approach}. A data frame for data frame input,
+a lazy table for lazy input.
 }
 \description{
-Shares each landing event's weight (\code{LE_KG}) and value (\code{LE_EURO}) evenly
-over the fishing pings (\code{state == 1}) of its trip, conserving the totals.
-An event is allocated at the finest level its information allows, and only
-to pings not already allocated at a finer level:
+Step 6 of the flow. Each catch unit's catch (\code{\link[=rb_build_catch_units]{rb_build_catch_units()}}) is shared over the unit's fishing pings
+by effort (their \code{hours}), species by species. The pings at a coarser level go to its pings not already
+served at a finer level, and to all its pings if none is left. Catch whose unit holds no fishing ping moves up
+to the unit of the next level that overlaps it in time (a haul's to its trip, a trip's to its landing), and
+finally to the vessel's fishing pings in that month. What still finds no fishing ping is kept with no time and
+basis \code{"none"}, so the kilograms out equal the kilograms in.
 }
-\section{Hierarchical allocation}{
+\details{
+Each approach to whether a ping is fishing is a column of its own (\code{fishing}), and the result says which was
+used (\code{approach}), so the catch can be shared under each and compared.
 
-\enumerate{
-\item \strong{Date Level}:
-\itemize{
-\item Events with defined ICES rectangle and date are spread among matching pings (\code{state == 1}).
-\item Unmatched pings proceed to the next level.
+\code{method = "eflalo"} keeps the ICES VMS data call's sharing on EFLALO-shaped tables: \code{units} is then the
+events table (\code{.eid}, \code{VE_COU}, \code{VE_REF}, \code{FT_REF}, \code{date}, \code{LE_RECT}, \code{LE_KG}, \code{LE_EURO}), \code{pings} have
+\code{.pid}, \code{VE_COU}, \code{VE_REF}, \code{time}, \code{FT_REF}, \code{ir} and \code{state}, and the result is the pings with \code{LE_KG},
+\code{LE_EURO} and \code{.how}; see \code{vignette("catch")}.
 }
-\item \strong{ICES Rectangle Level}:
-\itemize{
-\item Remaining events with defined ICES rectangle (but missing catch date) are spread among remaining pings, if available.
-\item Unmatched pings proceed to the next level.
+\examples{
+t0 <- as.POSIXct("2024-03-01", tz = "UTC")
+h <- function(x) t0 + x * 3600
+pings <- tibble::tibble(vid = 1L, time = h(c(1, 2, 3, 30)), fishing = TRUE, hours = 1)
+events <- tibble::tibble(
+  id = c("haul", "trip"), vid = 1L, start = h(c(0, 0)), end = h(c(4, 40)),
+  level = 1:2, resolution = c("haul", "trip")
+)
+units <- rb_build_catch_units(events, key = "id")
+catch <- tibble::tibble(id = c("haul", "trip"), species = "cod", kg = c(300, 100))
+rb_share_catch(pings, units, catch, key = "id")
 }
-\item \strong{Trip Level}:
-\itemize{
-\item Remaining events with only a trip id are spread among any remaining pings.
-\item Pings already allocated are not reallocated.
-}
-}
-
-\strong{Note:} Two further allocation steps are planned but not yet implemented
-(see \code{raise_unallocated} and \code{raise_unmatched}).
-}
-

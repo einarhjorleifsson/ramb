@@ -281,14 +281,24 @@
     ),
     after = "rb_assign_fishing"
   ),
-  # step 6: catch (EFLALO-shaped until it is rewritten to the grammar, plan 013 item 2)
+  # step 6: catch. rb_share_catch() returns a table of its own (one row per fishing ping, unit and species),
+  # so it is a builder; its method = "eflalo" keeps its own checks.
+  .rb_step(
+    "rb_build_catch_units",
+    "catch",
+    "builder",
+    "events",
+    c("vid", "start", "end", "level", "resolution"),
+    c("start_filled", "unit_id", "n_events"),
+    after = "rb_build_record_windows"
+  ),
   .rb_step(
     "rb_share_catch",
     "catch",
-    "step",
+    "builder",
     "pings",
-    c(".pid", "VE_COU", "VE_REF", "time", "FT_REF", "ir", "state"),
-    c("LE_KG", "LE_EURO", ".how"),
+    c("vid", "time"),
+    c("shared_unit_id", "shared_resolution", "catch_basis", "approach"),
     after = "rb_assign_effort"
   )
 )

@@ -15,7 +15,14 @@
 .rb_reg <- new.env(parent = emptyenv())
 .rb_register <- function(con, x, prefix = "rb_in_") {
   nm <- paste0(prefix, paste(sample(c(letters, 0:9), 10, TRUE), collapse = ""))
-  duckdb::duckdb_register(con, nm, as.data.frame(x))
+  x <- as.data.frame(x)
+  # a date-time or date stored as integer (seq() makes them) registers as INTEGER, not as a time
+  for (k in names(x)) {
+    if (inherits(x[[k]], c("POSIXct", "Date")) && is.integer(x[[k]])) {
+      storage.mode(x[[k]]) <- "double"
+    }
+  }
+  duckdb::duckdb_register(con, nm, x)
   assign(nm, TRUE, envir = .rb_reg)
   nm
 }

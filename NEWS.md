@@ -1,3 +1,12 @@
+# ramb 2026.10.14.7
+
+Step 6 rewritten to the grammar (fishycode plan 013, item 2): catch is shared at the finest level the data can separate, at any resolution, and no kilogram is lost.
+
+- `rb_build_catch_units()`: new, a step-6 builder. The events that carry catch (record windows, trips, landings over a trip, a week or a month) are grouped into units: events of one vessel and one `level` whose intervals overlap, or that share a key (a record's set and haul), are one unit, because the track cannot tell them apart. A timed haul is a unit of its own; a day's records without times are one unit. A landing with only a date reaches back to the vessel's previous landing (`start_filled`). `match_by` keeps units apart by, e.g., ICES rectangle.
+- `rb_share_catch()`: **breaking.** The default is now `method = "units"`: `rb_share_catch(pings, units, catch, key = )` shares each unit's catch over its fishing pings by `hours` ([rb_assign_effort()]), species by species. A coarser unit's catch goes to its pings no finer unit took, or to all of them if none is left. Catch whose unit has no fishing ping moves up to the next level that overlaps it in time, then to the vessel's fishing pings that month; what still finds none is kept with no time and `catch_basis = "none"`, so the kilograms out equal the kilograms in. The fishing column is an argument and is named in `approach`, so the catch can be shared under each approach and compared. The result is one row per (fishing ping, unit, species). The ICES VMS data call's EFLALO sharing is `method = "eflalo"` (`rb_share_catch(pings, events, method = "eflalo")`); the old signature without it no longer works.
+- On the Icelandic logbook of June 2023 (fishycode decision 100): 35,580 t in and out; 98 % shared in its own record's unit, 1.6 % moved to the vessel's month, 0.4 % with no fishing ping that month.
+- Data frames whose date-times or dates are stored as integers (as `seq()` makes them) were registered in DuckDB as INTEGER, and any function given one failed; they are now registered as times.
+
 # ramb 2026.10.14.6
 
 Step 5 of the flow, and the first piece of the step registry (fishycode plan 013, items 0 and 1).

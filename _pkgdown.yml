@@ -53,6 +53,7 @@ reference:
   - rb_assign_effort
 - title: "Catch (step 6)"
   contents:
+  - rb_build_catch_units
   - rb_share_catch
 - title: "Tools: track calculations"
   contents:

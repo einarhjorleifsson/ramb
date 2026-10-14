@@ -8,6 +8,10 @@ execute:
   comment: "#>"
 ---
 
+*Since ramb 2026.10.14.7 this article shows `method = "eflalo"`, the ICES VMS data call's sharing on
+EFLALO-shaped tables. The default, `method = "units"`, shares catch per catch unit
+([rb_build_catch_units()](../reference/rb_build_catch_units.html)) by effort, at any resolution; see its help.*
+
 Step 6 of the [fishing-activity flow](flow.html). Catch and value are
 recorded per logbook event — a day, a haul, sometimes only a trip —
 while the activity lives on the pings. [rb_share_catch()](../reference/rb_share_catch.html) spreads each
@@ -70,7 +74,7 @@ events <-
     LE_EURO = c(150, 450, 300, 750)
   )
 
-out <- rb_share_catch(pings, events)
+out <- rb_share_catch(pings, events, method = "eflalo")
 out |> select(.pid, time, ir, state, LE_KG, .how)
 ```
 
