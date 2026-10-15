@@ -1,3 +1,8 @@
+# ramb 2026.10.15.1
+
+- `rb_pad_harbour()`: the arguments are `voyage_id` and `port_id`, where they were `tid` and `hid` (fishycode TODO 53). The id is a voyage's, as `rb_assign_trip()` puts it on the pings, and the port id is the ports' own key (`port_id` from `rb_flag_ping_port()`), not a source's port code: the same renames as `rb_summarise_track()` in 2026.10.13.3. A call by position is unchanged; a call by name needs the new names. The name of the function is kept.
+- `rb_pad_harbour()`: a ping in port with no voyage (`NA`, as `rb_assign_trip()` leaves it) now counts as outside the voyage. Before, the comparison with `NA` was itself `NA`, so on `rb_assign_trip()`'s output the function padded nothing; only the older convention (an id of 0 or less in port) worked. Where the neighbour has no port id, the end ping now keeps its own instead of taking `NA`. Nothing in fishycode calls it.
+
 # ramb 2026.10.14.14
 
 - `rb_build_catch_units()`: an event with no `start` now starts where the vessel's latest event that ends strictly earlier ends. Two events ending together (two landings in a day, one per buyer) get the same start and share a unit. Before, they were ordered by an arbitrary tie, which could differ between two evaluations of the same query; and the function evaluated its islands twice (for the key links, then for the result), so an event could fall in two units and its catch be counted twice (fishycode decision 102: 1,751 t too many in 2007, stopped by fishycode's kilograms check). The islands are now computed once, as a temporary table.

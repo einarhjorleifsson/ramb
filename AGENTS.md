@@ -145,6 +145,5 @@ with an `.rb_need()` guard, never in Imports.
   `rb_calc_step_acceleration()` is distance/dt², not Δspeed/Δt
   (documented as such; no consumer in ramb, fishycode or fishymodel);
   `.rb_get_ices_gears()`' key column is misnamed `target` (it holds gear
-  codes); `rb_pad_harbour()` keeps its name per plan 013 — its `hid` is
-  a port id, e.g. `port_id` from `rb_flag_ping_port()`, and is to be
-  renamed `port_id` (fishycode TODO 53).
+  codes); `rb_pad_harbour()` keeps its name per plan 013 — its
+  arguments are `voyage_id` and `port_id` since 2026.10.15.1.

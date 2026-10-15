@@ -947,27 +947,31 @@ rb_link_trip_logbook <- function(
 }
 
 
-#' Pad the port id onto the ends of a trip
+#' Pad the port id onto the ends of a voyage
 #'
-#' The first ping of a trip (a positive `tid` different from the previous
-#' row's) gets the previous row's port id, and the last ping gets the next
-#' row's, so a trip's end pings carry the ports it sailed between.
+#' The first ping of a voyage gets the previous ping's port id, and the last
+#' ping gets the next one's, so a voyage's end pings carry the ports it sailed
+#' between. A ping in port has no voyage: `NA`, as [rb_assign_trip()] leaves
+#' it, or an id of 0 or less. Where the neighbour has no port id, the ping keeps
+#' its own. The pings are in time order, one vessel at a time.
 #'
-#' @param tid A trip id, e.g. from [rb_assign_trip()].
-#' @param hid A port id, e.g. the `port_id` column from [rb_flag_ping_port()].
+#' @param voyage_id A voyage id, e.g. the `voyage_id` column from
+#'   [rb_assign_trip()].
+#' @param port_id A port id, e.g. the `port_id` column from
+#'   [rb_flag_ping_port()]: the ports' own key, not a source's port code.
 #'
-#' @return The `hid` vector, padded.
+#' @return The `port_id` vector, padded.
 #' @export
-rb_pad_harbour <- function(tid, hid) {
-  tibble::tibble(.tid = tid, .hid = hid) |>
-    dplyr::mutate(
-      .hid = dplyr::case_when(
-        .tid != dplyr::lag(.tid) & .tid > 0 ~ dplyr::lag(.hid),
-        .tid != dplyr::lead(.tid) & .tid > 0 ~ dplyr::lead(.hid),
-        TRUE ~ .hid
-      )
-    ) |>
-    dplyr::pull(.hid)
+#' @examples
+#' rb_pad_harbour(voyage_id = c(NA, 1, 1, 1, NA), port_id = c(7, NA, NA, NA, 9))
+rb_pad_harbour <- function(voyage_id, port_id) {
+  sea <- !is.na(voyage_id) & voyage_id > 0
+  differs <- function(x) is.na(x) | x != voyage_id
+  dplyr::case_when(
+    sea & differs(dplyr::lag(voyage_id)) ~ dplyr::coalesce(dplyr::lag(port_id), port_id),
+    sea & differs(dplyr::lead(voyage_id)) ~ dplyr::coalesce(dplyr::lead(port_id), port_id),
+    TRUE ~ port_id
+  )
 }
 
 #' Link trips to the landings that ended them

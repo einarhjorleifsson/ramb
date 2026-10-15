@@ -2,20 +2,27 @@
 % Please edit documentation in R/trip.R
 \name{rb_pad_harbour}
 \alias{rb_pad_harbour}
-\title{Pad the port id onto the ends of a trip}
+\title{Pad the port id onto the ends of a voyage}
 \usage{
-rb_pad_harbour(tid, hid)
+rb_pad_harbour(voyage_id, port_id)
 }
 \arguments{
-\item{tid}{A trip id, e.g. from \code{\link[=rb_assign_trip]{rb_assign_trip()}}.}
+\item{voyage_id}{A voyage id, e.g. the \code{voyage_id} column from
+\code{\link[=rb_assign_trip]{rb_assign_trip()}}.}
 
-\item{hid}{A port id, e.g. the \code{port_id} column from \code{\link[=rb_flag_ping_port]{rb_flag_ping_port()}}.}
+\item{port_id}{A port id, e.g. the \code{port_id} column from
+\code{\link[=rb_flag_ping_port]{rb_flag_ping_port()}}: the ports' own key, not a source's port code.}
 }
 \value{
-The \code{hid} vector, padded.
+The \code{port_id} vector, padded.
 }
 \description{
-The first ping of a trip (a positive \code{tid} different from the previous
-row's) gets the previous row's port id, and the last ping gets the next
-row's, so a trip's end pings carry the ports it sailed between.
+The first ping of a voyage gets the previous ping's port id, and the last
+ping gets the next one's, so a voyage's end pings carry the ports it sailed
+between. A ping in port has no voyage: \code{NA}, as \code{\link[=rb_assign_trip]{rb_assign_trip()}} leaves
+it, or an id of 0 or less. Where the neighbour has no port id, the ping keeps
+its own. The pings are in time order, one vessel at a time.
+}
+\examples{
+rb_pad_harbour(voyage_id = c(NA, 1, 1, 1, NA), port_id = c(7, NA, NA, NA, 9))
 }
