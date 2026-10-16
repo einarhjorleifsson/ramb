@@ -1,3 +1,14 @@
+# ramb 2026.10.16.1
+
+**Breaking.** All of ramb's data are parquet files in `inst/extdata`, tracked with Git LFS and read with `rb_read_example()` (the maintainer, 2026-10-16); `data/` is gone.
+
+- The eight datasets that were lazy-loaded are now parquet, unchanged (same rows, order and columns; `data-raw/extdata.R` converts each `.rda` as it stood at d693c1b): `dansk`, `dansk_harbours`, `creel`, `trawlsurvey`, `trawlsurveytows`, `whacks1`, `benthis_parameters`, `metier5_benthis_lookup`. Fix: `ramb::dansk` becomes `rb_read_example("dansk")`, a lazy table; add `dplyr::collect()` for a data frame. Their help moved to `?rb_read_example`.
+- `dansk_harbours` and `trawlsurveytows` keep their shapes as DuckDB's own geometry, which DuckDB 1.5 writes as GeoParquet and reads back as geometry with no extension. They no longer come as sf: a collected `geometry` is WKB, and sf where needed is `sf::st_sf(x[names(x) != "geometry"], geometry = sf::st_as_sfc(structure(x$geometry, class = "WKB"), crs = 4326))`. Fix for `rb_detect_in_polygons(geometry, dansk_harbours)` and `rb_flag_ping_port(pings, dansk_harbours)`: make the sf as above first (the articles show it).
+- `rb_predict_gear_width()` reads its BENTHIS lookups from the parquet files; results unchanged.
+- The test fixture of the jepol trip cutter is `inst/testdata/pre_jepol.parquet` (was `tests/testthat/fixtures/pre_jepol.rds`), so the tests of an installed ramb find it.
+- Parquet is written at zstd level 19: `dansk` is 6.6 MB (5.9 MB as xz `.rda`).
+- fishycode: `curate/checks/whack_demo.R` reads `whacks1`; it needs `whacks1 <- dplyr::collect(rb_read_example("whacks1"))`.
+
 # ramb 2026.10.16
 
 Co-location and the static-gear set finder share one proximity engine; example data ship as parquet under Git LFS.

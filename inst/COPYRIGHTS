@@ -10,7 +10,20 @@ src/geodesic.h
   License: MIT/X11 — the licence text is in the files' headers.
 
 ramb also ships these third-party datasets in inst/extdata, as parquet, read
-with rb_read_example(); data-raw/labelled_tracks.R makes them from the sources:
+with rb_read_example(); data-raw/labelled_tracks.R and data-raw/extdata.R make
+them from the sources:
+
+inst/extdata/dansk.parquet
+inst/extdata/dansk_harbours.parquet
+  From example_data_AIS.csv and the harbours of the ICES Workshop WKSSFGEO,
+  https://github.com/ices-eg/WKSSFGEO.
+  Copyright (c) 2021 ICES Expert Groups. License: MIT (text below).
+
+inst/extdata/creel.parquet
+  From Mendo T., Smout S., Photopoulou T., James M. (2019). Data from:
+  Identifying fishing grounds from vessel tracks: model-based inference for
+  small scale fisheries. Dryad, https://doi.org/10.5061/dryad.k80bp46.
+  License: CC0 1.0.
 
 inst/extdata/wkssfgeo2_it_pots.parquet
   From IT_CNR_2023_GP.csv (CNR-IRBIM) of the ICES Workshop WKSSFGEO2,
@@ -31,7 +44,7 @@ inst/extdata/ird_mg_gillnet.parquet
   https://creativecommons.org/licenses/by/4.0/. Changed: columns selected,
   renamed and harmonised (see data-raw/labelled_tracks.R).
 
-The MIT License, as it applies to the two ICES files:
+The MIT License, as it applies to the ICES files:
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"), to deal

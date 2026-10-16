@@ -14,11 +14,11 @@ entry of the fishing-activity flow: flag the pings (step 0), then cut
 the track into voyages and put the trip back on each ping (step 1) —
 see the [flow article](flow.html) for the full picture.
 
-We use the [dansk](../reference/dansk.html) example data (Danish VMS
+We use the `dansk` example data (Danish VMS
 pings from
 [WKSSFGEO](https://github.com/ices-eg/WKSSFGEO)) and the
-[dansk_harbours](../reference/dansk_harbours.html) polygons, both
-shipped with the package. First, rename to the grammar column names so
+`dansk_harbours` polygons, both shipped with the package as parquet and
+read with [rb_read_example()](../reference/rb_read_example.html). First, rename to the grammar column names so
 every function runs on its defaults — alternatively, pass e.g.
 `vid = vessel_id, time = time_stamp` to each call.
 
@@ -28,7 +28,8 @@ library(dplyr)
 library(ggplot2)
 
 d <-
-  dansk |>
+  rb_read_example("dansk") |>
+  collect() |>
   arrange(vessel_id, time_stamp) |>
   rename(vid = vessel_id, time = time_stamp)
 ```
@@ -68,7 +69,12 @@ this is the column trips are cut on. The flagged pings are set aside
 (kept in `flagged` for the maps below); nothing is deleted:
 
 ```{r}
-harbours <- dansk_harbours |> rename(port_id = SI_HARB)
+# the polygons as sf, from the WKB that DuckDB's geometry collects to
+harbours <- rb_read_example("dansk_harbours") |> collect()
+harbours <- sf::st_sf(
+  port_id = harbours$SI_HARB,
+  geometry = sf::st_as_sfc(structure(harbours$geometry, class = "WKB"), crs = 4326)
+)
 
 flagged <- d |> filter(!is.na(ping_flag))
 

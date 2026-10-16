@@ -1,4 +1,5 @@
-## code to prepare `DATASET` dataset goes here
+## How the datasets were first made, until 2026.10.15.1, as .rda in data/. They are parquet in inst/extdata since
+## 2026.10.16.1, converted unchanged by data-raw/extdata.R; the use_data() calls below no longer apply.
 library(data.table)
 library(mapdeck)
 library(sf)

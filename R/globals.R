@@ -105,8 +105,6 @@ utils::globalVariables(
     "trip_id2",
     ".",
     "metiers5",
-    "metier5_benthis_lookup",
-    "benthis_parameters",
     "variable",
     "width",
     "Key",

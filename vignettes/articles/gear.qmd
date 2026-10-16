@@ -44,18 +44,20 @@ métier level 5 to the 14 BENTHIS gear groups is shipped with the
 package:
 
 ```{r}
+metier5_benthis_lookup <- rb_read_example("metier5_benthis_lookup") |> collect()
 metier5_benthis_lookup
 ```
 
 ## The BENTHIS parameters
 
-For each BENTHIS métier, [benthis_parameters](../reference/benthis_parameters.html) holds the coefficients of
+For each BENTHIS métier, `benthis_parameters` ([rb_read_example()](../reference/rb_read_example.html)) holds the coefficients of
 the vessel size–gear width relationship: a linear model
 (`width = a * size + b`) or a power model (`width = a * size^b`), with
 vessel size measured as length overall (`avg_oal`) or engine power
 (`avg_kw`), depending on the métier:
 
 ```{r}
+benthis_parameters <- rb_read_example("benthis_parameters") |> collect()
 benthis_parameters |>
   select(benthis_metier, a, b, model, variable)
 ```

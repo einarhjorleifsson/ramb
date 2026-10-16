@@ -111,7 +111,7 @@ for (nm in c("wkssfgeo2_it_pots", "wkssfgeo_pt_gps", "ird_mg_gillnet")) {
   dbExecute(
     con,
     sprintf(
-      "COPY (SELECT * FROM x) TO 'inst/extdata/%s.parquet' (FORMAT parquet, COMPRESSION zstd)",
+      "COPY (SELECT * FROM x) TO 'inst/extdata/%s.parquet' (FORMAT parquet, COMPRESSION zstd, COMPRESSION_LEVEL 19)",
       nm
     )
   )

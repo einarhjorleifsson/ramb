@@ -3,8 +3,8 @@
 #' The width (metres) of the gear a vessel would tow, from its metier and its
 #' length or engine power, with the Benthis vessel-size–gear-width models.
 #'
-#' @param metier Metier level 5 codes, matched against
-#'   [metier5_benthis_lookup].
+#' @param metier Metier level 5 codes, matched against the lookup
+#'   `metier5_benthis_lookup` ([rb_read_example()]).
 #' @param length_m Vessel length overall, metres.
 #' @param kw Vessel engine power, kW.
 #' @param method Only `"benthis"` so far.
@@ -16,7 +16,7 @@
 #'   "Estimating seabed pressure from demersal trawls, seines, and dredges
 #'   based on gear design and dimensions". ICES Journal of Marine Science,
 #'   73(suppl. 1), i27–i43. \doi{10.1093/icesjms/fsv099}; the parameters are
-#'   in [benthis_parameters].
+#'   `benthis_parameters` ([rb_read_example()]).
 #' @export
 rb_predict_gear_width <- function(metier, length_m, kw, method = "benthis") {
   method <- match.arg(method)
@@ -25,9 +25,12 @@ rb_predict_gear_width <- function(metier, length_m, kw, method = "benthis") {
     length_m = {{ length_m }},
     kw = {{ kw }}
   ) |>
-    dplyr::left_join(metier5_benthis_lookup, by = dplyr::join_by(metier5)) |>
     dplyr::left_join(
-      benthis_parameters |>
+      .rb_extdata_df("metier5_benthis_lookup"),
+      by = dplyr::join_by(metier5)
+    ) |>
+    dplyr::left_join(
+      .rb_extdata_df("benthis_parameters") |>
         dplyr::select(benthis_metier:variable),
       by = dplyr::join_by(benthis_metier)
     ) |>

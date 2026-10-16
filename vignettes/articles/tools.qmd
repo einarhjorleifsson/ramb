@@ -79,6 +79,9 @@ Point-in-polygon tests come in three flavours —
 [sf](https://r-spatial.github.io/sf/) geometries:
 
 ```{r}
+dansk <- rb_read_example("dansk") |> collect()
+h <- rb_read_example("dansk_harbours") |> collect()
+dansk_harbours <- sf::st_as_sfc(structure(h$geometry, class = "WKB"), crs = 4326)
 dansk |>
   sf::st_as_sf(coords = c("lon", "lat"), crs = 4326) |>
   mutate(in_harbour = rb_detect_in_polygons(geometry, dansk_harbours)) |>

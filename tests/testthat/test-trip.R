@@ -108,7 +108,11 @@ test_that("voyages and trip labels agree between a data frame and a lazy table",
 })
 
 # The "runs" and "jepol" methods, against the functions they replace (snapshot taken before the recode).
-old <- readRDS(test_path("fixtures", "pre_jepol.rds"))
+old <- as.list(ramb:::.rb_read_parquet(system.file(
+  "testdata",
+  "pre_jepol.parquet",
+  package = "ramb"
+)))
 tagged <- dansk |>
   dplyr::transmute(
     rid = dplyr::row_number(),
@@ -427,10 +431,18 @@ test_that("trips to landings: a cascade of unambiguous steps, then many trips to
 test_that("rb_pad_harbour() puts the ports on a voyage's end pings, in port NA or an id of 0 or less", {
   expect_identical(names(formals(rb_pad_harbour)), c("voyage_id", "port_id"))
   # rb_assign_trip() leaves a ping in port with no voyage
-  expect_equal(rb_pad_harbour(c(NA, 1, 1, 1, NA), c(7, NA, NA, NA, 9)), c(7, 7, NA, 9, 9))
+  expect_equal(
+    rb_pad_harbour(c(NA, 1, 1, 1, NA), c(7, NA, NA, NA, 9)),
+    c(7, 7, NA, 9, 9)
+  )
   # the older convention: a ping in port has an id of 0 or less
-  expect_equal(rb_pad_harbour(c(0, 0, 1, 1, 1, 0, 2, 2, 0), c(3, 3, NA, NA, NA, 4, NA, NA, 5)),
-               c(3, 3, 3, NA, 4, 4, 4, 5, 5))
+  expect_equal(
+    rb_pad_harbour(
+      c(0, 0, 1, 1, 1, 0, 2, 2, 0),
+      c(3, 3, NA, NA, NA, 4, NA, NA, 5)
+    ),
+    c(3, 3, 3, NA, 4, 4, 4, 5, 5)
+  )
   # a one-ping voyage takes the port before it
   expect_equal(rb_pad_harbour(c(NA, 1, NA), c(7, NA, 9)), c(7, 7, 9))
   # a neighbour with no port id, or none at all, leaves the ping its own

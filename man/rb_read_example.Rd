@@ -13,18 +13,48 @@ rb_read_example(name = NULL)
 A lazy DuckDB table, or the names.
 }
 \description{
-ramb's example data are parquet files, opened lazily with \code{\link[duckdbfs:open_dataset]{duckdbfs::open_dataset()}} like any other track.
+ramb's data are parquet files, opened lazily with \code{\link[duckdbfs:open_dataset]{duckdbfs::open_dataset()}} like any other track; collect one
+with \code{\link[dplyr:collect]{dplyr::collect()}}. The two with a geometry (\code{dansk_harbours}, \code{trawlsurveytows}) hold it in \code{geometry} as
+DuckDB's GEOMETRY (GeoParquet, lon/lat on WGS 84), which DuckDB's \code{ST_} functions work on. Collected into R it is
+WKB; for sf: \code{x <- dplyr::collect(rb_read_example("dansk_harbours"))}, then
+\code{sf::st_sf(x[names(x) != "geometry"], geometry = sf::st_as_sfc(structure(x$geometry, class = "WKB"), crs = 4326))}.
 }
 \details{
+Tracks:
+\itemize{
+\item \code{dansk}: 14 Danish vessels with 4 gears, 395,558 AIS positions, a median 10 s apart. \code{.rowid}, \code{vessel_id},
+\code{time_stamp}, \code{lon}, \code{lat}, \code{speed} (knots), \code{course}, \code{gear}, \code{behaviour}. ICES WKSSFGEO, \code{example_data_AIS.csv},
+MIT licence.
+\item \code{dansk_harbours}: 942 harbour polygons for \code{dansk}: \code{SI_HARB} (an id) and \code{geometry}. ICES WKSSFGEO.
+\item \code{creel}: 5 trips of 5 small-scale creel vessels, positions every 60 s with their behaviour: \code{id}, \code{rowid},
+\code{time}, \code{x}, \code{y} (UTM 30N), \code{lon}, \code{lat}, \code{behaviour}. Mendo, Smout, Photopoulou and James (2019), Dryad,
+doi:10.5061/dryad.k80bp46, CC0.
+\item \code{trawlsurvey}, \code{trawlsurveytows}: positions and tows (lines) of the Icelandic spring bottom-trawl survey.
+MFRI.
+\item \code{whacks1}: a small fictional track for the impossible-position filters (\code{\link[=rb_flag_ping_impossible]{rb_flag_ping_impossible()}}): \code{.rid},
+\code{vid}, \code{tid}, \code{lon}, \code{lat}, \code{time}, and \code{whacks}, \code{TRUE} where a speed filter should flag.
+}
+
 Labelled tracks (made by \code{data-raw/labelled_tracks.R}; columns \code{vid}, \code{trip}, \code{time}, \code{lon}, \code{lat}, \code{speed}
 (knots), \code{gear}, \code{label} (the source's, verbatim) and \code{op} (\code{"set"} or \code{"haul"} where the label says so)):
 \itemize{
 \item \code{wkssfgeo2_it_pots}: one Italian pot vessel, pings every 60 s, labelled setting, hauling or not fishing; the
-positions and dates are anonymised. ICES WKSSFGEO2, \code{IT_CNR_2023_GP.csv} (CNR-IRBIM), MIT licence.
+positions and dates are anonymised. ICES WKSSFGEO2, \code{IT_CNR_2023_GP.csv} (CNR-IRBIM), MIT licence. The source
+holds trip 40 twice (its trip 41 is the same trip an hour later); trip 41 is left out.
 \item \code{wkssfgeo_pt_gps}: two Portuguese pot vessels and three dredgers, GPS trackers, some tracks validated by an
 expert. ICES WKSSFGEO, \code{example_data_GPS.csv}, MIT licence.
 \item \code{ird_mg_gillnet}: four drive-in gillnet fishers in south-west Madagascar, 2017, pings every 60 s, labelled by
 observers (net set, fish driven, net hauled, ...). Behivoke et al., doi:10.23708/IBZJGD, CC BY 4.0.
+}
+
+Lookups:
+\itemize{
+\item \code{benthis_parameters}: the gear footprints of 14 towed gear groups (eight otter trawl, three beam trawl, two
+demersal seine, one dredge) and their vessel-size to gear-width models: \code{benthis_metier}, \code{a}, \code{b}, \code{model}
+(linear or power), \code{variable} (vessel length or kW), \code{subsurface_percentage}, and others; used by
+\code{\link[=rb_predict_gear_width]{rb_predict_gear_width()}}. Eigaard et al. (2016), ICES Journal of Marine Science 73(suppl. 1): i27-i43,
+doi:10.1093/icesjms/fsv099.
+\item \code{metier5_benthis_lookup}: ICES metier level 5 (\code{metier5}) to the Benthis metier (\code{benthis_metier}).
 }
 
 Licences and attributions are in the package's \code{COPYRIGHTS} file.

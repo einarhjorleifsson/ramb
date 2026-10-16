@@ -7,8 +7,8 @@
 rb_predict_gear_width(metier, length_m, kw, method = "benthis")
 }
 \arguments{
-\item{metier}{Metier level 5 codes, matched against
-\link{metier5_benthis_lookup}.}
+\item{metier}{Metier level 5 codes, matched against the lookup
+\code{metier5_benthis_lookup} (\code{\link[=rb_read_example]{rb_read_example()}}).}
 
 \item{length_m}{Vessel length overall, metres.}
 
@@ -29,5 +29,5 @@ Eigaard, O.R., Bastardie, F., Breen, M., et al. (2016).
 "Estimating seabed pressure from demersal trawls, seines, and dredges
 based on gear design and dimensions". ICES Journal of Marine Science,
 73(suppl. 1), i27–i43. \doi{10.1093/icesjms/fsv099}; the parameters are
-in \link{benthis_parameters}.
+\code{benthis_parameters} (\code{\link[=rb_read_example]{rb_read_example()}}).
 }
