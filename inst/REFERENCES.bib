@@ -1,0 +1,108 @@
+% REFERENCES.bib: the sources of ramb's example data (inst/extdata). The data dictionary
+% (inst/extdata/data-dict.yaml) names its keys on each table's **Cite:** line; data-raw/data_dict.R
+% copies the entries into each parquet file's metadata and the help pages print them.
+
+@techreport{ices2022wkssfgeo,
+  author      = {{ICES}},
+  title       = {Workshop on Geo-Spatial Data for Small-Scale Fisheries ({WKSSFGEO})},
+  institution = {International Council for the Exploration of the Sea},
+  type        = {ICES Scientific Reports},
+  number      = {4:10},
+  year        = {2022},
+  doi         = {10.17895/ices.pub.10032}
+}
+
+@techreport{ices2023wkssfgeo2,
+  author      = {{ICES}},
+  title       = {Workshop on Small Scale Fisheries and Geo-Spatial Data 2 ({WKSSFGEO2})},
+  institution = {International Council for the Exploration of the Sea},
+  type        = {ICES Scientific Reports},
+  number      = {5:49},
+  year        = {2023},
+  doi         = {10.17895/ices.pub.22789475}
+}
+
+@misc{wkssfgeo_github,
+  author = {{ICES WKSSFGEO}},
+  title  = {{WKSSFGEO}: code and example data of the {ICES} Workshop on Geo-Spatial Data for Small-Scale Fisheries},
+  year   = {2021},
+  url    = {https://github.com/ices-eg/WKSSFGEO},
+  note   = {Commit 3da870d. MIT licence}
+}
+
+@misc{wkssfgeo2_github,
+  author = {{ICES WKSSFGEO2}},
+  title  = {{WKSSFGEO2}: code and example data of the {ICES} Workshop on Small Scale Fisheries and Geo-Spatial Data 2},
+  year   = {2023},
+  url    = {https://github.com/ices-eg/WKSSFGEO2},
+  note   = {Commit f3e49fe. MIT licence}
+}
+
+@article{mendo2019,
+  author  = {Mendo, Tania and Smout, Sophie and Photopoulou, Theoni and James, Mark},
+  title   = {Identifying fishing grounds from vessel tracks: model-based inference for small scale fisheries},
+  journal = {Royal Society Open Science},
+  volume  = {6},
+  number  = {10},
+  pages   = {191161},
+  year    = {2019},
+  doi     = {10.1098/rsos.191161}
+}
+
+@misc{mendo2019data,
+  author    = {Mendo, Tania and Smout, Sophie and Photopoulou, Theoni and James, Mark},
+  title     = {Data from: Identifying fishing grounds from vessel tracks: model-based inference for small scale fisheries},
+  publisher = {Dryad},
+  year      = {2019},
+  doi       = {10.5061/dryad.k80bp46},
+  note      = {CC0 1.0}
+}
+
+@misc{etienne2020,
+  author    = {Etienne, Marie-Pierre},
+  title     = {Supplementary material - Methodological brief (including {R} code and data) for performing random forest and speed-based analysis of {GPS} boat tracking data},
+  publisher = {DataSuds},
+  year      = {2020},
+  doi       = {10.23708/IBZJGD},
+  note      = {Version 3. CC BY 4.0}
+}
+
+@article{behivoke2021,
+  author  = {Behivoke, Faustinato and Etienne, Marie-Pierre and Guitton, J{\'e}r{\^o}me and Randriatsara, Roddy Michel and Ranaivoson, Eulalie and L{\'e}opold, Marc},
+  title   = {Estimating fishing effort in small-scale fisheries using {GPS} tracking data and random forests},
+  journal = {Ecological Indicators},
+  volume  = {123},
+  pages   = {107321},
+  year    = {2021},
+  doi     = {10.1016/j.ecolind.2020.107321}
+}
+
+@article{eigaard2016,
+  author  = {Eigaard, Ole R. and Bastardie, Francois and Breen, Mike and Dinesen, Grete E. and Hintzen, Niels T. and
+             Laffargue, Pascal and Mortensen, Lars O. and Nielsen, J. Rasmus and Nilsson, Hans C. and O'Neill, Finbarr G. and
+             Polet, Hans and Reid, David G. and Sala, Antonello and Sk{\"o}ld, Mattias and Smith, Chris and
+             S{\o}rensen, Thomas K. and Tully, Oliver and Zengin, Mustafa and Rijnsdorp, Adriaan D.},
+  title   = {Estimating seabed pressure from demersal trawls, seines, and dredges based on gear design and dimensions},
+  journal = {ICES Journal of Marine Science},
+  volume  = {73},
+  number  = {suppl. 1},
+  pages   = {i27--i43},
+  year    = {2016},
+  doi     = {10.1093/icesjms/fsv099}
+}
+
+@misc{mfri_smb2019,
+  author = {{Marine and Freshwater Research Institute}},
+  title  = {Icelandic groundfish survey in March ({SMB}, Stofnm{\ae}ling botnfiska {\'a} {\'I}slandsmi{\dh}um), 2019: vessel tracks and tows},
+  year   = {2019},
+  url    = {https://www.hafogvatn.is},
+  note   = {Extracted from MFRI's database by the ramb maintainer}
+}
+
+@manual{ramb,
+  author = {Hj{\"o}rleifsson, Einar},
+  title  = {ramb: Vessel Track Tools and the {ICES} Fishing-Activity Flow},
+  year   = {2026},
+  url    = {https://github.com/einarhjorleifsson/ramb},
+  note   = {R package}
+}

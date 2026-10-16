@@ -44,8 +44,10 @@ Suggests:
     omar,
     trip,
     argosfilter,
+    rbibutils,
     rmarkdown,
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    yaml
 Config/roxygen2/version: 8.1.0
 Roxygen: list(markdown = TRUE)
 Config/testthat/edition: 3

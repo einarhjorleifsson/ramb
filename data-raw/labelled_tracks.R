@@ -14,7 +14,8 @@
 #   label   the source's label, verbatim
 #   op      "set" or "haul" where the label says so, else NA: the set and haul labels harmonised
 #
-# The files are tracked with Git LFS. Licences in inst/COPYRIGHTS. Run from the package root.
+# The files are tracked with Git LFS. Licences in inst/COPYRIGHTS. Run from the package root, then data-raw/data_dict.R,
+# which stamps each file with its entry of inst/extdata/data-dict.yaml and its sources (inst/REFERENCES.bib).
 
 library(DBI)
 

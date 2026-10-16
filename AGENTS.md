@@ -129,7 +129,16 @@ with an `.rb_need()` guard, never in Imports.
   datasets in `inst/extdata`, read with `rb_read_example()` (lazy), and test
   fixtures in `inst/testdata`, so tests of an installed ramb find them (the
   maintainer, 2026-10-16). No `data/*.rda`, no `.rds` fixtures. The scripts
-  that make them are in `data-raw/`. A geometry is DuckDB's own GEOMETRY,
+  that make them are in `data-raw/`. What each dataset is, its columns, its
+  sources and its licence live in one place, `inst/extdata/data-dict.yaml`
+  (the data-dict spec, <https://data-dict.tidyverse.org/>, as fishycode's
+  `_data-dict.yaml`), with the sources as BibTeX in `inst/REFERENCES.bib`,
+  named on each table's `**Cite:**` line: cite the source of every dataset.
+  From these, `data-raw/data_dict.R` stamps each file's parquet metadata
+  (`ramb.*`), `rb_read_example()` builds its catalogue, and `R/datasets.R`
+  writes each dataset's help page when the package is documented. A new or
+  changed dataset: edit the dictionary and the .bib, run the data-raw script,
+  then `data_dict.R`, then `document()`. A geometry is DuckDB's own GEOMETRY,
   which DuckDB writes as GeoParquet and reads with no extension; convert to
   sf only where a function needs it. Write with `COMPRESSION zstd,
   COMPRESSION_LEVEL 19`. A clone without `git lfs` holds pointer files, and

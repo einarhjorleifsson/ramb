@@ -1,0 +1,562 @@
+$version: 0.1.0
+$learn_more: https://data-dict.tidyverse.org/
+
+name: ramb
+label: ramb's example data
+description: >
+  The datasets shipped with the R package ramb, one parquet file per table in its `extdata` folder, read with
+  `rb_read_example("<table>")`. Each file also carries its own entry of this dictionary, its citation in BibTeX and its
+  licence in its parquet metadata.
+details: >
+  Positions are longitude and latitude in decimal degrees on WGS 84 unless a column says otherwise. Shapes are DuckDB
+  GEOMETRY, written as GeoParquet (OGC:CRS84, longitude first). The sources are cited on each table's **Cite:** line by
+  their keys in the package's `REFERENCES.bib`; the licence is on its **Licence:** line, and the package's `COPYRIGHTS`
+  file repeats both.
+origin: https://github.com/einarhjorleifsson/ramb/tree/main/data-raw
+version:
+  date: 2026-10-16
+
+tables:
+  - name: dansk
+    label: Danish vessel tracks (AIS)
+    description: >
+      Each row is an AIS position of one of 14 Danish fishing vessels with four gears, a median 10 s apart, from
+      December 2012 to October 2020, with an expert's label of fishing or other.
+    details: |
+      **Cite:** [@ices2022wkssfgeo; @wkssfgeo_github]
+
+      **Licence:** MIT, Copyright (c) 2021 ICES Expert Groups.
+
+      **Changes:** `data-examples/example_data_AIS.csv` of the WKSSFGEO repository, with repeated (vessel_id,
+      time_stamp) rows dropped and `.rowid` added (`data-raw/DATASET.R`).
+    source:
+      parquet: dansk.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/DATASET.R
+    columns:
+      - name: .rowid
+        type: number(id)
+        constraints: [primary_key]
+        description: Row number, in the order of vessel and time.
+        examples: [1254, 92947, 199154, 295985, 388863]
+      - name: vessel_id
+        type: string
+        description: The vessel, anonymised.
+        examples: [EX_1, EX_12, EX_3, EX_6, EX_9]
+      - name: time_stamp
+        type: datetime
+        time_zone: naive
+        description: Time of the position, as given; the source states no zone.
+        range: [2012-12-03T04:53:58, 2020-10-25T17:36:28]
+      - name: lon
+        type: number(quantity)
+        units: degrees east
+        description: Longitude.
+        range: [2.72533083, 12.85676967]
+      - name: lat
+        type: number(quantity)
+        units: degrees north
+        description: Latitude.
+        range: [54.536601, 58.36065733]
+      - name: speed
+        type: number(quantity)
+        units: knots
+        description: Speed over ground, knots.
+        range: [0, 11.596]
+      - name: course
+        type: number(quantity)
+        units: degrees
+        description: Course over ground, degrees, as given; a few values above 360 (up to 33,098) are errors of the source.
+        range: [0, 33098]
+      - name: gear
+        type: enum
+        description: The gear the vessel used.
+        values:
+          GN: gillnet, not specified
+          GNS: set gillnet
+          GTR: trammel net
+          OTB: bottom otter trawl
+      - name: behaviour
+        type: enum
+        description: The expert's label of the position.
+        values: [Fishing, Other]
+
+  - name: dansk_harbours
+    label: Harbour polygons for the Danish tracks
+    description: Each row is a harbour, as a polygon; 942 harbours, most of them in Europe.
+    details: |
+      **Cite:** [@ices2022wkssfgeo; @wkssfgeo_github]
+
+      **Licence:** MIT, Copyright (c) 2021 ICES Expert Groups.
+
+      **Changes:** `data/harbours.rds` of the WKSSFGEO repository, with the id `SI_HARB` added (`data-raw/DATASET.R`).
+    source:
+      parquet: dansk_harbours.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/DATASET.R
+    columns:
+      - name: SI_HARB
+        type: number(id)
+        constraints: [primary_key]
+        description: The harbour, a sequential id.
+        examples: [4, 252, 479, 700, 924]
+      - name: geometry
+        description: The harbour's polygon (POLYGON), DuckDB GEOMETRY, longitude and latitude on WGS 84.
+
+  - name: creel
+    label: Scottish creel vessel tracks
+    description: >
+      Each row is a GPS position, every 60 s, of one of five small-scale creel (pot) vessels in Scotland on one trip
+      each, May and June 2017, with the behaviour an observer recorded.
+    details: |
+      **Cite:** [@mendo2019; @mendo2019data]
+
+      **Licence:** CC0 1.0 (Dryad).
+
+      **Changes:** the vessel ids made integers (GP004 renamed GP005), and longitude and latitude added from the UTM
+      zone 30N coordinates (`data-raw/DATASET.R`).
+    source:
+      parquet: creel.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/DATASET.R
+    columns:
+      - name: id
+        type: number(id)
+        description: The vessel; each made one trip.
+        examples: [1, 2, 3, 4, 5]
+      - name: rowid
+        type: number(ordinal)
+        description: The position's number within its vessel's trip.
+        range: [1, 583]
+      - name: time
+        type: datetime
+        time_zone: naive
+        description: Time of the position, as given; the source states no zone.
+        range: [2017-05-19T06:50:28, 2017-06-06T13:55:05]
+      - name: x
+        type: number(quantity)
+        units: m
+        description: Easting, UTM zone 30N (WGS 84), metres.
+        range: [134615, 696813.1]
+      - name: "y"
+        type: number(quantity)
+        units: m
+        description: Northing, UTM zone 30N (WGS 84), metres.
+        range: [6089861, 6606441]
+      - name: lon
+        type: number(quantity)
+        units: degrees east
+        description: Longitude.
+        range: [-8.81527104011275, 0.480924316781787]
+      - name: lat
+        type: number(quantity)
+        units: degrees north
+        description: Latitude.
+        range: [54.9397613512083, 59.551309931636]
+      - name: behaviour
+        type: enum
+        description: The observer's record of what the vessel was doing.
+        values: [hauling, shooting, steaming]
+
+  - name: trawlsurvey
+    label: Icelandic groundfish survey, March 2019, vessel tracks
+    description: >
+      Each row is a position of one of four vessels on the Icelandic groundfish survey in March (SMB), 27 February to
+      20 March 2019, with whether a survey tow was on.
+    details: |
+      **Cite:** [@mfri_smb2019]
+
+      **Licence:** MFRI data, shipped by its maintainer at MFRI; the terms are not stated here.
+
+      **Changes:** extracted from MFRI's database (`data-raw/DATASET.R`).
+    todo: Confirm the licence of the survey data with MFRI.
+    source:
+      parquet: trawlsurvey.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/DATASET.R
+    columns:
+      - name: vid
+        type: number(id)
+        description: The vessel's Icelandic registry number.
+        examples: [1131, 1277, 1281, 2350]
+      - name: lon
+        type: number(quantity)
+        units: degrees east
+        description: Longitude.
+        range: [-27.2523649996984, -10.5566666684504]
+      - name: lat
+        type: number(quantity)
+        units: degrees north
+        description: Latitude.
+        range: [63.0193333345664, 67.3293333310739]
+      - name: speed
+        type: number(quantity)
+        units: knots
+        description: Speed over ground, knots.
+        range: [0, 12.8999999999352]
+      - name: heading
+        type: number(quantity)
+        units: degrees
+        description: Heading, degrees.
+        range: [0, 359.899999998419]
+      - name: time
+        type: datetime
+        time_zone: naive
+        description: Time of the position, Icelandic time, which is UTC all year.
+        range: [2019-02-27T08:07:46, 2019-03-20T09:11:34]
+      - name: behaviour
+        type: enum
+        description: Whether a survey tow was on.
+        values: [hauling, not hauling]
+
+  - name: trawlsurveytows
+    label: Icelandic groundfish survey, March 2019, tows
+    description: Each row is a tow of the same survey, as a line from its start to its end; 581 tows.
+    details: |
+      **Cite:** [@mfri_smb2019]
+
+      **Licence:** MFRI data, shipped by its maintainer at MFRI; the terms are not stated here.
+
+      **Changes:** extracted from MFRI's database (`data-raw/DATASET.R`).
+    todo: Confirm the licence of the survey data with MFRI.
+    source:
+      parquet: trawlsurveytows.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/DATASET.R
+    columns:
+      - name: id.lgs
+        type: number(id)
+        constraints: [primary_key]
+        description: The tow's station id in MFRI's database.
+        examples: [490561, 490738, 490972, 491083, 491261]
+      - name: geometry
+        description: The tow (LINESTRING), DuckDB GEOMETRY, longitude and latitude on WGS 84.
+
+  - name: whacks1
+    label: A made-up track with impossible positions
+    description: >
+      Each row is a position of one made-up vessel, a minute apart for 45 minutes, with spikes and runs that a speed
+      filter should flag; for testing `rb_flag_ping_impossible()`.
+    details: |
+      **Cite:** [@ramb]
+
+      **Licence:** GPL (>= 3), as ramb.
+
+      **Changes:** made for ramb (`data-raw/DATASET.R`).
+    source:
+      parquet: whacks1.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/DATASET.R
+    columns:
+      - name: .rid
+        type: number(id)
+        constraints: [primary_key]
+        description: Row number.
+        examples: [1, 13, 25, 34, 46]
+      - name: vid
+        type: number(id)
+        description: The vessel.
+        examples: [1]
+      - name: tid
+        type: number(id)
+        description: The trip.
+        examples: [1]
+      - name: lon
+        type: number(quantity)
+        units: degrees east
+        description: Longitude.
+        range: [-25.04, -24.5]
+      - name: lat
+        type: number(quantity)
+        units: degrees north
+        description: Latitude.
+        range: [62, 62.2]
+      - name: time
+        type: datetime
+        time_zone: naive
+        description: Time of the position.
+        range: [2022-10-15T00:00:00, 2022-10-15T00:45:00]
+      - name: whacks
+        type: boolean
+        description: TRUE where a speed filter should flag the position.
+
+  - name: benthis_parameters
+    label: BENTHIS gear groups, gear width and seabed contact
+    description: >
+      Each row is one of 14 BENTHIS gear groups (eight otter trawl, three beam trawl, two demersal seine, one dredge):
+      the model of gear width from vessel size, and the share of the gear's footprint that reaches into the seabed.
+      Used by `rb_predict_gear_width()`.
+    details: |
+      **Cite:** [@eigaard2016]
+
+      **Licence:** GPL (>= 3), as ramb; the values are those published in the article.
+
+      **Changes:** compiled from the article for ramb (`data-raw/DATASET.R`); the standard errors and the number of
+      observations of Table 4 added on 2026-10-16 (`data-raw/extdata.R`). Several numeric columns are stored as text, as
+      they were compiled. The averages `av_kw`, `av_loa` and `av_fspeed` are unrounded; the article's Table 5 gives
+      them rounded, with standard deviations that this table does not hold.
+    source:
+      parquet: benthis_parameters.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/DATASET.R
+    columns:
+      - name: benthis_metier
+        type: string
+        constraints: [primary_key]
+        description: The BENTHIS gear group.
+        examples: [DRB_MOL, OT_MIX, OT_MIX_DMF_PEL, SSC_DMF, TBB_MOL]
+      - name: a
+        type: number
+        description: The model's first parameter (Eigaard et al. 2016, Table 4).
+        examples: [0.3142, 0.9652, 5.1039, 10.6608, 4461.27]
+      - name: b
+        type: number
+        description: The model's second parameter (Eigaard et al. 2016, Table 4).
+        examples: [0.1176, 0.2921, 0.5078, 1.2454, 77.9812]
+      - name: model
+        type: enum
+        description: The form of the model.
+        values:
+          linear: width = a × size + b
+          power: width = a × size ^ b
+      - name: variable
+        type: enum
+        description: The vessel size the model takes.
+        values:
+          avg_kw: engine power, kW
+          avg_oal: length overall, m
+      - name: subsurface_percentage
+        type: string
+        description: The share of the gear's footprint that reaches into the seabed, percent, stored as text.
+        examples: ["0", "2.8", "29.2", "5", "8.6"]
+      - name: id
+        type: number(id)
+        description: Row id.
+        examples: [1, 4, 8, 11, 14]
+      - name: av_kw
+        type: string
+        description: The average engine power of the group's vessels, kW, stored as text.
+        examples: ["107.1773", "345.5205", "473.097", "690.3574", "883.8421"]
+      - name: av_loa
+        type: string
+        description: The average length overall of the group's vessels, m, stored as text.
+        examples: ["10.14545", "19.8", "21.685", "24.36896", "34.38526"]
+      - name: av_fspeed
+        type: string
+        description: The average fishing speed of the group, knots, stored as text.
+        examples: ["0", "2.5", "2.9", "3.008889", "5.230851"]
+      - name: gear_width
+        type: number(quantity)
+        units: km
+        description: >
+          The gear width at the group's average vessel size: the model at `av_kw` or `av_loa`, in km. For OT_DMF,
+          OT_MIX_CRU, OT_CRU and TBB_DMF it differs from the model at those averages by 2 to 28 percent, for reasons
+          not recorded.
+        range: [0.00493059313096151, 6.53664387674273]
+      - name: contact_model
+        type: string
+        description: The model of the gear's contact with the seabed.
+        examples: [danish_seine_contact, scottish_seine_contact, trawl_contact]
+      - name: se_a
+        type: number
+        description: The standard error of `a` (Eigaard et al. 2016, Table 4).
+        examples: [0.11, 0.2052, 1.8153, 10.6718, 1665.5023]
+      - name: se_b
+        type: number
+        description: The standard error of `b` (Eigaard et al. 2016, Table 4).
+        examples: [0.0347, 0.0598, 0.1061, 7.4518, 40.9298]
+      - name: n_obs
+        type: number(quantity)
+        description: The number of observations the model was fitted to (Eigaard et al. 2016, Table 4).
+        range: [7, 271]
+
+  - name: metier5_benthis_lookup
+    label: ICES metier level 5 to BENTHIS gear group
+    description: Each row maps an ICES metier of level 5 to the BENTHIS gear group of `benthis_parameters`; 41 metiers.
+    details: |
+      **Cite:** [@eigaard2016]
+
+      **Licence:** GPL (>= 3), as ramb.
+
+      **Changes:** compiled for ramb after the article (`data-raw/DATASET.R`).
+    source:
+      parquet: metier5_benthis_lookup.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/DATASET.R
+    columns:
+      - name: metier5
+        type: string
+        constraints: [primary_key]
+        description: ICES metier, level 5 (gear and target assemblage).
+        examples: [DRB_CRU, OTB_MCF, OTT_MOL, SDN_CEP, TBB_MOL]
+      - name: benthis_metier
+        type: string
+        description: The BENTHIS gear group.
+        examples: [DRB_MOL, OT_MIX, OT_MIX_DMF_PEL, SSC_DMF, TBB_MOL]
+
+  - name: wkssfgeo2_it_pots
+    label: Italian pot vessel, labelled sets and hauls
+    description: >
+      Each row is a GPS position, every 60 s, of one Italian pot vessel on 13 trips, labelled setting, hauling or not
+      fishing by the data's provider. Positions and dates are anonymised (the dates read 1979).
+    details: |
+      **Cite:** [@ices2023wkssfgeo2; @wkssfgeo2_github]
+
+      **Licence:** MIT, Copyright (c) 2023 ICES Expert Groups.
+
+      **Changes:** `data_examples/IT_CNR_2023_GP.csv` (CNR-IRBIM) of the WKSSFGEO2 repository, columns renamed, `op`
+      added; trip 41 left out, being trip 40 an hour later (`data-raw/labelled_tracks.R`).
+    source:
+      parquet: wkssfgeo2_it_pots.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/labelled_tracks.R
+    columns:
+      - name: vid
+        type: string
+        description: The vessel, anonymised.
+        examples: [VE_00003]
+      - name: trip
+        type: number(id)
+        description: The source's trip number.
+        examples: [34, 37, 40, 44, 47]
+      - name: time
+        type: datetime
+        time_zone: naive
+        description: Time of the position, anonymised.
+        range: [1979-09-12T13:07:00, 1979-10-07T04:28:00]
+      - name: lon
+        type: number(quantity)
+        units: degrees east
+        description: Longitude, anonymised.
+        range: [42.4811173527549, 42.8209016965645]
+      - name: lat
+        type: number(quantity)
+        units: degrees north
+        description: Latitude, anonymised.
+        range: [56.5434551019669, 56.7547119126752]
+      - name: speed
+        type: number(quantity)
+        units: knots
+        description: Speed, knots, as the source gives it.
+        range: [0, 17.2786177105832]
+      - name: gear
+        type: enum
+        description: The gear.
+        values:
+          FPO: pots
+      - name: label
+        type: enum
+        description: The provider's label, verbatim.
+        values: [hauling, not_fishing, setting]
+      - name: op
+        type: enum
+        description: '"set" or "haul" where `label` says so, else null.'
+        values: [haul, set]
+
+  - name: wkssfgeo_pt_gps
+    label: Portuguese pot and dredge vessels, labelled
+    description: >
+      Each row is a GPS-tracker position of one of five small-scale vessels in the south of Portugal, March 2017: two
+      with pots (octopus traps), three with bivalve dredges. Some tracks were labelled by an expert.
+    details: |
+      **Cite:** [@ices2022wkssfgeo; @wkssfgeo_github]
+
+      **Licence:** MIT, Copyright (c) 2021 ICES Expert Groups.
+
+      **Changes:** `data-examples/example_data_GPS.csv` of the WKSSFGEO repository, columns renamed, `op` added
+      (`data-raw/labelled_tracks.R`).
+    source:
+      parquet: wkssfgeo_pt_gps.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/labelled_tracks.R
+    columns:
+      - name: vid
+        type: string
+        description: The vessel, anonymised.
+        examples: [id_Ala, id_Ben, id_Car, id_Hum, id_Sou]
+      - name: trip
+        description: Always null; the source has no trips.
+      - name: time
+        type: datetime
+        time_zone: naive
+        description: Time of the position, as given; the source states no zone.
+        range: [2017-03-10T06:06:01, 2017-03-14T09:30:17]
+      - name: lon
+        type: number(quantity)
+        units: degrees east
+        description: Longitude.
+        range: [-8.1744571, -7.5685898]
+      - name: lat
+        type: number(quantity)
+        units: degrees north
+        description: Latitude.
+        range: [36.9571306, 37.111947]
+      - name: speed
+        type: number(quantity)
+        units: knots
+        description: Speed, knots, as the source gives it.
+        range: [0.539956986904144, 10.7991399765015]
+      - name: gear
+        type: enum
+        description: The gear.
+        values:
+          dredge: bivalve dredge
+          pots: octopus traps
+      - name: label
+        type: enum
+        description: The expert's label, verbatim; null where the track was not labelled.
+        values: [hauling, run, set, tow, travel]
+      - name: op
+        type: enum
+        description: '"set" or "haul" where `label` says so, else null.'
+        values: [haul, set]
+
+  - name: ird_mg_gillnet
+    label: Malagasy drive-in gillnet fishers, labelled
+    description: >
+      Each row is a GPS position, every 60 s, of one of four fishers using drive-in gillnets in a small-scale reef
+      fishery in south-west Madagascar, January to July 2017, labelled by an observer on board.
+    details: |
+      **Cite:** [@etienne2020; @behivoke2021]
+
+      **Licence:** CC BY 4.0.
+
+      **Changes:** `Supplementary material2_Data_gillnet.Rdata` of the dataset: columns selected and renamed, speed
+      from its distance per minute, `op` added (`data-raw/labelled_tracks.R`).
+    source:
+      parquet: ird_mg_gillnet.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/labelled_tracks.R
+    columns:
+      - name: vid
+        type: string
+        description: The fisher (village, gear and fisher codes).
+        examples: [L_FM_P001, L_FM_P002, L_FM_P003, L_FM_P004]
+      - name: trip
+        type: number(id)
+        description: The source's trip number (`no_trajet`).
+        examples: [8, 26, 44, 58, 74]
+      - name: time
+        type: datetime
+        time_zone: naive
+        description: Time of the position, as given (`date_heure`); the source states no zone.
+        range: [2017-01-17T05:10:02, 2017-07-08T11:16:38]
+      - name: lon
+        type: number(quantity)
+        units: degrees east
+        description: Longitude.
+        range: [43.6824049333333, 43.756248]
+      - name: lat
+        type: number(quantity)
+        units: degrees north
+        description: Latitude.
+        range: [-23.514107, -23.426575]
+      - name: speed
+        type: number(quantity)
+        units: knots
+        description: Speed, knots, from the source's distance per minute.
+        range: [0, 10.7152497800216]
+      - name: gear
+        type: enum
+        description: The gear.
+        values:
+          FM: gillnet (filet maillant)
+      - name: label
+        type: string
+        description: >
+          The observer's label, verbatim, in French (e.g. Pose_filet: the net set; Remonter_filet: the net hauled;
+          Rabattage_poisson: fish driven into it); spelling as recorded.
+        examples: [Pose_filet, Rabattage_poisson, Remonter_filet, Recherche_bon_endroit, Retour]
+      - name: op
+        type: enum
+        description: '"set" or "haul" where `label` says so, else null.'
+        values: [haul, set]

@@ -105,3 +105,4 @@ reference:
 - title: "Data"
   contents:
   - rb_read_example
+  - has_keyword("datasets")
