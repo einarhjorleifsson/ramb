@@ -775,49 +775,103 @@ rb_build_record_pings <- function(
 #' Find the set of each static-gear haul on the track
 #'
 #' A step-2 builder for static gear (nets, pots, longlines), where the logbook often records only the haul. The
-#' haul's pings trace the gear's line; the set is the vessel's latest earlier pass along that line. Recoded from
-#' the method of Ifremer's iapesca (`Retrieve_SettingOperations`; fishycode decision 078), not copied:
+#' haul traces the gear's line; the set is the vessel's latest earlier pass along that line. Recoded from the
+#' method of Ifremer's iapesca (`Retrieve_SettingOperations`; fishycode decision 078), not copied:
 #'
+#' * the haul's line comes from `method`: the haul's own pings as points (`"pings"`), the haul's pings joined into
+#'   a line (`"line"`, two pings or more), or the haul's declared start and end positions joined into a line
+#'   (`"record"`; its start alone where it has no end), for a track too sparse to trace the haul. Several are tried
+#'   in order for each haul, the first the haul has data for answering;
 #' * candidate pings are the vessel's pings within `max_back_h` hours before the haul starts, outside every haul
-#'   window given, and near the haul's line: within a buffer of the nearest haul ping;
+#'   window given, and near the haul's line;
 #' * the buffer is the smallest of `buffer_m[1]`, `buffer_m[1] + 10`, ... up to `buffer_m[2]` metres that finds
 #'   any candidate (iapesca: 330 to 550 m);
-#' * a pass is a run of candidates that follow each other in the vessel's track; each pass is scored by how late
-#'   it is among the haul's passes (at least 0.25) times its number of pings (at most 4, scaled), and the best is
-#'   the set, the later one on a tie.
+#' * a pass is a run of candidates that follow each other in the vessel's track; with `skip_approach`, the pass
+#'   that ends at the vessel's last ping before the haul (the run in to the gear) is not one. Each pass is scored
+#'   by how late it is among the haul's passes (at least 0.25) times its number of pings (at most
+#'   `max_pass_pings`, scaled), and the best is the set, the later one on a tie.
 #'
-#' The distance is to the nearest haul ping, not to a line geometry, so dense pings give the closest result.
+#' Hauls are not paired one to one with sets: a set hauled in parts serves several hauls. A line is measured as
+#' points every `buffer_m[1] / 10` metres along it (under 0.5 m from the distance to the line itself at 330 m), on
+#' [rb_calc_distance()]'s sphere.
+#'
+#' On labelled pot data (WKSSFGEO2, 57 hauls with a labelled set, 60 s pings), the defaults find the right set for
+#' 14 hauls: the other 43 picks are the run in to the haul. `skip_approach = TRUE` with `max_pass_pings = Inf`
+#' finds 40 (see NEWS for the other rates and datasets). The defaults stay as they were until more labelled data
+#' decide.
 #'
 #' @param hauls A data frame or lazy DuckDB table, one row per haul: the `key` columns, `vid`, and the haul's
-#'   `start` and `end`.
+#'   `start` and `end`; for `method = "record"` also its positions.
 #' @param pings A data frame or lazy table with `vid`, `time`, `lon`, `lat`.
 #' @param key The columns that identify a haul.
+#' @param method Where the haul's line comes from: `"pings"`, `"line"` or `"record"`, or several, tried in order.
 #' @param max_back_h How long before the haul a set may be, hours (iapesca: 240).
 #' @param buffer_m The smallest and largest buffer, metres.
+#' @param skip_approach Whether the pass that leads straight into the haul is left out.
+#' @param max_pass_pings The pass length at which its score stops growing (iapesca: 4); `Inf` for none.
 #' @param start,end The haul's window columns.
+#' @param lon1,lat1,lon2,lat2 The haul's declared start and end positions, for `method = "record"`.
 #' @return One row per haul: the key, `vid`, `set_start` and `set_end` (the pass's first and last ping), `soak_h`
-#'   (the haul's start minus `set_end`), `n_set_pings`, `buffer_m` and `set_basis` (`"reconstructed"`, or `"none"`
-#'   where no pass was found). A data frame for data frame input, a lazy table for lazy input.
+#'   (the haul's start minus `set_end`), `n_set_pings`, `buffer_m`, `set_basis` (`"reconstructed"`, or `"none"`
+#'   where no pass was found) and `set_method` (the `method` that gave the haul's line; `NA` where none could). A
+#'   data frame for data frame input, a lazy table for lazy input.
 #' @export
 rb_link_record_sets <- function(
   hauls,
   pings,
   key,
+  method = "pings",
   max_back_h = 240,
   buffer_m = c(330, 550),
+  skip_approach = FALSE,
+  max_pass_pings = 4,
   start = "start",
-  end = "end"
+  end = "end",
+  lon1 = "lon1",
+  lat1 = "lat1",
+  lon2 = "lon2",
+  lat2 = "lat2"
 ) {
+  methods <- c("pings", "line", "record")
+  if (
+    !is.character(method) ||
+      length(method) == 0 ||
+      anyDuplicated(method) ||
+      !all(method %in% methods)
+  ) {
+    stop(
+      "`method` must be one or more of \"pings\", \"line\", \"record\", without repeats.",
+      call. = FALSE
+    )
+  }
+  stopifnot(
+    is.logical(skip_approach),
+    length(skip_approach) == 1,
+    !is.na(skip_approach),
+    is.numeric(max_pass_pings),
+    length(max_pass_pings) == 1,
+    max_pass_pings >= 1,
+    is.numeric(buffer_m),
+    length(buffer_m) == 2,
+    buffer_m[1] > 0,
+    buffer_m[2] >= buffer_m[1]
+  )
+  rec <- "record" %in% method
+  pos <- if (rec) {
+    c(lon1 = lon1, lat1 = lat1, lon2 = lon2, lat2 = lat2)
+  } else {
+    character(0)
+  }
   .rb_check_input(
     hauls,
     "rb_link_record_sets",
     cols = c(start = start, end = end),
-    also = c(stats::setNames(key, key)),
+    also = c(stats::setNames(key, key), pos),
     types = c(start = "time", end = "time")
   )
   .rb_need_cols(pings, "pings", c("vid", "time", "lon", "lat"))
   lazy_in <- inherits(hauls, "tbl_lazy")
-  con <- .rb_con_for(hauls)
+  con <- .rb_con_for(hauls, pings)
   q <- function(x) .rb_q(con, x)
   h_sql <- .rb_in_sql(hauls, con)
   p_sql <- .rb_in_sql(pings, con)
@@ -826,36 +880,112 @@ rb_link_record_sets <- function(
   on_k <- function(a, b) {
     paste(sprintf("%s.%s = %s.%s", a, q(key), b, q(key)), collapse = " AND ")
   }
-  dist <- .rb_haversine_sql("c.lon", "c.lat", "hp.lon", "hp.lat")
   b_lo <- buffer_m[1]
   b_hi <- buffer_m[2]
+  step <- buffer_m[1] / 10
+  # where each haul's line comes from: the first method in `method` it has the data for
+  has <- c(
+    pings = "coalesce(nh.n, 0) >= 1",
+    line = "coalesce(nh.n, 0) >= 2",
+    record = "h.rb_x1 IS NOT NULL AND h.rb_y1 IS NOT NULL"
+  )
+  pick <- paste0(
+    "CASE ",
+    paste(sprintf("WHEN %s THEN '%s'", has[method], method), collapse = " "),
+    " END"
+  )
+  h_pos <- if (rec) {
+    sprintf(
+      ", h.%s AS rb_x1, h.%s AS rb_y1, h.%s AS rb_x2, h.%s AS rb_y2",
+      q(lon1),
+      q(lat1),
+      q(lon2),
+      q(lat2)
+    )
+  } else {
+    ""
+  }
+  # segments of the chosen lines, densified below; a point is a segment of length 0
+  segs <- c(
+    if ("line" %in% method) {
+      .rb_fill(
+        "SELECT {kh}, vid, x0, y0, x1, y1 FROM (
+         SELECT hp.*, hp.lon AS x0, hp.lat AS y0,
+                lead(hp.lon) OVER (PARTITION BY {paste(sprintf('hp.%s', q(key)), collapse = ', ')} ORDER BY hp.rn) AS x1,
+                lead(hp.lat) OVER (PARTITION BY {paste(sprintf('hp.%s', q(key)), collapse = ', ')} ORDER BY hp.rn) AS y1
+         FROM hp JOIN hm ON {on_k('hm', 'hp')} WHERE hm.set_method = 'line') WHERE x1 IS NOT NULL"
+      )
+    },
+    if (rec) {
+      .rb_fill(
+        "SELECT {kh}, vid, rb_x1 AS x0, rb_y1 AS y0,
+                CASE WHEN rb_x2 IS NULL OR rb_y2 IS NULL THEN rb_x1 ELSE rb_x2 END AS x1,
+                CASE WHEN rb_x2 IS NULL OR rb_y2 IS NULL THEN rb_y1 ELSE rb_y2 END AS y1
+         FROM hm WHERE set_method = 'record'"
+      )
+    }
+  )
+  ref <- c(
+    if ("pings" %in% method) {
+      .rb_fill(
+        "SELECT {paste(sprintf('hp.%s', q(key)), collapse = ', ')}, hp.vid, hp.lon, hp.lat
+         FROM hp JOIN hm ON {on_k('hm', 'hp')} WHERE hm.set_method = 'pings'"
+      )
+    },
+    if (length(segs)) {
+      .rb_fill(
+        "SELECT {kh}, vid, x0 + f * (x1 - x0) AS lon, y0 + f * (y1 - y0) AS lat FROM (
+         SELECT sk.*, unnest(range(0, k + 1)) / k::DOUBLE AS f FROM (
+           SELECT sg.*, greatest(1, ceil({.rb_haversine_sql('x0', 'y0', 'x1', 'y1')} / {step}))::BIGINT AS k
+           FROM (SELECT * EXCLUDE (x1), x1 - 360 * round((x1 - x0) / 360) AS x1 FROM ({paste(segs, collapse = ' UNION ALL ')})) sg) sk)"
+      )
+    }
+  )
+  pairs <- .rb_near_pairs("ref", "c", c(key, "vid"), b_hi, con = con)
+  len <- if (is.finite(max_pass_pings)) {
+    sprintf("least(n, %s)", max_pass_pings)
+  } else {
+    "n"
+  }
+  approach <- if (skip_approach) {
+    .rb_fill(
+      ",
+  lb AS (SELECT {kh}, max(rn) AS rn_last FROM c0 GROUP BY ALL),
+  g AS (SELECT g0.* FROM g0 LEFT JOIN lb ON {on_k('lb', 'g0')} WHERE lb.rn_last IS NULL OR g0.r1 <> lb.rn_last)"
+    )
+  } else {
+    ",
+  g AS (SELECT * FROM g0)"
+  }
   sql <- .rb_fill(
     "
-  WITH h AS (SELECT {ks}, h.vid, h.{q(start)} AS hs, h.{q(end)} AS he FROM ({h_sql}) h),
+  WITH h AS (SELECT {ks}, h.vid, h.{q(start)} AS hs, h.{q(end)} AS he{h_pos} FROM ({h_sql}) h),
   p AS (SELECT vid, time, lon, lat, row_number() OVER (PARTITION BY vid ORDER BY time, lon, lat) AS rn FROM ({p_sql})),
-  hp AS (SELECT {kh}, h.vid, p.lon, p.lat FROM h JOIN p ON p.vid = h.vid AND p.time >= h.hs AND p.time < h.he),
+  hp AS (SELECT {kh}, h.vid, p.lon, p.lat, p.rn FROM h JOIN p ON p.vid = h.vid AND p.time >= h.hs AND p.time < h.he),
+  nh AS (SELECT {kh}, count(*) AS n FROM hp GROUP BY ALL),
+  hm AS (SELECT h.*, {pick} AS set_method FROM h LEFT JOIN nh ON {on_k('nh', 'h')}),
+  ref AS MATERIALIZED (SELECT row_number() OVER () AS rb_i, * FROM ({paste(ref, collapse = ' UNION ALL ')})),
   inhaul AS (SELECT DISTINCT p.vid, p.rn FROM p JOIN h ON p.vid = h.vid AND p.time >= h.hs AND p.time < h.he),
-  c AS (SELECT {kh}, h.hs, p.vid, p.time, p.lon, p.lat, p.rn
-        FROM h JOIN p ON p.vid = h.vid AND p.time < h.hs AND p.time >= h.hs - INTERVAL '{max_back_h}' HOUR
-        WHERE NOT EXISTS (SELECT 1 FROM inhaul i WHERE i.vid = p.vid AND i.rn = p.rn)),
-  cd AS (SELECT c.*, min({dist}) AS d
-         FROM c JOIN hp ON {on_k('hp', 'c')} AND hp.vid = c.vid
-           AND abs(hp.lat - c.lat) <= {b_hi} / 111000.0
-           AND abs(hp.lon - c.lon) <= {b_hi} / (111000.0 * cos(radians(c.lat)))
-         GROUP BY ALL),
+  c0 AS (SELECT {kh}, h.hs, p.vid, p.time, p.lon, p.lat, p.rn
+         FROM h JOIN p ON p.vid = h.vid AND p.time < h.hs AND p.time >= h.hs - INTERVAL '{max_back_h}' HOUR),
+  c AS MATERIALIZED (SELECT row_number() OVER () AS rb_i, c0.* FROM c0
+        WHERE NOT EXISTS (SELECT 1 FROM inhaul i WHERE i.vid = c0.vid AND i.rn = c0.rn)),
+  pr AS ({pairs}),
+  cd AS (SELECT c.* EXCLUDE (rb_i), min(pr.d_m) AS d FROM pr JOIN c ON c.rb_i = pr.rb_ib GROUP BY ALL),
   b AS (SELECT {kh}, greatest({b_lo}, ceil(min(d) / 10) * 10) AS buf FROM cd GROUP BY ALL HAVING min(d) <= {b_hi}),
   k AS (SELECT cd.*, b.buf FROM cd JOIN b ON {on_k('b', 'cd')} WHERE cd.d <= b.buf),
   s AS (SELECT *, rn - row_number() OVER (PARTITION BY {kh} ORDER BY rn) AS seg FROM k),
-  g AS (SELECT {kh}, seg, any_value(buf) AS buf, min(time) AS s0, max(time) AS s1, count(*) AS n FROM s GROUP BY ALL),
+  g0 AS (SELECT {kh}, seg, any_value(buf) AS buf, min(time) AS s0, max(time) AS s1, count(*) AS n, max(rn) AS r1
+         FROM s GROUP BY ALL){approach},
   sc AS (SELECT g.*,
            greatest(0.25, row_number() OVER (PARTITION BY {kh} ORDER BY s0) / count(*) OVER (PARTITION BY {kh})) *
-           (least(n, 4) / max(least(n, 4)) OVER (PARTITION BY {kh})) AS score
+           ({len} / max({len}) OVER (PARTITION BY {kh})) AS score
          FROM g),
   best AS (SELECT * FROM sc QUALIFY row_number() OVER (PARTITION BY {kh} ORDER BY score DESC, s0 DESC) = 1)
   SELECT {ks}, h.vid, best.s0 AS set_start, best.s1 AS set_end,
          epoch(h.hs - best.s1) / 3600.0 AS soak_h, best.n AS n_set_pings, best.buf AS buffer_m,
-         CASE WHEN best.s0 IS NULL THEN 'none' ELSE 'reconstructed' END AS set_basis
-  FROM h LEFT JOIN best ON {on_k('best', 'h')}"
+         CASE WHEN best.s0 IS NULL THEN 'none' ELSE 'reconstructed' END AS set_basis, h.set_method
+  FROM hm h LEFT JOIN best ON {on_k('best', 'h')}"
   )
   .rb_out(con, sql, lazy_in, by = c("vid", key))
 }

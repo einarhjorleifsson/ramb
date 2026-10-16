@@ -4,11 +4,20 @@
 # is time spent at a port, not a ping inside its polygon: one port ping followed by silence is not a
 # stay. Runs in DuckDB (tier 2): a data frame is registered and the result collected; a lazy table stays lazy.
 
-.rb_con_for <- function(x) {
-  if (inherits(x, "tbl_lazy")) {
-    return(dbplyr::remote_con(x))
+.rb_con_for <- function(x, ...) {
+  # the connection of the lazy inputs, which must share one; a data frame is registered in it
+  lazy <- Filter(function(t) inherits(t, "tbl_lazy"), list(x, ...))
+  if (length(lazy) == 0) {
+    return(duckdbfs::cached_connection())
   }
-  duckdbfs::cached_connection()
+  cons <- lapply(lazy, dbplyr::remote_con)
+  if (!all(vapply(cons, identical, logical(1), cons[[1]]))) {
+    stop(
+      "The lazy tables are on different DuckDB connections; open them on one (duckdbfs::open_dataset() shares its cached connection).",
+      call. = FALSE
+    )
+  }
+  cons[[1]]
 }
 # Data frames registered for one call. A call on data frames releases them once it has collected its
 # result: registered frames left behind in a loop accumulate (fishycode R/write_parquet.R).
@@ -968,8 +977,14 @@ rb_pad_harbour <- function(voyage_id, port_id) {
   sea <- !is.na(voyage_id) & voyage_id > 0
   differs <- function(x) is.na(x) | x != voyage_id
   dplyr::case_when(
-    sea & differs(dplyr::lag(voyage_id)) ~ dplyr::coalesce(dplyr::lag(port_id), port_id),
-    sea & differs(dplyr::lead(voyage_id)) ~ dplyr::coalesce(dplyr::lead(port_id), port_id),
+    sea & differs(dplyr::lag(voyage_id)) ~ dplyr::coalesce(
+      dplyr::lag(port_id),
+      port_id
+    ),
+    sea & differs(dplyr::lead(voyage_id)) ~ dplyr::coalesce(
+      dplyr::lead(port_id),
+      port_id
+    ),
     TRUE ~ port_id
   )
 }

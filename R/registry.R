@@ -36,6 +36,24 @@
 }
 
 .rb_steps <- list(
+  # vessel: which ids of two position feeds are one vessel
+  .rb_step(
+    "rb_link_vessel_tracks",
+    "vessel",
+    "builder",
+    "x",
+    c("time", "lon", "lat"),
+    c(
+      "n_x",
+      "hits",
+      "opportunity",
+      "score",
+      "median_m",
+      "rank",
+      "score_other",
+      "strong"
+    )
+  ),
   # step 0: ping flags
   .rb_step(
     "rb_flag_ping_invalid",
@@ -235,7 +253,15 @@
     "builder",
     "hauls",
     c("vid", "start", "end"),
-    c("set_start", "set_end", "soak_h", "n_set_pings", "buffer_m", "set_basis"),
+    c(
+      "set_start",
+      "set_end",
+      "soak_h",
+      "n_set_pings",
+      "buffer_m",
+      "set_basis",
+      "set_method"
+    ),
     after = "rb_build_record_windows"
   ),
   .rb_step(

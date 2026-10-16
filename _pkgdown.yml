@@ -13,6 +13,9 @@ articles:
   - articles/tools
 
 reference:
+- title: "Vessel: link feeds"
+  contents:
+  - rb_link_vessel_tracks
 - title: "Ping (step 0): flag pings"
   contents:
   - rb_flag_ping_invalid
@@ -101,6 +104,7 @@ reference:
   - rb_read_survey_tracks_mfri
 - title: "Data"
   contents:
+  - rb_read_example
   - dansk
   - dansk_harbours
   - creel

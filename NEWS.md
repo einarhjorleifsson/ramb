@@ -1,3 +1,28 @@
+# ramb 2026.10.16
+
+Co-location and the static-gear set finder share one proximity engine; example data ship as parquet under Git LFS.
+
+- `rb_link_vessel_tracks()`: new, the vessel stage. Links the ids of two position feeds (a tracking unit and an MMSI, an MMSI and a registry number) where their moving pings meet: per id of `x`, id of `y` and `period`, the `hits` (x pings with a y ping within `dt_s` and `dist_m`), the `opportunity` (x pings with any ping of that id within `dt_s`) and `score = hits / opportunity`; the ids are ranked, and every row keeps the best other id and its score, so a partner (pair trawler, tender, net buoy) shows instead of hiding. `pairs` scores a key's own pairs whatever their hits. Generalised from fishycode's W1 witness (`audit_w1_month()`, decision 047) and the plan 022 run by MMSI, whose defaults it keeps (5 min, 2 km, 1 knot; `strong` at 20 opportunities and 0.8). Unlike both, it has no lat/lon box (filter first), measures on ramb's sphere instead of a flat 111.2 km per degree, and takes the block widths from each latitude instead of from 65° N, where a hit across a block edge further north could be missed. Tested against a plain computation over every pair of pings.
+- `rb_link_record_sets()`: three arguments, defaults unchanged.
+  - `method`: where the haul's line comes from: `"pings"` (as before), `"line"` (the haul's pings joined), `"record"` (the haul's declared start and end, `lon1`...`lat2`), or several, tried in order per haul. New column `set_method`.
+  - `skip_approach`: leave out the pass that leads straight into the haul.
+  - `max_pass_pings`: the cap on a pass's length in its score (iapesca's 4; `Inf` for none).
+  - With the defaults the output is the same as 2026.10.15.1's for all 129 labelled hauls at all five ping rates below, plus the new column.
+- Measured on the labelled tracks now shipped (article "Finding the set of a static-gear haul"): sets found right, of 56 pot hauls (one Italian, two Portuguese vessels; soak median 44 h) and 72 drive-in gillnet hauls (four Malagasy fishers; soak median 1.8 h), at the tracks' own rate (60 s or less), 10 and 30 min:
+
+  | variant | pots | gillnets |
+  |---|---|---|
+  | defaults (iapesca) | 13, 31, 9 | 70, 66, 26 |
+  | `max_pass_pings = Inf` | 33, 31, 9 | 67, 64, 26 |
+  | `skip_approach = TRUE, max_pass_pings = Inf` | 40, 32, 9 | 2, 3, 0 |
+  | `method = "line"` | 13, 19, 6 | 70, 45, 4 |
+  | `method = "record"` | 12, 32, 12 | 69, 67, 41 |
+  | `method = c("pings", "record")` | 13, 31, 11 | 70, 68, 42 |
+
+  On dense pot tracks the defaults take the run in to the buoy for the set (43 of 56 wrong); the approach guard fixes that and breaks the gillnets, whose set, fish drive and haul are one pass. At 30 min many hauls hold no ping, and the declared positions give the line back. No default moves until more labelled data, the Icelandic stations first, decide.
+- `rb_read_example()`: new. ramb's example data are parquet files in `inst/extdata`, tracked with Git LFS and read lazily. First three labelled tracks: `wkssfgeo2_it_pots`, `wkssfgeo_pt_gps` (ICES WKSSFGEO2 and WKSSFGEO, MIT) and `ird_mg_gillnet` (Behivoke et al., doi:10.23708/IBZJGD, CC BY 4.0), made by `data-raw/labelled_tracks.R`; licences in `COPYRIGHTS`. The WKSSFGEO2 file holds trip 40 twice (trip 41 is the same trip an hour later), so trip 41 is left out. A package installed from an archive without its LFS objects holds pointers instead of data, and `rb_read_example()` says so.
+- A function given lazy tables on two different DuckDB connections stops with a message (`rb_link_record_sets()`, `rb_link_vessel_tracks()`); a lazy `pings` with data-frame `hauls` now works.
+
 # ramb 2026.10.15.1
 
 - `rb_pad_harbour()`: the arguments are `voyage_id` and `port_id`, where they were `tid` and `hid` (fishycode TODO 53). The id is a voyage's, as `rb_assign_trip()` puts it on the pings, and the port id is the ports' own key (`port_id` from `rb_flag_ping_port()`), not a source's port code: the same renames as `rb_summarise_track()` in 2026.10.13.3. A call by position is unchanged; a call by name needs the new names. The name of the function is kept.

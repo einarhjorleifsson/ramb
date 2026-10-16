@@ -508,3 +508,130 @@ test_that("sets of static-gear hauls: the latest earlier pass along the haul's l
   ))
   expect_equal(as.data.frame(l), as.data.frame(s), ignore_attr = TRUE)
 })
+
+test_that("sets: the haul's line from its pings, a line through them, or its declared positions", {
+  skip_if_not_installed("duckdbfs")
+  t0 <- as.POSIXct("2024-03-01 06:00", tz = "UTC")
+  along <- function(t, lat) {
+    tibble::tibble(vid = 1L, time = t, lon = -22, lat = lat)
+  }
+  # a set over the middle of the line, then the haul with a ping at each end only (5.6 km apart), and a haul
+  # with no pings at all: only its declared positions say where the gear lies
+  set <- along(t0 + (0:9) * 60, seq(64.02, 64.03, length.out = 10))
+  haul <- along(t0 + 86400 + c(0, 3600), c(64, 64.05))
+  pings <- dplyr::bind_rows(set, haul)
+  hauls <- tibble::tibble(
+    id = 1:2,
+    vid = 1L,
+    start = t0 + 86400 + c(0, 2 * 86400),
+    end = t0 + 86400 + c(3601, 2 * 86400 + 3600),
+    lon1 = -22,
+    lat1 = 64,
+    lon2 = -22,
+    lat2 = c(64.05, NA)
+  )
+  by_pings <- rb_link_record_sets(hauls, pings, key = "id")
+  expect_equal(by_pings$set_basis, c("none", "none")) # the set is 2 km from either haul ping
+  expect_equal(by_pings$set_method, c("pings", NA))
+  by_line <- rb_link_record_sets(hauls, pings, key = "id", method = "line")
+  expect_equal(by_line$set_start, c(t0, NA))
+  expect_equal(by_line$set_method, c("line", NA))
+  # the second haul's record has a start only: a point at 64.00, 2.2 km from the set, so no set
+  both <- rb_link_record_sets(
+    hauls,
+    pings,
+    key = "id",
+    method = c("line", "record")
+  )
+  expect_equal(both$set_method, c("line", "record"))
+  expect_equal(both$set_basis, c("reconstructed", "none"))
+  hauls$lat2[2] <- 64.05
+  rec <- rb_link_record_sets(hauls, pings, key = "id", method = "record")
+  expect_equal(rec$set_start, c(t0, t0))
+  expect_equal(rec$set_end, c(t0 + 9 * 60, t0 + 9 * 60))
+  expect_equal(rec$set_method, c("record", "record"))
+  l <- dplyr::collect(rb_link_record_sets(
+    duckdbfs::as_dataset(hauls),
+    duckdbfs::as_dataset(pings),
+    key = "id",
+    method = c("pings", "record")
+  ))
+  expect_equal(
+    as.data.frame(l[order(l$id), ]),
+    as.data.frame(rb_link_record_sets(
+      hauls,
+      pings,
+      key = "id",
+      method = c("pings", "record")
+    )),
+    ignore_attr = TRUE
+  )
+  expect_error(
+    rb_link_record_sets(hauls, pings, key = "id", method = "lines"),
+    "method"
+  )
+  expect_error(
+    rb_link_record_sets(hauls[, 1:4], pings, key = "id", method = "record"),
+    "lon1"
+  )
+})
+
+test_that("sets: the run in to the haul, and the cap on a pass's length", {
+  skip_if_not_installed("duckdbfs")
+  t0 <- as.POSIXct("2024-03-01 06:00", tz = "UTC")
+  t1 <- t0 + 86400
+  along <- function(t, lat) {
+    tibble::tibble(vid = 1L, time = t, lon = -22, lat = lat)
+  }
+  pings <- dplyr::bind_rows(
+    along(t0 + (0:15) * 120, seq(64, 64.05, length.out = 16)), # the set: 16 pings along the line
+    tibble::tibble(vid = 1L, time = t0 + 3600 * (1:20), lon = -21, lat = 64.5), # elsewhere
+    along(t1 - (3:1) * 60, c(63.998, 63.999, 64)), # the run in to the buoy, straight into the haul
+    along(t1 + (0:30) * 120, seq(64, 64.05, length.out = 31)) # the haul
+  )
+  hauls <- tibble::tibble(id = 1L, vid = 1L, start = t1, end = t1 + 3601)
+  # iapesca's score: the later pass wins at 4 pings or more, so the run in is taken for the set
+  old <- rb_link_record_sets(hauls, pings, key = "id")
+  expect_equal(old$set_start, t1 - 180)
+  skip <- rb_link_record_sets(hauls, pings, key = "id", skip_approach = TRUE)
+  expect_equal(skip$set_start, t0)
+  expect_equal(skip$n_set_pings, 16)
+  nocap <- rb_link_record_sets(hauls, pings, key = "id", max_pass_pings = Inf)
+  expect_equal(nocap$set_start, t0)
+  l <- dplyr::collect(rb_link_record_sets(
+    duckdbfs::as_dataset(hauls),
+    duckdbfs::as_dataset(pings),
+    key = "id",
+    skip_approach = TRUE,
+    max_pass_pings = Inf
+  ))
+  expect_equal(l$set_start, t0)
+})
+
+test_that("sets: the connection comes from whichever input is lazy; two connections stop", {
+  skip_if_not_installed("duckdbfs")
+  t0 <- as.POSIXct("2024-03-01 06:00", tz = "UTC")
+  along <- function(t, lat) {
+    tibble::tibble(vid = 1L, time = t, lon = -22, lat = lat)
+  }
+  pings <- dplyr::bind_rows(
+    along(t0 + (0:9) * 60, seq(64, 64.01, length.out = 10)),
+    along(t0 + 86400 + (0:9) * 60, seq(64, 64.01, length.out = 10))
+  )
+  hauls <- tibble::tibble(
+    id = 1L,
+    vid = 1L,
+    start = t0 + 86400,
+    end = t0 + 86400 + 601
+  )
+  con <- DBI::dbConnect(duckdb::duckdb())
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE))
+  DBI::dbWriteTable(con, "pings", pings)
+  lp <- dplyr::tbl(con, "pings")
+  s <- rb_link_record_sets(hauls, lp, key = "id")
+  expect_equal(s$set_start, t0)
+  expect_error(
+    rb_link_record_sets(duckdbfs::as_dataset(hauls), lp, key = "id"),
+    "different DuckDB connections"
+  )
+})

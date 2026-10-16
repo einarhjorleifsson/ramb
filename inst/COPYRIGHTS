@@ -8,3 +8,45 @@ src/geodesic.h
   https://github.com/geographiclib/geographiclib-c/tree/v2.2
   Copyright (c) Charles Karney (2012-2025) <karney@alum.mit.edu>
   License: MIT/X11 — the licence text is in the files' headers.
+
+ramb also ships these third-party datasets in inst/extdata, as parquet, read
+with rb_read_example(); data-raw/labelled_tracks.R makes them from the sources:
+
+inst/extdata/wkssfgeo2_it_pots.parquet
+  From IT_CNR_2023_GP.csv (CNR-IRBIM) of the ICES Workshop WKSSFGEO2,
+  https://github.com/ices-eg/WKSSFGEO2, commit f3e49fe.
+  Copyright (c) 2023 ICES Expert Groups. License: MIT (text below).
+
+inst/extdata/wkssfgeo_pt_gps.parquet
+  From example_data_GPS.csv of the ICES Workshop WKSSFGEO,
+  https://github.com/ices-eg/WKSSFGEO, commit 3da870d.
+  Copyright (c) 2021 ICES Expert Groups. License: MIT (text below).
+
+inst/extdata/ird_mg_gillnet.parquet
+  From "Supplementary material2_Data_gillnet.Rdata" of Behivoke F., Etienne M.-P.,
+  Guitton J., Randriatsara R., Ranaivoson E., Léopold M.: Supplementary material -
+  Methodological brief (including R code and data) for performing random forest
+  and speed-based analysis of GPS boat tracking data. DataSuds (IRD),
+  https://doi.org/10.23708/IBZJGD. License: CC BY 4.0,
+  https://creativecommons.org/licenses/by/4.0/. Changed: columns selected,
+  renamed and harmonised (see data-raw/labelled_tracks.R).
+
+The MIT License, as it applies to the two ICES files:
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.

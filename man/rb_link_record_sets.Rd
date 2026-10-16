@@ -8,46 +8,74 @@ rb_link_record_sets(
   hauls,
   pings,
   key,
+  method = "pings",
   max_back_h = 240,
   buffer_m = c(330, 550),
+  skip_approach = FALSE,
+  max_pass_pings = 4,
   start = "start",
-  end = "end"
+  end = "end",
+  lon1 = "lon1",
+  lat1 = "lat1",
+  lon2 = "lon2",
+  lat2 = "lat2"
 )
 }
 \arguments{
 \item{hauls}{A data frame or lazy DuckDB table, one row per haul: the \code{key} columns, \code{vid}, and the haul's
-\code{start} and \code{end}.}
+\code{start} and \code{end}; for \code{method = "record"} also its positions.}
 
 \item{pings}{A data frame or lazy table with \code{vid}, \code{time}, \code{lon}, \code{lat}.}
 
 \item{key}{The columns that identify a haul.}
 
+\item{method}{Where the haul's line comes from: \code{"pings"}, \code{"line"} or \code{"record"}, or several, tried in order.}
+
 \item{max_back_h}{How long before the haul a set may be, hours (iapesca: 240).}
 
 \item{buffer_m}{The smallest and largest buffer, metres.}
 
+\item{skip_approach}{Whether the pass that leads straight into the haul is left out.}
+
+\item{max_pass_pings}{The pass length at which its score stops growing (iapesca: 4); \code{Inf} for none.}
+
 \item{start, end}{The haul's window columns.}
+
+\item{lon1, lat1, lon2, lat2}{The haul's declared start and end positions, for \code{method = "record"}.}
 }
 \value{
 One row per haul: the key, \code{vid}, \code{set_start} and \code{set_end} (the pass's first and last ping), \code{soak_h}
-(the haul's start minus \code{set_end}), \code{n_set_pings}, \code{buffer_m} and \code{set_basis} (\code{"reconstructed"}, or \code{"none"}
-where no pass was found). A data frame for data frame input, a lazy table for lazy input.
+(the haul's start minus \code{set_end}), \code{n_set_pings}, \code{buffer_m}, \code{set_basis} (\code{"reconstructed"}, or \code{"none"}
+where no pass was found) and \code{set_method} (the \code{method} that gave the haul's line; \code{NA} where none could). A
+data frame for data frame input, a lazy table for lazy input.
 }
 \description{
 A step-2 builder for static gear (nets, pots, longlines), where the logbook often records only the haul. The
-haul's pings trace the gear's line; the set is the vessel's latest earlier pass along that line. Recoded from
-the method of Ifremer's iapesca (\code{Retrieve_SettingOperations}; fishycode decision 078), not copied:
+haul traces the gear's line; the set is the vessel's latest earlier pass along that line. Recoded from the
+method of Ifremer's iapesca (\code{Retrieve_SettingOperations}; fishycode decision 078), not copied:
 }
 \details{
 \itemize{
+\item the haul's line comes from \code{method}: the haul's own pings as points (\code{"pings"}), the haul's pings joined into
+a line (\code{"line"}, two pings or more), or the haul's declared start and end positions joined into a line
+(\code{"record"}; its start alone where it has no end), for a track too sparse to trace the haul. Several are tried
+in order for each haul, the first the haul has data for answering;
 \item candidate pings are the vessel's pings within \code{max_back_h} hours before the haul starts, outside every haul
-window given, and near the haul's line: within a buffer of the nearest haul ping;
+window given, and near the haul's line;
 \item the buffer is the smallest of \code{buffer_m[1]}, \code{buffer_m[1] + 10}, ... up to \code{buffer_m[2]} metres that finds
 any candidate (iapesca: 330 to 550 m);
-\item a pass is a run of candidates that follow each other in the vessel's track; each pass is scored by how late
-it is among the haul's passes (at least 0.25) times its number of pings (at most 4, scaled), and the best is
-the set, the later one on a tie.
+\item a pass is a run of candidates that follow each other in the vessel's track; with \code{skip_approach}, the pass
+that ends at the vessel's last ping before the haul (the run in to the gear) is not one. Each pass is scored
+by how late it is among the haul's passes (at least 0.25) times its number of pings (at most
+\code{max_pass_pings}, scaled), and the best is the set, the later one on a tie.
 }
 
-The distance is to the nearest haul ping, not to a line geometry, so dense pings give the closest result.
+Hauls are not paired one to one with sets: a set hauled in parts serves several hauls. A line is measured as
+points every \code{buffer_m[1] / 10} metres along it (under 0.5 m from the distance to the line itself at 330 m), on
+\code{\link[=rb_calc_distance]{rb_calc_distance()}}'s sphere.
+
+On labelled pot data (WKSSFGEO2, 57 hauls with a labelled set, 60 s pings), the defaults find the right set for
+14 hauls: the other 43 picks are the run in to the haul. \code{skip_approach = TRUE} with \code{max_pass_pings = Inf}
+finds 40 (see NEWS for the other rates and datasets). The defaults stay as they were until more labelled data
+decide.
 }
