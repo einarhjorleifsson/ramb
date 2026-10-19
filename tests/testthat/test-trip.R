@@ -79,6 +79,146 @@ ports <- sf::st_transform(dansk_harbours, 4326) |>
   dplyr::mutate(port_id = as.character(SI_HARB))
 calls <- rb_create_port_calls(pings, ports, min_dwell_h = 2)
 
+# The time budget (speed_kn) and the minimum from the data (min_dwell_h = "valley"): fishycode plan 031 §4.1.
+budget_tracks <- local({
+  sq <- sf::st_sfc(
+    sf::st_polygon(list(rbind(
+      c(-22.01, 64.145),
+      c(-21.99, 64.145),
+      c(-21.99, 64.155),
+      c(-22.01, 64.155),
+      c(-22.01, 64.145)
+    ))),
+    crs = 4326
+  )
+  t0 <- as.POSIXct("2024-03-01 00:00:00", tz = "UTC")
+  dlat <- function(km) km / 111.2
+  list(
+    ports = sf::st_sf(port_id = "P1", geometry = sq),
+    pings = rbind(
+      # silent 5 h in port; the next ping is already 8 km out, beyond the 2 km departure radius
+      data.frame(
+        vid = 1L,
+        time = t0 +
+          c(
+            seq(0, 3000, 600),
+            3600,
+            3600 + 5 * 3600,
+            3600 + 5 * 3600 + seq(600, 3000, 600)
+          ),
+        lon = -22,
+        lat = 64.15 -
+          dlat(c(30, 25, 20, 15, 10, 5, 1.4, 8.5, 13, 18, 23, 28, 33))
+      ),
+      # hourly pings: a call of about 3 h holds two pings an hour apart
+      data.frame(
+        vid = 2L,
+        time = t0 + 3600 * (0:6),
+        lon = -22,
+        lat = 64.15 - dlat(c(20, 10, 5.5, 0, 0, 5.5, 10))
+      ),
+      # a silence of 6 h at sea, 50 km from the port
+      data.frame(
+        vid = 3L,
+        time = t0 + 3600 * c(0, 1, 7, 8),
+        lon = -22,
+        lat = 64.15 - dlat(c(55, 50, 50, 55))
+      )
+    )
+  )
+})
+
+test_that("the time budget finds the calls that sparse pings hide, and none at sea", {
+  p <- budget_tracks$pings
+  ports <- budget_tracks$ports
+  expect_equal(nrow(rb_create_port_calls(p, ports, min_dwell_h = 2)), 0)
+  b <- rb_create_port_calls(p, ports, min_dwell_h = 2, speed_kn = 6)
+  expect_equal(b$vid, c(1L, 2L))
+  expect_equal(b$rule, c("gap_budget", "span_budget"))
+  expect_equal(attr(b, "min_dwell_h"), 2)
+  # each vessel's own speed: these tracks have too few legs, so the fallback, 6 knots
+  v <- rb_create_port_calls(p, ports, min_dwell_h = 2, speed_kn = "vessel")
+  expect_equal(as.data.frame(v), as.data.frame(b), ignore_attr = TRUE)
+  # a slower vessel needs longer to sail in and out: at 1 knot, the 5 h silence leaves too little
+  expect_equal(
+    rb_create_port_calls(p, ports, min_dwell_h = 2, speed_kn = 1)$vid,
+    integer(0)
+  )
+  expect_error(rb_create_port_calls(p, ports, speed_kn = "fast"), "speed_kn")
+})
+
+test_that("the time budget: a data frame and a lazy table give the same port calls", {
+  skip_if_not_installed("duckdbfs")
+  a <- rb_create_port_calls(
+    budget_tracks$pings,
+    budget_tracks$ports,
+    min_dwell_h = 2,
+    speed_kn = 6
+  )
+  b <- dplyr::collect(rb_create_port_calls(
+    duckdbfs::as_dataset(budget_tracks$pings),
+    budget_tracks$ports,
+    min_dwell_h = 2,
+    speed_kn = 6
+  ))
+  b <- b[order(b$vid, b$T_in), ]
+  expect_equal(as.data.frame(b), as.data.frame(a), ignore_attr = TRUE)
+})
+
+test_that("the minimum from the data lies between pass-throughs and calls", {
+  set.seed(1)
+  h <- c(
+    stats::rlnorm(3000, log(10 / 60), 0.6),
+    stats::rlnorm(3000, log(10), 0.6)
+  )
+  x <- .rb_dwell_valley(h)
+  expect_gt(x, 0.7)
+  expect_lt(x, 2.5)
+  expect_error(.rb_dwell_valley(1:10), "Too few")
+  # two vessels give too few candidate calls; all fourteen Danish vessels give a minimum of about an hour
+  expect_error(
+    rb_create_port_calls(pings, ports, min_dwell_h = "valley"),
+    "Too few"
+  )
+  all14 <- data.frame(
+    vid = as.integer(factor(dansk$vessel_id)),
+    time = dansk$time_stamp,
+    lon = dansk$lon,
+    lat = dansk$lat
+  )
+  a <- suppressMessages(rb_create_port_calls(
+    all14,
+    ports,
+    min_dwell_h = "valley"
+  ))
+  expect_gt(attr(a, "min_dwell_h"), 0.5)
+  expect_lt(attr(a, "min_dwell_h"), 2)
+  expect_gte(nrow(a), nrow(rb_create_port_calls(all14, ports, min_dwell_h = 2)))
+  expect_error(
+    rb_create_port_calls(pings, ports, min_dwell_h = "long"),
+    "min_dwell_h"
+  )
+})
+
+test_that("voyages are labelled short and open, and with min_pings = 1 none is dropped", {
+  p <- budget_tracks$pings
+  calls <- rb_create_port_calls(
+    p,
+    budget_tracks$ports,
+    min_dwell_h = 2,
+    speed_kn = 6
+  )
+  v <- rb_create_voyages(p, port_calls = calls, min_pings = 1, by_year = FALSE)
+  expect_equal(nrow(v), 5)
+  expect_equal(v$open_start, c(TRUE, FALSE, TRUE, FALSE, TRUE))
+  expect_equal(v$open_end, c(FALSE, TRUE, FALSE, TRUE, TRUE))
+  expect_true(all(v$short))
+  expect_equal(
+    nrow(rb_create_voyages(p, port_calls = calls, by_year = FALSE)),
+    0
+  )
+})
+
 test_that("voyages and trip labels agree between a data frame and a lazy table", {
   skip_if_not_installed("duckdbfs")
   v <- rb_create_voyages(pings, calls, min_pings = 10)

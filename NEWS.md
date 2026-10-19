@@ -1,3 +1,15 @@
+# ramb 2026.10.19.3
+
+## Port calls at any ping rate (fishycode plan 031, step 3)
+
+- `rb_create_port_calls(method = "dwell")` gains a time budget, `speed_kn`. Two rules scale the minimum dwell with the ping interval:
+  - `gap_budget`: a silence that begins within `radius_in` of a port, where the next ping may lie anywhere;
+  - `span_budget`: a run of pings inside a port, too short for `tag_span`, measured from the ping before it to the ping after.
+
+  Each is a port call when the time between the pings, less the sailing time to and from the port, is at least the minimum dwell. The speed is `speed_kn` knots, or with `"vessel"` each vessel's own: the upper quartile of its leg speeds between 2 and 30 knots, else `speed_fallback_kn` (6). Distances are in metres in `crs_m`. With sparse pings a fixed departure radius rejects a silence in port whose next ping is already further out; the budget accepts it. Default `NULL`: the rules and results are unchanged.
+- `min_dwell_h = "valley"` sets the minimum dwell from the data (the maintainer, plan 031 ask a). It is the low point of the density of the candidate calls' log lengths, between the pass-throughs (mode under an hour) and the calls (mode over two hours). The value is returned as the attribute `min_dwell_h`. On all fourteen `dansk` vessels it is 0.99 h.
+- `rb_create_voyages()`, methods `"dwell"` and `"runs"`: new columns `open_start`, `open_end` (no port call before or after the voyage) and `short` (fewer than `short_pings`, 10, pings). With `min_pings = 1`, short voyages are kept and labelled, not dropped (plan 031 §4.7). Defaults unchanged.
+
 # ramb 2026.10.19.2
 
 ## Names by output shape, and port calls (fishycode plan 032)

@@ -94,10 +94,33 @@
 #' * `event_pair` (with `events`): an arrival then a departure event at the same port, adjacent in the
 #'   vessel's events, both judged good, at least the minimum dwell apart.
 #'
+#' With `speed_kn` (fishycode plan 031 §4.1), two rules scale the minimum with the ping interval, as a time
+#' budget: the time the vessel could have spent in port, given the pings either side and the time to sail from
+#' and to them.
+#'
+#' * `gap_budget`: two consecutive pings, the first within `radius_in` of a port, the second anywhere: a port call
+#'   when the time between them, less the sailing time from the first ping to the port and from the port to the
+#'   second, is at least the minimum dwell. Where pings are sparse, the second is often outside the departure
+#'   radius that `tag_then_gap` asks for.
+#' * `span_budget`: a run of pings inside the polygon, too short for `tag_span`: a port call when the time from
+#'   the ping before the run to the ping after it, less the sailing time to and from the port, is at least the
+#'   minimum dwell. With hourly pings a call of three hours holds only two or three pings.
+#'
+#' The sailing time uses `speed_kn` knots, or with `speed_kn = "vessel"` each vessel's own speed: the upper
+#' quartile of its leg speeds between 2 and 30 knots (legs of 1 minute to 2 hours), or `speed_fallback_kn` where it
+#' has fewer than 20 such legs. Distances are in metres, in `crs_m`, to the port's polygon. The budget is the most
+#' the vessel could have spent in port, so these rules find more calls, and also more that are not calls.
+#'
+#' `min_dwell_h = "valley"` sets the minimum from the data (plan 031, ask a): the candidate calls (every run of
+#' pings inside a port, and every silence that begins within `radius_in` of one) are measured by the time budget
+#' (or by their span and silence, without `speed_kn`), and the minimum is the low point of the density of their
+#' log lengths between the mode under an hour (pass-throughs) and the mode over two hours (calls). It is returned
+#' as the attribute `min_dwell_h`, and said in a message.
+#'
 #' A ping takes the port among those whose `radius_out` buffer holds it, preferring one whose
 #' `radius_in` buffer also holds it, then the nearest. Seeds are extended over the contiguous inside pings
 #' at either end and merged; port calls from pings and from events are merged in time. `rule` names the
-#' strongest evidence: event_pair > tag_then_gap > tag_span > gap_near_port.
+#' strongest evidence: event_pair > tag_then_gap > tag_span > gap_near_port > span_budget > gap_budget.
 #'
 #' @param pings A data frame or lazy DuckDB table of cleaned pings: `vid`, `time`, and `lon`, `lat` for
 #'   `"dwell"`; for the other methods, the columns [rb_create_voyages()] needs.
@@ -105,7 +128,11 @@
 #'   (metres; the departure radius, at least `radius_in`). Required for `"dwell"` and `"iapesca"`, optional for
 #'   `"cnr"`, not used by `"runs"` and `"jepol"` (they read `port_id` on the pings).
 #' @param method `"dwell"`, `"runs"`, `"jepol"`, `"cnr"` or `"iapesca"`.
-#' @param min_dwell_h For `"dwell"`: the minimum time in port, hours, where `min_dwell` has no row for the port.
+#' @param min_dwell_h For `"dwell"`: the minimum time in port, hours, where `min_dwell` has no row for the port;
+#'   or `"valley"`, set from the data (above).
+#' @param speed_kn For `"dwell"`: `NULL` (no time budget, the default), a speed in knots, or `"vessel"` for each
+#'   vessel's own (above).
+#' @param speed_fallback_kn For `speed_kn = "vessel"`: the speed of a vessel with too few legs to measure its own.
 #' @param min_dwell For `"dwell"`: optional data frame `port_id`, `min_dwell_h`: a minimum per port.
 #' @param radius_in For `"dwell"`: the arrival radius, metres.
 #' @param events For `"dwell"`: optional data frame or lazy table of port events: `vid`, `time`, `io` (`"I"`
@@ -137,6 +164,8 @@ rb_create_port_calls <- function(
   events = NULL,
   t_in_window = NULL,
   crs_m = 3575,
+  speed_kn = NULL,
+  speed_fallback_kn = 6,
   ...,
   vid = vid,
   time = time,
@@ -215,7 +244,11 @@ rb_create_port_calls <- function(
     port_id = hb$port_id,
     poly = sf::st_as_text(sf::st_geometry(hb), digits = 15),
     near_in = sf::st_as_text(sf::st_geometry(buf(radius_in)), digits = 15),
-    near_out = sf::st_as_text(sf::st_geometry(buf(r_out)), digits = 15)
+    near_out = sf::st_as_text(sf::st_geometry(buf(r_out)), digits = 15),
+    poly_m = sf::st_as_text(
+      sf::st_geometry(sf::st_transform(hb, crs_m)),
+      digits = 15
+    )
   )
   hw_nm <- .rb_register(con, hw, "rb_hw_")
   hg <- if (is.null(min_dwell)) {
@@ -239,11 +272,59 @@ rb_create_port_calls <- function(
       .rb_as_lazy(events, con) |> dplyr::select(vid, time, io, port_id, good)
     )
   }
-  G <- min_dwell_h
-  sql <- sprintf(
+  budget <- !is.null(speed_kn)
+  if (
+    budget &&
+      !identical(speed_kn, "vessel") &&
+      !(is.numeric(speed_kn) && length(speed_kn) == 1 && speed_kn > 0)
+  ) {
+    stop(
+      "`speed_kn` must be NULL, a speed in knots or \"vessel\".",
+      call. = FALSE
+    )
+  }
+  valley <- identical(min_dwell_h, "valley")
+  if (!valley && !(is.numeric(min_dwell_h) && length(min_dwell_h) == 1)) {
+    stop(
+      "`min_dwell_h` must be a number of hours or \"valley\".",
+      call. = FALSE
+    )
+  }
+
+  # The common part: the pings numbered per vessel, the ports, each ping's port, the runs inside a port, and for
+  # the time budget the next ping of every ping and each vessel's speed.
+  # metres from a ping to the port's polygon, in crs_m
+  dm <- function(lon, lat) {
+    sprintf(
+      "ST_Distance(ST_Transform(ST_Point(%s, %s), 'EPSG:4326', 'EPSG:%d', always_xy := true), hm.gm)",
+      lon,
+      lat,
+      as.integer(crs_m)
+    )
+  }
+  spd_sql <- if (identical(speed_kn, "vessel")) {
+    sprintf(
+      ",
+legs AS (SELECT vid, 2 * 6371000 * asin(sqrt(pow(sin(radians(lead(lat) OVER w - lat) / 2), 2) +
+                cos(radians(lat)) * cos(radians(lead(lat) OVER w)) * pow(sin(radians(lead(lon) OVER w - lon) / 2), 2))) AS d,
+                epoch(lead(time) OVER w - time) AS dt
+         FROM seq WINDOW w AS (PARTITION BY vid ORDER BY rn)),
+spd0 AS (SELECT vid, count(*) AS n, quantile_cont(d / dt * 3600 / 1852, 0.75) AS v FROM legs
+         WHERE dt BETWEEN 60 AND 7200 AND d / dt * 3600 / 1852 BETWEEN 2 AND 30 GROUP BY vid),
+spd AS (SELECT v0.vid, CASE WHEN spd0.n >= 20 THEN spd0.v ELSE %f END AS v
+        FROM (SELECT DISTINCT vid FROM seq) v0 LEFT JOIN spd0 USING (vid))",
+      speed_fallback_kn
+    )
+  } else if (budget) {
+    sprintf(",\nspd AS (SELECT DISTINCT vid, %f AS v FROM seq)", speed_kn)
+  } else {
+    ""
+  }
+  pre <- sprintf(
     "
 WITH seq AS (SELECT vid, time, lon, lat, row_number() OVER (PARTITION BY vid ORDER BY time) AS rn FROM (%s)),
-harb AS (SELECT port_id AS pid, ST_GeomFromText(poly) AS g, ST_GeomFromText(near_in) AS gi, ST_GeomFromText(near_out) AS go FROM %s),
+harb AS (SELECT port_id AS pid, ST_GeomFromText(poly) AS g, ST_GeomFromText(near_in) AS gi, ST_GeomFromText(near_out) AS go,
+                ST_GeomFromText(poly_m) AS gm FROM %s),
 hg AS (SELECT port_id AS pid, g_h FROM %s),
 c AS (SELECT s.vid, s.rn, s.time, h.pid, ST_Distance(ST_Point(s.lon, s.lat), h.g) AS d, ST_Intersects(h.gi, ST_Point(s.lon, s.lat)) AS near_in
       FROM seq s JOIN harb h ON ST_Intersects(h.go, ST_Point(s.lon, s.lat))),
@@ -256,14 +337,86 @@ runs AS (SELECT vid, h, min(rn) AS s, max(rn) AS e, min(time) AS t_s, max(time) 
          FROM (SELECT *, rn - row_number() OVER (PARTITION BY vid, h ORDER BY rn) AS grp FROM tg WHERE inside)
          GROUP BY vid, h, grp),
 a AS (SELECT *, lead(rn) OVER w AS nrn, lead(h) OVER w AS nh, lead(inside) OVER w AS nin, lead(time) OVER w AS nt
-      FROM tg WINDOW w AS (PARTITION BY vid ORDER BY rn)),
+      FROM tg WINDOW w AS (PARTITION BY vid ORDER BY rn))%s",
+    .rb_sql(p),
+    hw_nm,
+    hg_nm,
+    spd_sql
+  )
+  # the time-budget candidates: a silence that begins within radius_in of a port (gb), and a run inside a port with
+  # the pings either side of it (sb); `gmin` keeps gb to the silences that can matter
+  budget_ctes <- function(gmin) {
+    sprintf(
+      ",
+sa AS (SELECT vid, rn, time, lon, lat, lead(rn) OVER w AS nrn, lead(time) OVER w AS nt, lead(lon) OVER w AS nlon,
+              lead(lat) OVER w AS nlat FROM seq WINDOW w AS (PARTITION BY vid ORDER BY rn)),
+gb AS (SELECT t.vid, t.h, t.rn AS s, sa.nrn AS e, t.time AS t_s, sa.nt AS t_e, epoch(sa.nt - t.time) / 3600 AS gap_h,
+              %s AS d1, %s AS d2
+       FROM tg t JOIN sa ON sa.vid = t.vid AND sa.rn = t.rn JOIN harb hm ON hm.pid = t.h
+       WHERE t.near_in AND sa.nrn IS NOT NULL AND epoch(sa.nt - t.time) >= %f * 3600),
+sb AS (SELECT r.vid, r.h, r.s, r.e, r.t_s, r.t_e, epoch(n.time - pv.time) / 3600 AS gap_h, %s AS d1, %s AS d2
+       FROM runs r JOIN seq pv ON pv.vid = r.vid AND pv.rn = r.s - 1 JOIN seq n ON n.vid = r.vid AND n.rn = r.e + 1
+       JOIN harb hm ON hm.pid = r.h)",
+      dm("sa.lon", "sa.lat"),
+      dm("sa.nlon", "sa.nlat"),
+      gmin,
+      dm("pv.lon", "pv.lat"),
+      dm("n.lon", "n.lat")
+    )
+  }
+
+  ## the minimum from the data -----------------------------------------------------------------------------------
+  if (valley) {
+    cand <- if (budget) {
+      paste0(
+        pre,
+        budget_ctes(0.25),
+        "
+SELECT gb.gap_h - (gb.d1 + gb.d2) / (spd.v * 1852) AS h FROM gb JOIN spd USING (vid)
+UNION ALL SELECT sb.gap_h - (sb.d1 + sb.d2) / (spd.v * 1852) FROM sb JOIN spd USING (vid)"
+      )
+    } else {
+      paste0(
+        pre,
+        ",
+sa AS (SELECT vid, rn, lead(time) OVER w AS nt FROM seq WINDOW w AS (PARTITION BY vid ORDER BY rn))
+SELECT epoch(sa.nt - t.time) / 3600 AS h FROM tg t JOIN sa USING (vid, rn) WHERE t.near_in AND sa.nt IS NOT NULL
+  AND epoch(sa.nt - t.time) >= 900
+UNION ALL SELECT epoch(t_e - t_s) / 3600 FROM runs"
+      )
+    }
+    min_dwell_h <- .rb_dwell_valley(DBI::dbGetQuery(con, cand)$h)
+    message(sprintf(
+      "rb_create_port_calls(): min_dwell_h from the data, %.2f h",
+      min_dwell_h
+    ))
+  }
+  G <- min_dwell_h
+  gmin <- min(c(G, hg$g_h))
+
+  budget_seeds <- if (budget) {
+    sprintf(
+      "
+          UNION ALL
+          SELECT gb.vid, gb.h, gb.s, gb.e, gb.t_s, gb.t_e, 'gap_budget' FROM gb JOIN spd USING (vid) LEFT JOIN hg ON hg.pid = gb.h
+          WHERE gb.gap_h >= coalesce(hg.g_h, %1$f) AND gb.gap_h - (gb.d1 + gb.d2) / (spd.v * 1852) >= coalesce(hg.g_h, %1$f)
+          UNION ALL
+          SELECT sb.vid, sb.h, sb.s, sb.e, sb.t_s, sb.t_e, 'span_budget' FROM sb JOIN spd USING (vid) LEFT JOIN hg ON hg.pid = sb.h
+          WHERE sb.gap_h - (sb.d1 + sb.d2) / (spd.v * 1852) >= coalesce(hg.g_h, %1$f)",
+      G
+    )
+  } else {
+    ""
+  }
+  sql <- sprintf(
+    "%s%s,
 seeds AS (SELECT vid, h, rn AS s, nrn AS e, time AS t_s, nt AS t_e,
                  CASE WHEN inside OR nin THEN 'tag_then_gap' ELSE 'gap_near_port' END AS rule
           FROM a LEFT JOIN hg ON hg.pid = a.h
           WHERE nrn = rn + 1 AND nh = h AND near_in AND epoch(nt - time) >= coalesce(hg.g_h, %f) * 3600
           UNION ALL
           SELECT vid, h, s, e, t_s, t_e, 'tag_span' FROM runs LEFT JOIN hg ON hg.pid = runs.h
-          WHERE epoch(t_e - t_s) >= coalesce(hg.g_h, %f) * 3600),
+          WHERE epoch(t_e - t_s) >= coalesce(hg.g_h, %f) * 3600%s),
 ext AS (SELECT sd.vid, sd.h, least(sd.s, coalesce(r1.s, sd.s)) AS s, greatest(sd.e, coalesce(r2.e, sd.e)) AS e,
                least(sd.t_s, coalesce(r1.t_s, sd.t_s)) AS t_s, greatest(sd.t_e, coalesce(r2.t_e, sd.t_e)) AS t_e, sd.rule
         FROM seeds sd
@@ -293,14 +446,16 @@ SELECT vid, year(T_in) AS year, row_number() OVER (PARTITION BY vid ORDER BY T_i
        CASE WHEN evidence LIKE '%%event_pair%%' THEN 'event_pair'
             WHEN evidence LIKE '%%tag_then_gap%%' THEN 'tag_then_gap'
             WHEN evidence LIKE '%%tag_span%%' THEN 'tag_span'
-            ELSE 'gap_near_port' END AS rule,
+            WHEN evidence LIKE '%%gap_near_port%%' THEN 'gap_near_port'
+            WHEN evidence LIKE '%%span_budget%%' THEN 'span_budget'
+            ELSE 'gap_budget' END AS rule,
        evidence, T_in_ping, T_out_ping, T_in_ev, T_out_ev, 'reconstructed' AS basis
 FROM st",
-    .rb_sql(p),
-    hw_nm,
-    hg_nm,
+    pre,
+    if (budget) budget_ctes(gmin) else "",
     G,
     G,
+    budget_seeds,
     ev_sql,
     G,
     win_e,
@@ -312,11 +467,41 @@ FROM st",
     !!!stats::setNames(rlang::syms("vid"), map[["vid"]])
   )
   if (lazy_in) {
+    attr(out, "min_dwell_h") <- G
     return(out)
   }
   out <- dplyr::collect(out)
   .rb_unregister(con)
-  out[order(out[[map[["vid"]]]], out$T_in), ]
+  out <- out[order(out[[map[["vid"]]]], out$T_in), ]
+  attr(out, "min_dwell_h") <- G
+  out
+}
+
+# The minimum dwell from the data (rb_create_port_calls(min_dwell_h = "valley"), plan 031 ask a): the low point of
+# the density of the candidate calls' log lengths, between the highest mode under an hour (pass-throughs, the
+# vessel's runs through a port) and the highest mode over two hours (calls). Lengths under a minute or over two
+# days are left out.
+.rb_dwell_valley <- function(h) {
+  h <- h[is.finite(h) & h > 1 / 60 & h < 48]
+  if (length(h) < 50) {
+    stop(
+      "Too few candidate port calls to set `min_dwell_h` from the data; give it in hours.",
+      call. = FALSE
+    )
+  }
+  d <- stats::density(log10(h), n = 512)
+  lo <- which(d$x < 0)
+  hi <- which(d$x > log10(2))
+  if (!length(lo) || !length(hi)) {
+    stop(
+      "The candidate port calls show no pass-throughs and calls to set `min_dwell_h` between; give it in hours.",
+      call. = FALSE
+    )
+  }
+  p1 <- lo[which.max(d$y[lo])]
+  p2 <- hi[which.max(d$y[hi])]
+  b <- seq(p1, p2)
+  10^d$x[b[which.min(d$y[b])]]
 }
 
 # The port calls of the methods other than "dwell": the time in port between two voyages of one vessel, from the
@@ -471,6 +656,8 @@ SELECT *, %s AS rb_year FROM ps",
 #' @param min_pings Voyages with fewer pings are dropped. They are numbered before they are dropped, so the
 #'   numbers have gaps where a short voyage was. Default 10 for `"dwell"`, 1 (none dropped) otherwise.
 #' @param by_year Cut voyages at New Year and number them per vessel and year.
+#' @param short_pings For `"dwell"` and `"runs"`: a voyage of fewer pings is labelled `short` (with
+#'   `min_pings = 1` it is kept, labelled, rather than dropped; fishycode plan 031 §4.7).
 #' @param min_dur_h,max_dur_h,split For `"jepol"`: the minimum and maximum voyage length in hours, and whether
 #'   longer voyages are split.
 #' @param ports For `"cnr"`: an sf object of port polygons with `port_id`, for the ports of the voyage
@@ -488,7 +675,9 @@ SELECT *, %s AS rb_year FROM ps",
 #' @param vid,time,port_id,speed,lon,lat The ping columns, if named otherwise.
 #'
 #' @return One row per voyage: `vid`, `year` (with `by_year`), `voyage_id`, `T1`, `T2`, `port_from`,
-#'   `port_to`, `n_pings`. A data frame for data frame input, a lazy table for lazy input.
+#'   `port_to`, `n_pings`; for `"dwell"` and `"runs"` also `open_start` and `open_end` (no port call before or
+#'   after the voyage: the start or end of the vessel's series, or a New Year cut with `by_year`) and `short`
+#'   (fewer than `short_pings` pings). A data frame for data frame input, a lazy table for lazy input.
 #'
 #' @references For `"jepol"`: the trip rule `define_trips_pol` of the ICES VMS
 #'   data-call workflow, after `vmstools` (Hintzen, N.T., Bastardie, F.,
@@ -513,6 +702,7 @@ rb_create_voyages <- function(
   method = c("dwell", "runs", "jepol", "cnr", "iapesca"),
   min_pings = NULL,
   by_year = TRUE,
+  short_pings = 10,
   min_dur_h = 0.5,
   max_dur_h = 72,
   split = TRUE,
@@ -650,9 +840,12 @@ t AS (SELECT *, CASE WHEN NOT in_h THEN lag(h) OVER w END AS port_from,
                 CASE WHEN NOT in_h THEN lead(h) OVER w END AS port_to
       FROM runs WINDOW w AS (PARTITION BY vid, rb_year ORDER BY T1)),
 v AS (SELECT *, row_number() OVER (PARTITION BY vid, rb_year ORDER BY T1) AS voyage_id FROM t WHERE NOT in_h)
-SELECT vid, %s voyage_id, T1, T2, port_from, port_to, n_pings FROM v WHERE n_pings >= %d",
+SELECT vid, %s voyage_id, T1, T2, port_from, port_to, n_pings,
+       port_from IS NULL AS open_start, port_to IS NULL AS open_end, n_pings < %d AS short
+FROM v WHERE n_pings >= %d",
     ps,
     if (by_year) "rb_year AS year," else "",
+    as.integer(short_pings),
     as.integer(min_pings)
   )
   out <- dplyr::tbl(con, dplyr::sql(sql))

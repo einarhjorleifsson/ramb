@@ -10,6 +10,7 @@ rb_create_voyages(
   method = c("dwell", "runs", "jepol", "cnr", "iapesca"),
   min_pings = NULL,
   by_year = TRUE,
+  short_pings = 10,
   min_dur_h = 0.5,
   max_dur_h = 72,
   split = TRUE,
@@ -41,6 +42,9 @@ numbers have gaps where a short voyage was. Default 10 for \code{"dwell"}, 1 (no
 
 \item{by_year}{Cut voyages at New Year and number them per vessel and year.}
 
+\item{short_pings}{For \code{"dwell"} and \code{"runs"}: a voyage of fewer pings is labelled \code{short} (with
+\code{min_pings = 1} it is kept, labelled, rather than dropped; fishycode plan 031 §4.7).}
+
 \item{min_dur_h, max_dur_h, split}{For \code{"jepol"}: the minimum and maximum voyage length in hours, and whether
 longer voyages are split.}
 
@@ -65,7 +69,9 @@ time, whole vessels.}
 }
 \value{
 One row per voyage: \code{vid}, \code{year} (with \code{by_year}), \code{voyage_id}, \code{T1}, \code{T2}, \code{port_from},
-\code{port_to}, \code{n_pings}. A data frame for data frame input, a lazy table for lazy input.
+\code{port_to}, \code{n_pings}; for \code{"dwell"} and \code{"runs"} also \code{open_start} and \code{open_end} (no port call before or
+after the voyage: the start or end of the vessel's series, or a New Year cut with \code{by_year}) and \code{short}
+(fewer than \code{short_pings} pings). A data frame for data frame input, a lazy table for lazy input.
 }
 \description{
 A step-1 builder of the fishing-activity flow. Five methods, one result: a table of voyages. Voyages and port

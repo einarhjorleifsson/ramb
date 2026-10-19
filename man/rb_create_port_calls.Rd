@@ -14,6 +14,8 @@ rb_create_port_calls(
   events = NULL,
   t_in_window = NULL,
   crs_m = 3575,
+  speed_kn = NULL,
+  speed_fallback_kn = 6,
   ...,
   vid = vid,
   time = time,
@@ -31,7 +33,8 @@ rb_create_port_calls(
 
 \item{method}{\code{"dwell"}, \code{"runs"}, \code{"jepol"}, \code{"cnr"} or \code{"iapesca"}.}
 
-\item{min_dwell_h}{For \code{"dwell"}: the minimum time in port, hours, where \code{min_dwell} has no row for the port.}
+\item{min_dwell_h}{For \code{"dwell"}: the minimum time in port, hours, where \code{min_dwell} has no row for the port;
+or \code{"valley"}, set from the data (above).}
 
 \item{min_dwell}{For \code{"dwell"}: optional data frame \code{port_id}, \code{min_dwell_h}: a minimum per port.}
 
@@ -47,6 +50,11 @@ are bound.}
 
 \item{crs_m}{For \code{"dwell"}: a metric CRS for the buffers (EPSG code). The default, 3575, suits the North
 Atlantic.}
+
+\item{speed_kn}{For \code{"dwell"}: \code{NULL} (no time budget, the default), a speed in knots, or \code{"vessel"} for each
+vessel's own (above).}
+
+\item{speed_fallback_kn}{For \code{speed_kn = "vessel"}: the speed of a vessel with too few legs to measure its own.}
 
 \item{...}{For \code{"runs"}, \code{"jepol"}, \code{"cnr"} and \code{"iapesca"}: arguments of \code{\link[=rb_create_voyages]{rb_create_voyages()}} (such as
 \code{min_pings}, \code{max_dur_h}, \code{coast}, \code{cnr}, \code{iapesca}, or the ping columns \code{port_id} and \code{speed}).}
@@ -86,10 +94,34 @@ the minimum dwell apart, one of them inside the polygon;
 vessel's events, both judged good, at least the minimum dwell apart.
 }
 
+With \code{speed_kn} (fishycode plan 031 §4.1), two rules scale the minimum with the ping interval, as a time
+budget: the time the vessel could have spent in port, given the pings either side and the time to sail from
+and to them.
+\itemize{
+\item \code{gap_budget}: two consecutive pings, the first within \code{radius_in} of a port, the second anywhere: a port call
+when the time between them, less the sailing time from the first ping to the port and from the port to the
+second, is at least the minimum dwell. Where pings are sparse, the second is often outside the departure
+radius that \code{tag_then_gap} asks for.
+\item \code{span_budget}: a run of pings inside the polygon, too short for \code{tag_span}: a port call when the time from
+the ping before the run to the ping after it, less the sailing time to and from the port, is at least the
+minimum dwell. With hourly pings a call of three hours holds only two or three pings.
+}
+
+The sailing time uses \code{speed_kn} knots, or with \code{speed_kn = "vessel"} each vessel's own speed: the upper
+quartile of its leg speeds between 2 and 30 knots (legs of 1 minute to 2 hours), or \code{speed_fallback_kn} where it
+has fewer than 20 such legs. Distances are in metres, in \code{crs_m}, to the port's polygon. The budget is the most
+the vessel could have spent in port, so these rules find more calls, and also more that are not calls.
+
+\code{min_dwell_h = "valley"} sets the minimum from the data (plan 031, ask a): the candidate calls (every run of
+pings inside a port, and every silence that begins within \code{radius_in} of one) are measured by the time budget
+(or by their span and silence, without \code{speed_kn}), and the minimum is the low point of the density of their
+log lengths between the mode under an hour (pass-throughs) and the mode over two hours (calls). It is returned
+as the attribute \code{min_dwell_h}, and said in a message.
+
 A ping takes the port among those whose \code{radius_out} buffer holds it, preferring one whose
 \code{radius_in} buffer also holds it, then the nearest. Seeds are extended over the contiguous inside pings
 at either end and merged; port calls from pings and from events are merged in time. \code{rule} names the
-strongest evidence: event_pair > tag_then_gap > tag_span > gap_near_port.
+strongest evidence: event_pair > tag_then_gap > tag_span > gap_near_port > span_budget > gap_budget.
 }
 \seealso{
 Other trip:
