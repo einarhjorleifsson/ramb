@@ -86,7 +86,7 @@ d <-
 
 ## Step 1: cut the track into voyages
 
-[rb_cut_trip_voyages()](../reference/rb_cut_trip_voyages.html) offers four rules (`method`); here we compare
+[rb_cut_trip_voyages()](../reference/rb_cut_trip_voyages.html) offers five rules (`method`); here we compare
 two of them:
 
 * `method = "runs"`: every run of pings in port, however short, ends a

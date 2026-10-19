@@ -18,6 +18,12 @@ src/trip_cnr.cpp (rb_cut_trip_voyages(method = "cnr"))
   by A. Galdelli, J. Pulcinella, A.N. Tassetti and E. Armelloni (CNR-IRBIM).
   License: GNU GPL 3, the folder's own licence, as ramb's GPL (>= 3) allows.
 
+R/trip.R (rb_cut_trip_voyages(method = "iapesca"))
+  The trip rule of Detect_FishingTrips(), CleanSpuriousSpeeds() and CalcSpeed()
+  of the R package iapesca 0.1 by Julien Rodriguez (Ifremer),
+  https://github.com/JulRodrigu/r-packages_iapesca, commit 1b7248c, recoded as
+  DuckDB SQL. License: GPL (its DESCRIPTION), as ramb's GPL (>= 3) allows.
+
 ramb also ships these third-party datasets in inst/extdata, as parquet, read
 with rb_read_example(); data-raw/labelled_tracks.R and data-raw/extdata.R make
 them from the sources. Their full citations, as BibTeX, are in REFERENCES.bib;

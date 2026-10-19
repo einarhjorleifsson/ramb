@@ -619,3 +619,173 @@ test_that("method cnr checks its input and settings", {
     c("vid", "year", "voyage_id", "T1", "T2", "port_from", "port_to", "n_pings")
   )
 })
+
+# rb_cut_trip_voyages(method = "iapesca"): Ifremer's Detect_FishingTrips(), recoded as one DuckDB query. The fixture is
+# the installed iapesca's own output on CNR-IRBIM's Italian tracks, made by data-raw/iapesca_trips.R.
+ia_italy <- function() {
+  h <- dplyr::collect(rb_read_example("wkssfgeo_cnr_med_harbours"))
+  list(
+    hp = sf::st_sf(
+      port_id = seq_len(nrow(h)),
+      geometry = sf::st_as_sfc(structure(h$geometry, class = "WKB"), crs = 4326)
+    ),
+    p = as.data.frame(dplyr::collect(rb_read_example("wkssfgeo_cnr_ais")))
+  )
+}
+
+test_that("method iapesca gives the published function's trips on the Italian tracks", {
+  d <- ia_italy()
+  v <- rb_cut_trip_voyages(
+    d$p,
+    method = "iapesca",
+    ports = d$hp,
+    by_year = FALSE,
+    iapesca = list(crs_m = 32633),
+    vid = MMSI,
+    time = datetime,
+    lon = longitude,
+    lat = latitude
+  )
+  ref <- utils::read.csv(
+    system.file("testdata", "iapesca_italy_trips.csv", package = "ramb"),
+    comment.char = "#"
+  )
+  got <- data.frame(
+    vid = v$MMSI,
+    T1 = format(v$T1, "%Y-%m-%d %H:%M:%S", tz = "UTC"),
+    T2 = format(v$T2, "%Y-%m-%d %H:%M:%S", tz = "UTC"),
+    n_pings = v$n_pings
+  )
+  expect_equal(got, ref, ignore_attr = TRUE)
+  expect_true(all(v$port_from %in% c(NA, d$hp$port_id)))
+  # the default CRS is the UTM zone of the mean position, here 33N
+  w <- rb_cut_trip_voyages(
+    d$p,
+    method = "iapesca",
+    ports = d$hp,
+    by_year = FALSE,
+    vid = MMSI,
+    time = datetime,
+    lon = longitude,
+    lat = latitude
+  )
+  expect_equal(w, v)
+})
+
+test_that("method iapesca: parquet read lazily gives the data frame's voyages", {
+  d <- ia_italy()
+  lz <- rb_cut_trip_voyages(
+    rb_read_example("wkssfgeo_cnr_ais"),
+    method = "iapesca",
+    ports = d$hp,
+    vid = MMSI,
+    time = datetime,
+    lon = longitude,
+    lat = latitude
+  )
+  expect_s3_class(lz, "tbl_lazy")
+  lz <- as.data.frame(dplyr::collect(lz))
+  lz <- lz[order(lz$MMSI, lz$T1), ]
+  df <- rb_cut_trip_voyages(
+    d$p,
+    method = "iapesca",
+    ports = d$hp,
+    vid = MMSI,
+    time = datetime,
+    lon = longitude,
+    lat = latitude
+  )
+  expect_equal(lz, df, ignore_attr = TRUE)
+  expect_named(
+    df,
+    c(
+      "MMSI",
+      "year",
+      "voyage_id",
+      "T1",
+      "T2",
+      "port_from",
+      "port_to",
+      "n_pings"
+    )
+  )
+})
+
+test_that("method iapesca cuts at a run in port only an hour after the previous voyage end, as published", {
+  # a square port at 3 E, 50 N; a ping every 2 min, in port or out east and back at about 11 knots
+  port <- sf::st_sf(
+    port_id = 7L,
+    geometry = sf::st_sfc(
+      sf::st_polygon(list(cbind(
+        3 + c(-0.003, 0.003, 0.003, -0.003, -0.003),
+        50 + c(-0.002, -0.002, 0.002, 0.002, -0.002)
+      ))),
+      crs = 4326
+    )
+  )
+  track <- function(...) {
+    lon <- unlist(lapply(list(...), function(l) {
+      if (l < 1) {
+        3 + c(seq(0.005, l, by = 0.005), seq(l, 0.005, by = -0.005))
+      } else {
+        rep(3, l)
+      }
+    }))
+    data.frame(
+      vid = 1,
+      time = as.POSIXct("2021-12-01 06:00", tz = "UTC") +
+        (seq_along(lon) - 1) * 120,
+      lon = lon,
+      lat = 50
+    )
+  }
+  # 40 min out, 5 h in port, out again: one voyage, since the first ended under an hour after the track began
+  a <- rb_cut_trip_voyages(
+    track(3, 0.05, 150, 0.2, 3),
+    method = "iapesca",
+    ports = port,
+    by_year = FALSE
+  )
+  expect_equal(nrow(a), 1)
+  expect_equal(c(a$port_from, a$port_to), c(7L, 7L))
+  # 2.7 h out, 10 min in port, out again: two voyages
+  b <- rb_cut_trip_voyages(
+    track(3, 0.2, 5, 0.2, 3),
+    method = "iapesca",
+    ports = port,
+    by_year = FALSE
+  )
+  expect_equal(nrow(b), 2)
+})
+
+test_that("method iapesca checks its input and settings", {
+  d <- data.frame(
+    vid = 1,
+    time = as.POSIXct("2020-01-01", tz = "UTC") + 1:20 * 300,
+    lon = 3,
+    lat = 50
+  )
+  expect_error(rb_cut_trip_voyages(d, method = "iapesca"), "needs `ports`")
+  port <- sf::st_sf(
+    port_id = 1L,
+    geometry = sf::st_sfc(sf::st_point(c(3, 50)), crs = 4326)
+  )
+  expect_error(
+    rb_cut_trip_voyages(
+      d,
+      method = "iapesca",
+      ports = port,
+      iapesca = list(crs_m = 4326)
+    ),
+    "projected CRS in metres"
+  )
+  expect_error(
+    rb_cut_trip_voyages(
+      d,
+      method = "iapesca",
+      ports = port,
+      iapesca = list(buffer = 1)
+    ),
+    "Unknown `iapesca` setting"
+  )
+})

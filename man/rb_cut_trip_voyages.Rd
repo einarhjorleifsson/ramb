@@ -7,7 +7,7 @@
 rb_cut_trip_voyages(
   pings,
   stays = NULL,
-  method = c("stays", "runs", "jepol", "cnr"),
+  method = c("stays", "runs", "jepol", "cnr", "iapesca"),
   min_pings = NULL,
   by_year = TRUE,
   min_dur_h = 0.5,
@@ -16,6 +16,7 @@ rb_cut_trip_voyages(
   ports = NULL,
   coast = NULL,
   cnr = list(),
+  iapesca = list(),
   batch_pings = 5e+07,
   vid = vid,
   time = time,
@@ -27,11 +28,12 @@ rb_cut_trip_voyages(
 }
 \arguments{
 \item{pings}{A data frame or lazy DuckDB table with \code{vid} and \code{time}, and \code{port_id} for \code{"runs"},
-\code{"jepol"} and \code{"cnr"} (NA at sea). For \code{"cnr"} also \code{speed} (knots, recorded) and \code{lon}, \code{lat}.}
+\code{"jepol"} and \code{"cnr"} (NA at sea). For \code{"cnr"} also \code{speed} (knots, recorded) and \code{lon}, \code{lat}; for
+\code{"iapesca"}, \code{lon} and \code{lat}.}
 
 \item{stays}{For \code{"stays"}: stays as returned by \code{\link[=rb_find_trip_stays]{rb_find_trip_stays()}}: \code{vid}, \code{port_id}, \code{T_in}, \code{T_out}.}
 
-\item{method}{\code{"stays"}, \code{"runs"}, \code{"jepol"} or \code{"cnr"}.}
+\item{method}{\code{"stays"}, \code{"runs"}, \code{"jepol"}, \code{"cnr"} or \code{"iapesca"}.}
 
 \item{min_pings}{Voyages with fewer pings are dropped. They are numbered before they are dropped, so the
 numbers have gaps where a short voyage was. Default 10 for \code{"stays"}, 1 (none dropped) otherwise.}
@@ -42,13 +44,18 @@ numbers have gaps where a short voyage was. Default 10 for \code{"stays"}, 1 (no
 longer voyages are split.}
 
 \item{ports}{For \code{"cnr"}: an sf object of port polygons with \code{port_id}, for the ports of the voyage
-ends (see above). Without it an end takes its ping's \code{port_id}, and an end with none stays NA.}
+ends (see above). Without it an end takes its ping's \code{port_id}, and an end with none stays NA. For
+\code{"iapesca"}, required: the harbours whose buffer marks the pings in port.}
 
 \item{coast}{For \code{"cnr"}: an sf object of the coastal zone (CNR's: the 3 nautical-mile band closed to
 towed gears), for the joining of voyages split by a silence. Without it they are always joined.}
 
 \item{cnr}{For \code{"cnr"}: a list of settings, any of \code{n_in}, \code{speed_kn}, \code{gap_h}, \code{shift_h}, \code{join_h},
 \code{min_n}, \code{buffer_deg}, \code{reach_m}, \code{n_closest}, \code{distance}; those left out keep CNR's values (above).}
+
+\item{iapesca}{For \code{"iapesca"}: a list of settings, any of \code{max_speed_kn}, \code{max_pass}, \code{buf_start_m},
+\code{buf_max_m}, \code{min_stop_s}, \code{crs_m} (an EPSG code of a projected CRS in metres); those left out keep
+iapesca's values (above).}
 
 \item{batch_pings}{For \code{"jepol"} and \code{"cnr"} on a lazy table: about this many pings are collected at a
 time, whole vessels.}
@@ -89,6 +96,19 @@ counts as slow. The \code{cnr} argument sets these values. Distances to the port
 (\code{distance = "geodesic"}, the default, as the R code measured them; needs lwgeom) or on ramb's sphere
 (\code{"sphere"}, needs s2), whatever \code{\link[sf:sf_use_s2]{sf::sf_use_s2()}} says; the port buffer and the coastal zone are
 tested on the plane, as in the R code.
+\item \code{"iapesca"}: Ifremer's \code{Detect_FishingTrips()} with harbours (iapesca, J. Rodriguez), recoded as one DuckDB
+query, so a lazy table (parquet) never comes into memory. Pings at the same time and place as earlier
+ones are dropped (each matched separately, as the R code does); then, up to \code{max_pass} (5) times, the first
+of each run of pings reached at \code{max_speed_kn} (25) or more. A ping is in port within a buffer of the
+\code{ports} polygons: \code{buf_start_m} (2,000 m), or 1 \% of the track's bounding-box diagonal when that lies
+between \code{buf_start_m} and \code{buf_max_m} (2 nautical miles); with no ping in port the buffer grows by that 1 \%,
+up to five times. A voyage is a run of pings outside the buffer; it ends at a run of more pings in port than
+the mean ping interval in hours (rounded down) plus one, but only if over \code{min_stop_s} (1 hour) have passed
+since the previous voyage end, so a short voyage merges with the next. Pings in port belong to no voyage.
+The geometry is planar in \code{crs_m} (default: the UTM zone of the pings' mean position), as the R code is with
+projected input; the buffer is GEOS's (30 segments a quarter circle), as sf's. Added here: \code{port_from} and
+\code{port_to}, the nearest port of the in-port ping before and after the voyage. The \code{iapesca} argument sets
+these values.
 }
 }
 \references{
@@ -104,6 +124,9 @@ map trawling activities using positioning data". Proceedings of the ASME 2019 ID
 \doi{10.1115/DETC2019-97779}; the R code (R4AIS v1.0.1, \doi{10.5281/zenodo.4757505}) by A. Galdelli,
 J. Pulcinella, A.N. Tassetti and E. Armelloni (CNR-IRBIM), GNU GPL 3, in the WKSSFGEO repository's
 \code{dev_branch}.
+
+For \code{"iapesca"}: Rodriguez, J. iapesca: interpretation of fishing paths from vessels' geo-spatial data,
+R package version 0.1 (Ifremer, GPL), \url{https://github.com/JulRodrigu/r-packages_iapesca}.
 }
 \seealso{
 Other trip:
