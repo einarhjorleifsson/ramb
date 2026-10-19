@@ -9,6 +9,14 @@ interpolate_track_cpp <- function(trk_code, trk_time, trk_vals, grp_start, x_cod
     .Call(`_ramb_interpolate_track_cpp`, trk_code, trk_time, trk_vals, grp_start, x_code, x_time)
 }
 
+cnr_cut_cpp <- function(grp, time, inport, speed, n_in, speed_kn, gap_h, shift_h, min_n) {
+    .Call(`_ramb_cnr_cut_cpp`, grp, time, inport, speed, n_in, speed_kn, gap_h, shift_h, min_n)
+}
+
+cnr_join_cpp <- function(grp, s, e, port_from, port_to, coast_s, coast_e, time, join_h) {
+    .Call(`_ramb_cnr_join_cpp`, grp, s, e, port_from, port_to, coast_s, coast_e, time, join_h)
+}
+
 whack_forward_cpp <- function(lon, lat, time, ms_max, max_gap_sec, min_dt) {
     .Call(`_ramb_whack_forward_cpp`, lon, lat, time, ms_max, max_gap_sec, min_dt)
 }

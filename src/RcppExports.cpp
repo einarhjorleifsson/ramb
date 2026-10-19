@@ -40,6 +40,44 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// cnr_cut_cpp
+DataFrame cnr_cut_cpp(IntegerVector grp, NumericVector time, IntegerVector inport, NumericVector speed, int n_in, double speed_kn, double gap_h, double shift_h, int min_n);
+RcppExport SEXP _ramb_cnr_cut_cpp(SEXP grpSEXP, SEXP timeSEXP, SEXP inportSEXP, SEXP speedSEXP, SEXP n_inSEXP, SEXP speed_knSEXP, SEXP gap_hSEXP, SEXP shift_hSEXP, SEXP min_nSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type grp(grpSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type time(timeSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type inport(inportSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type speed(speedSEXP);
+    Rcpp::traits::input_parameter< int >::type n_in(n_inSEXP);
+    Rcpp::traits::input_parameter< double >::type speed_kn(speed_knSEXP);
+    Rcpp::traits::input_parameter< double >::type gap_h(gap_hSEXP);
+    Rcpp::traits::input_parameter< double >::type shift_h(shift_hSEXP);
+    Rcpp::traits::input_parameter< int >::type min_n(min_nSEXP);
+    rcpp_result_gen = Rcpp::wrap(cnr_cut_cpp(grp, time, inport, speed, n_in, speed_kn, gap_h, shift_h, min_n));
+    return rcpp_result_gen;
+END_RCPP
+}
+// cnr_join_cpp
+DataFrame cnr_join_cpp(IntegerVector grp, IntegerVector s, IntegerVector e, IntegerVector port_from, IntegerVector port_to, IntegerVector coast_s, IntegerVector coast_e, NumericVector time, double join_h);
+RcppExport SEXP _ramb_cnr_join_cpp(SEXP grpSEXP, SEXP sSEXP, SEXP eSEXP, SEXP port_fromSEXP, SEXP port_toSEXP, SEXP coast_sSEXP, SEXP coast_eSEXP, SEXP timeSEXP, SEXP join_hSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type grp(grpSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type s(sSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type e(eSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type port_from(port_fromSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type port_to(port_toSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type coast_s(coast_sSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type coast_e(coast_eSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type time(timeSEXP);
+    Rcpp::traits::input_parameter< double >::type join_h(join_hSEXP);
+    rcpp_result_gen = Rcpp::wrap(cnr_join_cpp(grp, s, e, port_from, port_to, coast_s, coast_e, time, join_h));
+    return rcpp_result_gen;
+END_RCPP
+}
 // whack_forward_cpp
 LogicalVector whack_forward_cpp(NumericVector lon, NumericVector lat, NumericVector time, double ms_max, double max_gap_sec, double min_dt);
 RcppExport SEXP _ramb_whack_forward_cpp(SEXP lonSEXP, SEXP latSEXP, SEXP timeSEXP, SEXP ms_maxSEXP, SEXP max_gap_secSEXP, SEXP min_dtSEXP) {
@@ -80,6 +118,8 @@ END_RCPP
 static const R_CallMethodDef CallEntries[] = {
     {"_ramb_geod_karney", (DL_FUNC) &_ramb_geod_karney, 4},
     {"_ramb_interpolate_track_cpp", (DL_FUNC) &_ramb_interpolate_track_cpp, 6},
+    {"_ramb_cnr_cut_cpp", (DL_FUNC) &_ramb_cnr_cut_cpp, 9},
+    {"_ramb_cnr_join_cpp", (DL_FUNC) &_ramb_cnr_join_cpp, 9},
     {"_ramb_whack_forward_cpp", (DL_FUNC) &_ramb_whack_forward_cpp, 6},
     {"_ramb_whack_sda_cpp", (DL_FUNC) &_ramb_whack_sda_cpp, 10},
     {NULL, NULL, 0}

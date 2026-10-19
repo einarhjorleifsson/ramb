@@ -7,25 +7,31 @@
 rb_cut_trip_voyages(
   pings,
   stays = NULL,
-  method = c("stays", "runs", "jepol"),
+  method = c("stays", "runs", "jepol", "cnr"),
   min_pings = NULL,
   by_year = TRUE,
   min_dur_h = 0.5,
   max_dur_h = 72,
   split = TRUE,
+  ports = NULL,
+  coast = NULL,
+  cnr = list(),
   batch_pings = 5e+07,
   vid = vid,
   time = time,
-  port_id = port_id
+  port_id = port_id,
+  speed = speed,
+  lon = lon,
+  lat = lat
 )
 }
 \arguments{
-\item{pings}{A data frame or lazy DuckDB table with \code{vid} and \code{time}, and \code{port_id} for \code{"runs"} and
-\code{"jepol"} (NA at sea).}
+\item{pings}{A data frame or lazy DuckDB table with \code{vid} and \code{time}, and \code{port_id} for \code{"runs"},
+\code{"jepol"} and \code{"cnr"} (NA at sea). For \code{"cnr"} also \code{speed} (knots, recorded) and \code{lon}, \code{lat}.}
 
 \item{stays}{For \code{"stays"}: stays as returned by \code{\link[=rb_find_trip_stays]{rb_find_trip_stays()}}: \code{vid}, \code{port_id}, \code{T_in}, \code{T_out}.}
 
-\item{method}{\code{"stays"}, \code{"runs"} or \code{"jepol"}.}
+\item{method}{\code{"stays"}, \code{"runs"}, \code{"jepol"} or \code{"cnr"}.}
 
 \item{min_pings}{Voyages with fewer pings are dropped. They are numbered before they are dropped, so the
 numbers have gaps where a short voyage was. Default 10 for \code{"stays"}, 1 (none dropped) otherwise.}
@@ -35,16 +41,26 @@ numbers have gaps where a short voyage was. Default 10 for \code{"stays"}, 1 (no
 \item{min_dur_h, max_dur_h, split}{For \code{"jepol"}: the minimum and maximum voyage length in hours, and whether
 longer voyages are split.}
 
-\item{batch_pings}{For \code{"jepol"} on a lazy table: about this many pings are collected at a time, whole vessels.}
+\item{ports}{For \code{"cnr"}: an sf object of port polygons with \code{port_id}, for the ports of the voyage
+ends (see above). Without it an end takes its ping's \code{port_id}, and an end with none stays NA.}
 
-\item{vid, time, port_id}{The ping columns, if named otherwise.}
+\item{coast}{For \code{"cnr"}: an sf object of the coastal zone (CNR's: the 3 nautical-mile band closed to
+towed gears), for the joining of voyages split by a silence. Without it they are always joined.}
+
+\item{cnr}{For \code{"cnr"}: a list of settings, any of \code{n_in}, \code{speed_kn}, \code{gap_h}, \code{shift_h}, \code{join_h},
+\code{min_n}, \code{buffer_deg}, \code{reach_m}, \code{n_closest}, \code{distance}; those left out keep CNR's values (above).}
+
+\item{batch_pings}{For \code{"jepol"} and \code{"cnr"} on a lazy table: about this many pings are collected at a
+time, whole vessels.}
+
+\item{vid, time, port_id, speed, lon, lat}{The ping columns, if named otherwise.}
 }
 \value{
 One row per voyage: \code{vid}, \code{year} (with \code{by_year}), \code{voyage_id}, \code{T1}, \code{T2}, \code{port_from},
 \code{port_to}, \code{n_pings}. A data frame for data frame input, a lazy table for lazy input.
 }
 \description{
-A step-1 builder of the fishing-activity flow. Three methods, one result: a table of voyages.
+A step-1 builder of the fishing-activity flow. Four methods, one result: a table of voyages.
 }
 \details{
 \itemize{
@@ -57,6 +73,22 @@ however short.
 first ping at sea to the first ping back in port; voyages of \code{min_dur_h} hours or less are dropped, and
 with \code{split} one over \code{max_dur_h} hours is cut at its longest gap between pings, repeatedly. A long
 voyage with no inside gap of three minutes or more is left whole.
+\item \code{"cnr"}: CNR-IRBIM's trip finder (\code{create_fishing_trip()}, Galdelli et al. 2019), recoded in C++. A
+vessel is in port after \code{n_in} (4) consecutive pings in a port at a mean recorded speed under \code{speed_kn}
+(6 knots). A voyage runs from the last such ping (or the next, if it is over \code{shift_h}, 1 hour, later) to
+the ping before the \code{n_in}-th port ping of the next such run; a silence of over \code{gap_h} (4) hours at sea
+also ends it, and the next starts at the ping after the silence. Two voyages split by a silence with no
+port at either side of it are joined, unless both ends lie in the \code{coast} zone and together they last
+\code{join_h} (24) hours or more. A voyage end with no port then gets one from \code{ports}: after a silence that
+was not joined, the closest port; otherwise the port at the voyage's other end if it is among the
+\code{n_closest} (5) closest within \code{reach_m} (50 km), else the closest of those; with none in reach, NA. The
+port of an end is the port whose polygon, grown by \code{buffer_deg} (0.001 degrees, planar, as the R code),
+holds its ping, read \code{n_in - 1} pings before a voyage's first ping and at its last. A vessel (with
+\code{by_year}, a vessel-year) of fewer than \code{min_n} (10) pings has no voyages, and a missing speed never
+counts as slow. The \code{cnr} argument sets these values. Distances to the ports are on the WGS84 ellipsoid
+(\code{distance = "geodesic"}, the default, as the R code measured them; needs lwgeom) or on ramb's sphere
+(\code{"sphere"}, needs s2), whatever \code{\link[sf:sf_use_s2]{sf::sf_use_s2()}} says; the port buffer and the coastal zone are
+tested on the plane, as in the R code.
 }
 }
 \references{
@@ -66,6 +98,12 @@ Beare, D., et al. (2012). "VMStools: Open-source software for the
 processing, analysis and visualisation of fisheries logbook and VMS
 data". Fisheries Research, 115–116, 31–43.
 \doi{10.1016/j.fishres.2011.11.007}).
+
+For \code{"cnr"}: Galdelli, A., Mancini, A., Tassetti, A.N., et al. (2019). "A cloud computing architecture to
+map trawling activities using positioning data". Proceedings of the ASME 2019 IDETC/CIE, Volume 9.
+\doi{10.1115/DETC2019-97779}; the R code (R4AIS v1.0.1, \doi{10.5281/zenodo.4757505}) by A. Galdelli,
+J. Pulcinella, A.N. Tassetti and E. Armelloni (CNR-IRBIM), GNU GPL 3, in the WKSSFGEO repository's
+\code{dev_branch}.
 }
 \seealso{
 Other trip:

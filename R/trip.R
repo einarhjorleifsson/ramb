@@ -323,7 +323,7 @@ SELECT *, %s AS rb_year FROM ps",
 
 #' Cut vessel tracks into voyages between port stays
 #'
-#' A step-1 builder of the fishing-activity flow. Three methods, one result: a table of voyages.
+#' A step-1 builder of the fishing-activity flow. Four methods, one result: a table of voyages.
 #'
 #' * `"stays"`: a voyage is the sea between two stays (see [rb_find_trip_stays()]). A ping takes the stay it
 #'   falls in (the earlier of two that overlap), the track is cut into runs of stay and sea, and each sea run
@@ -334,18 +334,41 @@ SELECT *, %s AS rb_year FROM ps",
 #'   first ping at sea to the first ping back in port; voyages of `min_dur_h` hours or less are dropped, and
 #'   with `split` one over `max_dur_h` hours is cut at its longest gap between pings, repeatedly. A long
 #'   voyage with no inside gap of three minutes or more is left whole.
+#' * `"cnr"`: CNR-IRBIM's trip finder (`create_fishing_trip()`, Galdelli et al. 2019), recoded in C++. A
+#'   vessel is in port after `n_in` (4) consecutive pings in a port at a mean recorded speed under `speed_kn`
+#'   (6 knots). A voyage runs from the last such ping (or the next, if it is over `shift_h`, 1 hour, later) to
+#'   the ping before the `n_in`-th port ping of the next such run; a silence of over `gap_h` (4) hours at sea
+#'   also ends it, and the next starts at the ping after the silence. Two voyages split by a silence with no
+#'   port at either side of it are joined, unless both ends lie in the `coast` zone and together they last
+#'   `join_h` (24) hours or more. A voyage end with no port then gets one from `ports`: after a silence that
+#'   was not joined, the closest port; otherwise the port at the voyage's other end if it is among the
+#'   `n_closest` (5) closest within `reach_m` (50 km), else the closest of those; with none in reach, NA. The
+#'   port of an end is the port whose polygon, grown by `buffer_deg` (0.001 degrees, planar, as the R code),
+#'   holds its ping, read `n_in - 1` pings before a voyage's first ping and at its last. A vessel (with
+#'   `by_year`, a vessel-year) of fewer than `min_n` (10) pings has no voyages, and a missing speed never
+#'   counts as slow. The `cnr` argument sets these values. Distances to the ports are on the WGS84 ellipsoid
+#'   (`distance = "geodesic"`, the default, as the R code measured them; needs lwgeom) or on ramb's sphere
+#'   (`"sphere"`, needs s2), whatever [sf::sf_use_s2()] says; the port buffer and the coastal zone are
+#'   tested on the plane, as in the R code.
 #'
-#' @param pings A data frame or lazy DuckDB table with `vid` and `time`, and `port_id` for `"runs"` and
-#'   `"jepol"` (NA at sea).
+#' @param pings A data frame or lazy DuckDB table with `vid` and `time`, and `port_id` for `"runs"`,
+#'   `"jepol"` and `"cnr"` (NA at sea). For `"cnr"` also `speed` (knots, recorded) and `lon`, `lat`.
 #' @param stays For `"stays"`: stays as returned by [rb_find_trip_stays()]: `vid`, `port_id`, `T_in`, `T_out`.
-#' @param method `"stays"`, `"runs"` or `"jepol"`.
+#' @param method `"stays"`, `"runs"`, `"jepol"` or `"cnr"`.
 #' @param min_pings Voyages with fewer pings are dropped. They are numbered before they are dropped, so the
 #'   numbers have gaps where a short voyage was. Default 10 for `"stays"`, 1 (none dropped) otherwise.
 #' @param by_year Cut voyages at New Year and number them per vessel and year.
 #' @param min_dur_h,max_dur_h,split For `"jepol"`: the minimum and maximum voyage length in hours, and whether
 #'   longer voyages are split.
-#' @param batch_pings For `"jepol"` on a lazy table: about this many pings are collected at a time, whole vessels.
-#' @param vid,time,port_id The ping columns, if named otherwise.
+#' @param ports For `"cnr"`: an sf object of port polygons with `port_id`, for the ports of the voyage
+#'   ends (see above). Without it an end takes its ping's `port_id`, and an end with none stays NA.
+#' @param coast For `"cnr"`: an sf object of the coastal zone (CNR's: the 3 nautical-mile band closed to
+#'   towed gears), for the joining of voyages split by a silence. Without it they are always joined.
+#' @param cnr For `"cnr"`: a list of settings, any of `n_in`, `speed_kn`, `gap_h`, `shift_h`, `join_h`,
+#'   `min_n`, `buffer_deg`, `reach_m`, `n_closest`, `distance`; those left out keep CNR's values (above).
+#' @param batch_pings For `"jepol"` and `"cnr"` on a lazy table: about this many pings are collected at a
+#'   time, whole vessels.
+#' @param vid,time,port_id,speed,lon,lat The ping columns, if named otherwise.
 #'
 #' @return One row per voyage: `vid`, `year` (with `by_year`), `voyage_id`, `T1`, `T2`, `port_from`,
 #'   `port_to`, `n_pings`. A data frame for data frame input, a lazy table for lazy input.
@@ -356,22 +379,35 @@ SELECT *, %s AS rb_year FROM ps",
 #'   processing, analysis and visualisation of fisheries logbook and VMS
 #'   data". Fisheries Research, 115–116, 31–43.
 #'   \doi{10.1016/j.fishres.2011.11.007}).
+#'
+#'   For `"cnr"`: Galdelli, A., Mancini, A., Tassetti, A.N., et al. (2019). "A cloud computing architecture to
+#'   map trawling activities using positioning data". Proceedings of the ASME 2019 IDETC/CIE, Volume 9.
+#'   \doi{10.1115/DETC2019-97779}; the R code (R4AIS v1.0.1, \doi{10.5281/zenodo.4757505}) by A. Galdelli,
+#'   J. Pulcinella, A.N. Tassetti and E. Armelloni (CNR-IRBIM), GNU GPL 3, in the WKSSFGEO repository's
+#'   `dev_branch`.
 #' @family trip
 #' @export
 rb_cut_trip_voyages <- function(
   pings,
   stays = NULL,
-  method = c("stays", "runs", "jepol"),
+  method = c("stays", "runs", "jepol", "cnr"),
   min_pings = NULL,
   by_year = TRUE,
   min_dur_h = 0.5,
   max_dur_h = 72,
   split = TRUE,
+  ports = NULL,
+  coast = NULL,
+  cnr = list(),
   batch_pings = 5e7,
   vid = vid,
   time = time,
-  port_id = port_id
+  port_id = port_id,
+  speed = speed,
+  lon = lon,
+  lat = lat
 ) {
+  method <- match.arg(method)
   .rb_check_input(
     pings,
     "rb_cut_trip_voyages",
@@ -379,22 +415,55 @@ rb_cut_trip_voyages <- function(
       vid = rlang::as_name(rlang::enquo(vid)),
       time = rlang::as_name(rlang::enquo(time))
     ),
+    also = if (method == "cnr") {
+      c(
+        port_id = rlang::as_name(rlang::enquo(port_id)),
+        speed = rlang::as_name(rlang::enquo(speed)),
+        lon = rlang::as_name(rlang::enquo(lon)),
+        lat = rlang::as_name(rlang::enquo(lat))
+      )
+    } else {
+      character(0)
+    },
     types = c(time = "time")
   )
-  method <- match.arg(method)
   if (is.null(min_pings)) {
     min_pings <- if (method == "stays") 10 else 1
   }
   if (method == "stays" && is.null(stays)) {
     stop("Method \"stays\" needs `stays`.", call. = FALSE)
   }
-  map <- .rb_cols(vid = {{ vid }}, time = {{ time }}, port_id = {{ port_id }})
+  map <- .rb_cols(
+    vid = {{ vid }},
+    time = {{ time }},
+    port_id = {{ port_id }},
+    speed = {{ speed }},
+    lon = {{ lon }},
+    lat = {{ lat }}
+  )
+  use <- switch(
+    method,
+    stays = c("vid", "time"),
+    cnr = names(map),
+    c("vid", "time", "port_id")
+  )
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
-  p <- .rb_as_lazy(
-    .rb_std_in(pings, if (method == "stays") map[c("vid", "time")] else map),
-    con
-  )
+  p <- .rb_as_lazy(.rb_std_in(pings, map[use]), con)
+  if (method == "cnr") {
+    return(.rb_cut_cnr(
+      p,
+      con,
+      lazy_in,
+      map,
+      min_pings,
+      by_year,
+      ports,
+      coast,
+      cnr,
+      batch_pings
+    ))
+  }
   if (method == "jepol") {
     return(.rb_cut_jepol(
       p,
@@ -854,6 +923,336 @@ FROM ranked WHERE rn = 1",
   }
   list(trips = trips, trip = trip)
 }
+# The "cnr" method: CNR-IRBIM's trip finder, create_fishing_trip() of the WKSSFGEO dev_branch
+# (R-dev/galdelli_pulcinella_tassetti/R/global_functions.R, GNU GPL 3), recoded. The state machine and the
+# joining of voyages split by a silence run in C++ (src/trip_cnr.cpp, which says what is kept and what is not);
+# the ports of the voyage ends are found here, for the few pings that need one, with sf. Whole vessels are
+# collected in batches, as for "jepol", so a lazy table (parquet) never comes into memory whole.
+.rb_cnr_par <- function(cnr) {
+  par <- list(
+    n_in = 4L,
+    speed_kn = 6,
+    gap_h = 4,
+    shift_h = 1,
+    join_h = 24,
+    min_n = 10L,
+    buffer_deg = 0.001,
+    reach_m = 50000,
+    n_closest = 5L,
+    distance = "geodesic"
+  )
+  bad <- setdiff(names(cnr), names(par))
+  if (length(bad)) {
+    stop(
+      "Unknown `cnr` setting(s): ",
+      paste(bad, collapse = ", "),
+      ". Known: ",
+      paste(names(par), collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+  par <- utils::modifyList(par, cnr)
+  if (!par$distance %in% c("geodesic", "sphere")) {
+    stop("`cnr$distance` must be \"geodesic\" or \"sphere\".", call. = FALSE)
+  }
+  par
+}
+
+# The ports, once per call: the polygons on WGS84 for distances, and grown by buffer_deg on the plane (the R
+# code's st_buffer(ports, 0.001) with s2 off) for the port of an end ping.
+.rb_cnr_ports <- function(ports, buffer_deg) {
+  if (is.null(ports)) {
+    return(NULL)
+  }
+  if (
+    !"port_id" %in% names(ports) ||
+      anyDuplicated(ports$port_id) ||
+      anyNA(ports$port_id)
+  ) {
+    stop(
+      "`ports` must have a column `port_id`, unique and never NA.",
+      call. = FALSE
+    )
+  }
+  hb <- sf::st_transform(ports, 4326)
+  buf <- sf::st_buffer(sf::st_set_crs(sf::st_geometry(hb), NA), buffer_deg)
+  list(
+    id = hb$port_id,
+    geom = sf::st_geometry(hb),
+    buf = buf,
+    area = as.numeric(sf::st_area(buf))
+  )
+}
+
+.rb_cnr_points <- function(lon, lat, crs = NA) {
+  sf::st_as_sf(
+    data.frame(lon = lon, lat = lat),
+    coords = c("lon", "lat"),
+    crs = crs
+  )
+}
+
+# The port (index into P) whose grown polygon holds each point; of two, the smaller, as rb_flag_ping_port().
+.rb_cnr_in_port <- function(lon, lat, P) {
+  out <- rep(NA_integer_, length(lon))
+  if (!length(lon)) {
+    return(out)
+  }
+  hit <- sf::st_intersects(.rb_cnr_points(lon, lat), P$buf)
+  n <- lengths(hit)
+  one <- n == 1
+  out[one] <- unlist(hit[one])
+  for (i in which(n > 1)) {
+    h <- hit[[i]]
+    out[i] <- h[order(P$area[h], h)][1]
+  }
+  out
+}
+
+# 1 where the point lies in the coastal zone (any of its polygons), else 0; planar, as the R code.
+.rb_cnr_coast <- function(lon, lat, coast) {
+  if (is.null(coast) || !length(lon)) {
+    return(rep(0L, length(lon)))
+  }
+  pmin(lengths(sf::st_intersects(.rb_cnr_points(lon, lat), coast)), 1L)
+}
+
+# Distances in metres from the points to every port, a matrix per call: "geodesic" on the WGS84 ellipsoid
+# (lwgeom, which sf::st_distance() calls with s2 off, as the R code ran), "sphere" on ramb's sphere (s2,
+# R = 6,371,000 m). Neither reads sf_use_s2(), so the result never depends on that global option, and neither
+# is planar: st_nearest_feature() is, with s2 off.
+.rb_cnr_dist_fun <- function(P, distance) {
+  if (distance == "geodesic") {
+    .rb_need("lwgeom")
+    return(function(pts) unclass(lwgeom::st_geod_distance(pts, P$geom)))
+  }
+  .rb_need("s2")
+  g <- s2::as_s2_geography(P$geom)
+  function(pts) {
+    s2::s2_distance_matrix(
+      s2::as_s2_geography(sf::st_geometry(pts)),
+      g,
+      radius = 6371000
+    )
+  }
+}
+
+# The port (index into P) for open voyage ends. recover = FALSE: closest_port(), the closest at any distance.
+# recover = TRUE: closest_port_recovery(), of the n_closest ports within reach_m the reference port (the voyage's
+# other end) if it is among them, else the closest; NA with none in reach. Ties go to the earlier port.
+.rb_cnr_closest <- function(lon, lat, ref, P, par, recover) {
+  out <- rep(NA_integer_, length(lon))
+  if (!length(lon)) {
+    return(out)
+  }
+  dist <- .rb_cnr_dist_fun(P, par$distance)
+  pts <- .rb_cnr_points(lon, lat, 4326)
+  for (i in split(seq_along(lon), (seq_along(lon) - 1) %/% 500)) {
+    m <- dist(pts[i, ])
+    out[i] <- vapply(
+      seq_along(i),
+      function(r) {
+        d <- m[r, ]
+        if (!recover) {
+          return(which.min(d))
+        }
+        cand <- which(d <= par$reach_m)
+        if (!length(cand)) {
+          return(NA_integer_)
+        }
+        cand <- cand[order(d[cand], cand)][seq_len(min(
+          par$n_closest,
+          length(cand)
+        ))]
+        rf <- ref[i[r]]
+        if (!is.na(rf) && rf %in% cand) rf else cand[1]
+      },
+      integer(1)
+    )
+  }
+  out
+}
+
+# One batch of whole vessels, sorted by vid, time, lon, lat; k the vessel (or vessel-year) of each ping.
+.rb_cnr_batch <- function(d, k, P, coast, par) {
+  grp <- match(k, unique(k))
+  tm <- as.numeric(d$time)
+  cut <- cnr_cut_cpp(
+    grp,
+    tm,
+    as.integer(!is.na(d$port_id)),
+    as.numeric(d$speed),
+    as.integer(par$n_in),
+    par$speed_kn,
+    par$gap_h,
+    par$shift_h,
+    as.integer(par$min_n)
+  )
+  if (!nrow(cut)) {
+    return(NULL)
+  }
+  # ports are coded as indices into lv, the ports' ids (or, without ports, the pings' own)
+  lv <- if (is.null(P)) unique(d$port_id[!is.na(d$port_id)]) else P$id
+  end_port <- function(i) {
+    out <- rep(NA_integer_, length(i))
+    ok <- !is.na(i)
+    out[ok] <- if (is.null(P)) {
+      match(d$port_id[i[ok]], lv)
+    } else {
+      .rb_cnr_in_port(d$lon[i[ok]], d$lat[i[ok]], P)
+    }
+    out
+  }
+  j <- cnr_join_cpp(
+    cut$grp,
+    cut$s,
+    cut$e,
+    end_port(cut$dep),
+    end_port(cut$e),
+    .rb_cnr_coast(d$lon[cut$s], d$lat[cut$s], coast),
+    .rb_cnr_coast(d$lon[cut$e], d$lat[cut$e], coast),
+    tm,
+    par$join_h
+  )
+  if (!is.null(P)) {
+    # after a silence that was not joined, each side the closest port
+    f <- which(j$from_closest)
+    t <- which(j$to_closest)
+    j$port_from[f] <- .rb_cnr_closest(
+      d$lon[j$s[f]],
+      d$lat[j$s[f]],
+      NULL,
+      P,
+      par,
+      FALSE
+    )
+    j$port_to[t] <- .rb_cnr_closest(
+      d$lon[j$e[t]],
+      d$lat[j$e[t]],
+      NULL,
+      P,
+      par,
+      FALSE
+    )
+    # then any end still open; each end's reference is the other end's port before this step
+    f0 <- j$port_from
+    t0 <- j$port_to
+    f <- which(is.na(f0))
+    t <- which(is.na(t0))
+    j$port_from[f] <- .rb_cnr_closest(
+      d$lon[j$s[f]],
+      d$lat[j$s[f]],
+      t0[f],
+      P,
+      par,
+      TRUE
+    )
+    j$port_to[t] <- .rb_cnr_closest(
+      d$lon[j$e[t]],
+      d$lat[j$e[t]],
+      f0[t],
+      P,
+      par,
+      TRUE
+    )
+  }
+  data.frame(
+    vid = d$vid[j$s],
+    year = as.numeric(format(d$time[j$s], "%Y", tz = "UTC")),
+    k = k[j$s],
+    T1 = d$time[j$s],
+    T2 = d$time[j$e],
+    port_from = lv[j$port_from],
+    port_to = lv[j$port_to],
+    n_pings = as.numeric(j$e - j$s + 1)
+  )
+}
+
+.rb_cut_cnr <- function(
+  p,
+  con,
+  lazy_in,
+  map,
+  min_pings,
+  by_year,
+  ports,
+  coast,
+  cnr,
+  batch_pings
+) {
+  par <- .rb_cnr_par(cnr)
+  P <- .rb_cnr_ports(ports, par$buffer_deg)
+  if (!is.null(coast)) {
+    coast <- sf::st_set_crs(sf::st_geometry(sf::st_transform(coast, 4326)), NA)
+  }
+  vn <- p |> dplyr::count(vid) |> dplyr::collect()
+  vn <- vn[order(-vn$n, vn$vid), ]
+  batches <- if (nrow(vn)) {
+    split(vn$vid, cumsum(as.numeric(vn$n)) %/% batch_pings)
+  } else {
+    list()
+  }
+  out <- lapply(batches, function(g) {
+    d <- p |>
+      dplyr::filter(vid %in% g) |>
+      dplyr::select(vid, time, lon, lat, speed, port_id) |>
+      dplyr::collect()
+    d <- d[order(d$vid, d$time, d$lon, d$lat), ]
+    k <- if (by_year) {
+      paste(d$vid, format(d$time, "%Y", tz = "UTC"))
+    } else {
+      as.character(d$vid)
+    }
+    v <- .rb_cnr_batch(d, k, P, coast, par)
+    if (is.null(v)) {
+      return(NULL)
+    }
+    v <- v[order(v$k, v$T1), ]
+    v$voyage_id <- as.numeric(stats::ave(
+      seq_len(nrow(v)),
+      v$k,
+      FUN = seq_along
+    ))
+    v
+  })
+  out <- do.call(rbind, out)
+  if (is.null(out)) {
+    pid <- dplyr::collect(utils::head(dplyr::select(p, port_id), 0))$port_id
+    out <- data.frame(
+      vid = vector(class(vn$vid)[1], 0),
+      year = numeric(0),
+      T1 = as.POSIXct(character(0), tz = "UTC"),
+      T2 = as.POSIXct(character(0), tz = "UTC"),
+      port_from = if (is.null(P)) pid else P$id[0],
+      port_to = if (is.null(P)) pid else P$id[0],
+      n_pings = numeric(0),
+      voyage_id = numeric(0)
+    )
+  }
+  out <- out[
+    out$n_pings >= min_pings,
+    c(
+      "vid",
+      if (by_year) "year",
+      "voyage_id",
+      "T1",
+      "T2",
+      "port_from",
+      "port_to",
+      "n_pings"
+    )
+  ]
+  out <- out[order(out$vid, out$T1), ]
+  rownames(out) <- NULL
+  names(out)[1] <- map[["vid"]]
+  if (!lazy_in) {
+    .rb_unregister(con)
+    return(out)
+  }
+  dplyr::tbl(con, .rb_register(con, out, "rb_voy_"))
+}
+
 #' Link VMS records to logbook trips
 #'
 #' Adds the logbook trip id to each VMS record of the same vessel whose

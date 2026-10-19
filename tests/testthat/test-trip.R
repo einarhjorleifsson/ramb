@@ -448,3 +448,174 @@ test_that("rb_pad_harbour() puts the ports on a voyage's end pings, in port NA o
   # a neighbour with no port id, or none at all, leaves the ping its own
   expect_equal(rb_pad_harbour(c(NA, 1, 1, 1), c(NA, 8, NA, 6)), c(NA, 8, NA, 6))
 })
+
+# rb_cut_trip_voyages(method = "cnr"): CNR-IRBIM's create_fishing_trip(), recoded in C++. The fixture is the R
+# function's own output on its own Italian tracks (no coastal zone: ramb does not carry CNR's), made by
+# data-raw/cnr_trips.R.
+cnr_italy <- function() {
+  h <- dplyr::collect(rb_read_example("wkssfgeo_cnr_med_harbours"))
+  hp <- sf::st_sf(
+    port_id = seq_len(nrow(h)),
+    harbour = h$harbour,
+    geometry = sf::st_as_sfc(structure(h$geometry, class = "WKB"), crs = 4326)
+  )
+  pings <- rb_read_example("wkssfgeo_cnr_ais") |>
+    rb_flag_ping_port(hp["port_id"], lon = longitude, lat = latitude)
+  list(hp = hp, pings = pings)
+}
+
+test_that("method cnr gives the R function's trips and ports on its Italian tracks", {
+  skip_if_not_installed("lwgeom")
+  d <- cnr_italy()
+  # collected once: a data-frame call unregisters the tables behind lazy ones, here the harbours behind d$pings
+  p <- as.data.frame(dplyr::collect(d$pings))
+  v <- rb_cut_trip_voyages(
+    p,
+    method = "cnr",
+    ports = d$hp,
+    by_year = FALSE,
+    vid = MMSI,
+    time = datetime,
+    lon = longitude,
+    lat = latitude
+  )
+  ref <- utils::read.csv(
+    system.file("testdata", "cnr_italy_trips.csv", package = "ramb"),
+    comment.char = "#",
+    na.strings = ""
+  )
+  got <- data.frame(
+    vid = v$MMSI,
+    T1 = format(v$T1, "%Y-%m-%d %H:%M:%S", tz = "UTC"),
+    T2 = format(v$T2, "%Y-%m-%d %H:%M:%S", tz = "UTC"),
+    from = d$hp$harbour[v$port_from],
+    to = d$hp$harbour[v$port_to]
+  )
+  expect_equal(got, ref, ignore_attr = TRUE)
+  # on these tracks the sphere gives the same ports as the ellipsoid
+  skip_if_not_installed("s2")
+  w <- rb_cut_trip_voyages(
+    p,
+    method = "cnr",
+    ports = d$hp,
+    by_year = FALSE,
+    cnr = list(distance = "sphere"),
+    vid = MMSI,
+    time = datetime,
+    lon = longitude,
+    lat = latitude
+  )
+  expect_equal(w, v)
+})
+
+test_that("method cnr: parquet read lazily, in batches, gives the data frame's voyages", {
+  skip_if_not_installed("lwgeom")
+  d <- cnr_italy()
+  lz <- rb_cut_trip_voyages(
+    d$pings,
+    method = "cnr",
+    ports = d$hp,
+    batch_pings = 3000,
+    vid = MMSI,
+    time = datetime,
+    lon = longitude,
+    lat = latitude
+  )
+  expect_s3_class(lz, "tbl_lazy")
+  lz <- as.data.frame(dplyr::collect(lz))
+  df <- rb_cut_trip_voyages(
+    as.data.frame(dplyr::collect(d$pings)),
+    method = "cnr",
+    ports = d$hp,
+    vid = MMSI,
+    time = datetime,
+    lon = longitude,
+    lat = latitude
+  )
+  lz <- lz[order(lz$MMSI, lz$T1), ]
+  expect_equal(lz, df, ignore_attr = TRUE)
+  expect_true(all(c("year", "voyage_id", "n_pings") %in% names(df)))
+})
+
+test_that("method cnr joins trips split by a silence as the R function does", {
+  j <- function(
+    s,
+    e,
+    from,
+    to,
+    cs = 0L,
+    ce = 0L,
+    time = seq(0, by = 3600, length.out = 100)
+  ) {
+    n <- length(s)
+    ramb:::cnr_join_cpp(
+      rep(1L, n),
+      as.integer(s),
+      as.integer(e),
+      as.integer(from),
+      as.integer(to),
+      rep_len(as.integer(cs), n),
+      rep_len(as.integer(ce), n),
+      time,
+      24
+    )
+  }
+  # open on both sides of a silence, touching: one trip; a chain of three: one trip
+  r <- j(c(1, 11), c(10, 20), c(1, NA), c(NA, 2))
+  expect_equal(c(r$s, r$e, r$port_from, r$port_to, r$joined), c(1, 20, 1, 2, 1))
+  r <- j(c(1, 11, 21), c(10, 20, 30), c(1, NA, NA), c(NA, NA, 3))
+  expect_equal(nrow(r), 1)
+  expect_equal(r$joined, 2)
+  # a port on either side of the silence: no join
+  expect_equal(nrow(j(c(1, 11), c(10, 20), c(1, 5), c(NA, 2))), 2)
+  # pings between the two trips: broken, both open ends to the closest port
+  r <- j(c(1, 12), c(10, 20), c(1, NA), c(NA, 2))
+  expect_equal(r$joined, c(-2, -2))
+  expect_equal(c(r$to_closest[1], r$from_closest[2]), c(TRUE, TRUE))
+  # both ends in the coastal zone: joined under 24 h, broken from 24 h on
+  expect_equal(
+    nrow(j(c(1, 11), c(10, 20), c(1, NA), c(NA, 2), cs = 1, ce = 1)),
+    1
+  )
+  r <- j(c(1, 11), c(10, 30), c(1, NA), c(NA, 2), cs = 1, ce = 1)
+  expect_equal(r$joined, c(-1, -1))
+  # one end in it: joined whatever the length
+  expect_equal(
+    nrow(j(
+      c(1, 11),
+      c(10, 30),
+      c(1, NA),
+      c(NA, 2),
+      cs = c(1, 1),
+      ce = c(0, 0)
+    )),
+    1
+  )
+})
+
+test_that("method cnr checks its input and settings", {
+  d <- data.frame(
+    vid = 1,
+    time = as.POSIXct("2020-01-01", tz = "UTC") + 1:20 * 300,
+    lon = 0,
+    lat = 0,
+    port_id = NA_integer_
+  )
+  expect_error(rb_cut_trip_voyages(d, method = "cnr"), "speed")
+  d$speed <- 3
+  expect_error(
+    rb_cut_trip_voyages(d, method = "cnr", cnr = list(n_pong = 4)),
+    "Unknown `cnr` setting"
+  )
+  expect_error(
+    rb_cut_trip_voyages(d, method = "cnr", cnr = list(distance = "planar")),
+    "geodesic"
+  )
+  # all at sea, no silence: no voyage, and the result has the voyage columns
+  v <- rb_cut_trip_voyages(d, method = "cnr")
+  expect_equal(nrow(v), 0)
+  expect_named(
+    v,
+    c("vid", "year", "voyage_id", "T1", "T2", "port_from", "port_to", "n_pings")
+  )
+})
