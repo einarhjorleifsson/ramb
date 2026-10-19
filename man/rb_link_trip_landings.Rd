@@ -42,7 +42,7 @@ the trip's end date), \code{n_trips} (trips on the landing) and \code{n_landings
 }
 \description{
 A step-1 builder: which landing (a sales note, a landing declaration) belongs to which trip. The trips can be
-declared trips (a logbook's) or voyages cut from the track (\code{\link[=rb_cut_trip_voyages]{rb_cut_trip_voyages()}}); the landings come from
+declared trips (a logbook's) or voyages cut from the track (\code{\link[=rb_create_voyages]{rb_create_voyages()}}); the landings come from
 a buyer or an authority, dated, sometimes with a port. Matching is a cascade of steps from the strictest
 (same day, same port) to the loosest (two days apart, any port). A step works only on the trips and landings no
 earlier step took, and accepts a pair only when it is the sole candidate both ways, so an ambiguous match is

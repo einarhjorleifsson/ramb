@@ -25,7 +25,7 @@ decision 090). The window is a time span: positions without a speed are not coun
 vessel at a time (\code{dplyr::mutate(.by = vid)}).
 }
 \details{
-The same median is the \code{window_s} argument of \code{\link[=rb_assign_fishing]{rb_assign_fishing()}} and \code{\link[=rb_cut_record_stretches]{rb_cut_record_stretches()}}, where
+The same median is the \code{window_s} argument of \code{\link[=rb_add_fishing]{rb_add_fishing()}} and \code{\link[=rb_create_record_stretches]{rb_create_record_stretches()}}, where
 it runs in DuckDB.
 }
 \examples{

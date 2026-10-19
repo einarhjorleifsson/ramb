@@ -1,4 +1,4 @@
-# iapesca_trips.R — the test fixture of rb_cut_trip_voyages(method = "iapesca"): Ifremer's iapesca, run as published
+# iapesca_trips.R — the test fixture of rb_create_voyages(method = "iapesca"): Ifremer's iapesca, run as published
 # on CNR-IRBIM's Italian tracks.
 #
 # Input:  Detect_FishingTrips() of the iapesca package (J. Rodriguez, Ifremer, GPL), installed from

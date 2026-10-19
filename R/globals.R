@@ -164,3 +164,10 @@ utils::globalVariables(c(
 
 #' @importFrom rlang :=
 NULL
+
+# The aliases of fishycode plan 032 (R/renamed.R) rename and drop by bare name.
+utils::globalVariables(c(
+  "min_stay_h",
+  "port_call_id",
+  "stay_id"
+))

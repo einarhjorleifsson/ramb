@@ -16,7 +16,7 @@ rb_link_trip_voyages(
 \item{trips}{A data frame or lazy DuckDB table of declared trips: \code{vid}, \code{T1}, \code{T2} and the trip's key
 columns (\code{keys}).}
 
-\item{voyages}{Voyages from \code{\link[=rb_cut_trip_voyages]{rb_cut_trip_voyages()}}.}
+\item{voyages}{Voyages from \code{\link[=rb_create_voyages]{rb_create_voyages()}}.}
 
 \item{keys}{The columns that identify a trip, carried through (e.g. \code{c(".tid", "schema")}).}
 
@@ -32,14 +32,14 @@ One row per linked trip: \code{keys}, \code{vid}, the voyage's \code{year}, \cod
 }
 \description{
 A step-1 link of the fishing-activity flow: each declared trip (e.g. a logbook trip) is linked to the voyage
-(\code{\link[=rb_cut_trip_voyages]{rb_cut_trip_voyages()}}) of the same vessel that overlaps it by the most seconds (ties: more pings).
+(\code{\link[=rb_create_voyages]{rb_create_voyages()}}) of the same vessel that overlaps it by the most seconds (ties: more pings).
 \code{n_candidates} counts the voyages that overlap it at all; a link is a link, not a merge: one voyage may be
 linked to several trips.
 }
 \seealso{
 Other trip:
-\code{\link[=rb_assign_trip]{rb_assign_trip()}},
-\code{\link[=rb_cut_trip_voyages]{rb_cut_trip_voyages()}},
-\code{\link[=rb_find_trip_stays]{rb_find_trip_stays()}}
+\code{\link[=rb_add_voyages]{rb_add_voyages()}},
+\code{\link[=rb_create_port_calls]{rb_create_port_calls()}},
+\code{\link[=rb_create_voyages]{rb_create_voyages()}}
 }
 \concept{trip}

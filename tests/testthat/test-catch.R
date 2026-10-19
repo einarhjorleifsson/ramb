@@ -65,7 +65,7 @@ test_that("units: overlapping events of a level merge, a shared key joins window
     resolution = c("haul", "day", "day", "day", "landing", "day", "day"),
     rect = c(NA, NA, NA, NA, NA, "54D9", "54E0")
   )
-  u <- rb_build_catch_units(events, key = "id", match_by = "rect")
+  u <- rb_add_catch_units(events, key = "id", match_by = "rect")
   uid <- function(i) unique(u$unit_id[u$id == i])
   expect_length(unique(u$unit_id), 5)
   expect_equal(uid("d1"), uid("d2")) # they overlap; d2's second window joins by key
@@ -75,7 +75,7 @@ test_that("units: overlapping events of a level merge, a shared key joins window
   expect_equal(u$start[u$id == "L"], h(48) - 31 * 86400) # no earlier landing: max_days back
   expect_true(u$start_filled[u$id == "L"])
   skip_if_not_installed("duckdbfs")
-  l <- dplyr::collect(rb_build_catch_units(
+  l <- dplyr::collect(rb_add_catch_units(
     duckdbfs::as_dataset(events),
     key = "id",
     match_by = "rect"
@@ -105,7 +105,7 @@ catch <- tibble::tibble(
 )
 
 test_that("sharing: by hours, coarser units on the pings left free, moved up, kg in = kg out", {
-  u <- rb_build_catch_units(events, key = "id")
+  u <- rb_add_catch_units(events, key = "id")
   s <- rb_share_catch(pings, u, catch, key = "id")
   expect_equal(sum(s$kg), sum(catch$kg))
   # the haul's cod goes to its two fishing pings by hours (1 and 3); the non-fishing ping gets nothing
@@ -139,7 +139,7 @@ test_that("the last resorts: the vessel's month, then no ping at all", {
   ca <- tibble::tibble(id = c("a", "b"), species = "cod", kg = c(20, 5))
   s <- rb_share_catch(
     pings,
-    rb_build_catch_units(ev, key = "id"),
+    rb_add_catch_units(ev, key = "id"),
     ca,
     key = "id"
   )
@@ -154,7 +154,7 @@ test_that("the last resorts: the vessel's month, then no ping at all", {
 
 test_that("data frame = lazy table", {
   skip_if_not_installed("duckdbfs")
-  u <- rb_build_catch_units(events, key = "id")
+  u <- rb_add_catch_units(events, key = "id")
   s <- rb_share_catch(pings, u, catch, key = "id")
   l <- rb_share_catch(
     duckdbfs::as_dataset(pings),
@@ -184,8 +184,8 @@ test_that("acceptance: landings only, per trip, per week, per month and since th
   # fishing from the track: the gear's speed range on every ping, no record needed
   p$speed_min <- 2
   p$speed_max <- 4
-  p <- rb_assign_fishing(p, method = "speed")
-  p <- rb_assign_effort(p, by = "voyage")
+  p <- rb_add_fishing(p, method = "speed")
+  p <- rb_add_effort(p, by = "voyage")
   voy <- dplyr::summarise(
     p,
     start = min(time),
@@ -193,7 +193,7 @@ test_that("acceptance: landings only, per trip, per week, per month and since th
     .by = c(vid, voyage)
   )
   check <- function(ev) {
-    u <- rb_build_catch_units(ev, key = "id")
+    u <- rb_add_catch_units(ev, key = "id")
     ca <- tibble::tibble(id = unique(ev$id), species = "cod", kg = 100)
     s <- rb_share_catch(p, u, ca, key = "id")
     expect_equal(sum(s$kg), 100 * length(unique(ev$id)))
@@ -248,14 +248,14 @@ test_that("acceptance: landings only, per trip, per week, per month and since th
 })
 
 test_that("misuse names the step to run first; method eflalo keeps the ICES sharing", {
-  u <- rb_build_catch_units(events, key = "id")
+  u <- rb_add_catch_units(events, key = "id")
   expect_error(
     rb_share_catch(pings[, c("vid", "time", "fishing")], u, catch, key = "id"),
-    "rb_assign_effort"
+    "rb_add_effort"
   )
   expect_error(
     rb_share_catch(pings, events, catch, key = "id"),
-    "rb_build_catch_units"
+    "rb_add_catch_units"
   )
   ep <- tibble::tibble(
     .pid = 1:4L,
@@ -304,7 +304,7 @@ test_that("units are the same every run: landings tied on their day, and a landi
     )
   )
   runs <- lapply(1:5, function(i) {
-    u <- dplyr::collect(rb_build_catch_units(
+    u <- dplyr::collect(rb_add_catch_units(
       duckdbfs::as_dataset(ev),
       key = "id"
     ))

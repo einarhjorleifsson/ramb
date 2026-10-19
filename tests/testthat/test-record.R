@@ -23,8 +23,8 @@ records <- tibble::tibble(
 
 test_that("windows: one per phase, capped tows, the day fallback; data frame = lazy table", {
   skip_if_not_installed("duckdbfs")
-  w <- rb_build_record_windows(records, min_hauls = 1)
-  wl <- dplyr::collect(rb_build_record_windows(
+  w <- rb_create_record_windows(records, min_hauls = 1)
+  wl <- dplyr::collect(rb_create_record_windows(
     duckdbfs::as_dataset(records),
     min_hauls = 1
   ))
@@ -65,8 +65,8 @@ test_that("windows never overlap: what cuts what, what yields, and ties", {
     duration_m = NA_real_,
     date = as.Date("2024-03-01")
   )
-  w <- rb_build_record_windows(r, min_hauls = 1)
-  wl <- dplyr::collect(rb_build_record_windows(
+  w <- rb_create_record_windows(r, min_hauls = 1)
+  wl <- dplyr::collect(rb_create_record_windows(
     duckdbfs::as_dataset(r),
     min_hauls = 1
   ))
@@ -167,7 +167,7 @@ test_that("event times: ties go to the earlier event time, then the lower key", 
 
 test_that("pings: tier-1 windows win over the day; the counts, the record and fishing", {
   skip_if_not_installed("duckdbfs")
-  w <- rb_build_record_windows(records, min_hauls = 1)
+  w <- rb_create_record_windows(records, min_hauls = 1)
   pings <- tibble::tibble(
     vid = c(1L, 1L, 1L, 3L, 3L, 4L),
     time = h(c(1, 3.5, 20, 2, 17, 1)),
@@ -192,8 +192,8 @@ test_that("pings: tier-1 windows win over the day; the counts, the record and fi
     as.data.frame(m),
     ignore_attr = TRUE
   )
-  r <- rb_assign_record(pings, m, carry = "gear") |>
-    rb_assign_fishing(m, speed_min = "s1", speed_max = "s2")
+  r <- rb_add_record(pings, m, carry = "gear") |>
+    rb_add_fishing(m, speed_min = "s1", speed_max = "s2")
   expect_equal(r$n_records, c(1, 1, 0, 1, 1, 0)) # vid 3 at 23:00: only the day window of .sid 6
   expect_equal(r$.sid, c(1L, 2L, NA, 5L, 6L, NA))
   expect_equal(r$fishing, c(TRUE, NA, FALSE, TRUE, FALSE, FALSE))
@@ -201,7 +201,7 @@ test_that("pings: tier-1 windows win over the day; the counts, the record and fi
 
 test_that("fishing on the windowed speed: a spike inside a tow is fishing; data frame = lazy table", {
   skip_if_not_installed("duckdbfs")
-  w <- rb_build_record_windows(records[1, ], min_hauls = 1)
+  w <- rb_create_record_windows(records[1, ], min_hauls = 1)
   pings <- tibble::tibble(
     vid = 1L,
     time = h(seq(0.5, 2.5, by = 1 / 60)),
@@ -210,15 +210,15 @@ test_that("fishing on the windowed speed: a spike inside a tow is fishing; data 
   pings$speed[61] <- 9 # 07:30, mid-tow
   pings$speed[62] <- NA
   m <- rb_link_record_pings(pings, w, speed_min = "s1", speed_max = "s2")
-  f0 <- rb_assign_fishing(pings, m, speed_min = "s1", speed_max = "s2")
-  f10 <- rb_assign_fishing(
+  f0 <- rb_add_fishing(pings, m, speed_min = "s1", speed_max = "s2")
+  f10 <- rb_add_fishing(
     pings,
     m,
     speed_min = "s1",
     speed_max = "s2",
     window_s = 600
   )
-  fl <- dplyr::collect(rb_assign_fishing(
+  fl <- dplyr::collect(rb_add_fishing(
     duckdbfs::as_dataset(pings),
     duckdbfs::as_dataset(m),
     speed_min = "s1",
@@ -341,7 +341,7 @@ test_that("durations above the gear's limit become NA, the raw value is kept", {
 
 test_that("fishing by speed and as a cascade: the window where a record holds the ping, the track elsewhere", {
   skip_if_not_installed("duckdbfs")
-  w <- rb_build_record_windows(records[1, ], min_hauls = 1) # one tow, 06:00-10:00 (t2 0, t3 4)
+  w <- rb_create_record_windows(records[1, ], min_hauls = 1) # one tow, 06:00-10:00 (t2 0, t3 4)
   pings <- tibble::tibble(
     vid = 1L,
     time = h(c(1, 2, 12, 13, 14, 15)),
@@ -350,10 +350,10 @@ test_that("fishing by speed and as a cascade: the window where a record holds th
     hi = c(5, 5, 5, 5, NA, 5)
   )
   m <- rb_link_record_pings(pings, w, speed_min = "s1", speed_max = "s2")
-  win <- rb_assign_fishing(pings, m, speed_min = "s1", speed_max = "s2")
+  win <- rb_add_fishing(pings, m, speed_min = "s1", speed_max = "s2")
   expect_equal(win$fishing, c(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE)) # unchanged: no window, not fishing
   expect_false("fishing_basis" %in% names(win))
-  spd <- rb_assign_fishing(
+  spd <- rb_add_fishing(
     pings,
     method = "speed",
     ping_speed_min = "lo",
@@ -364,7 +364,7 @@ test_that("fishing by speed and as a cascade: the window where a record holds th
     spd$fishing_basis,
     c("speed", "speed", "speed", "speed", "none", "speed")
   )
-  cas <- rb_assign_fishing(
+  cas <- rb_add_fishing(
     pings,
     m,
     method = c("window", "speed"),
@@ -380,7 +380,7 @@ test_that("fishing by speed and as a cascade: the window where a record holds th
     c("window", "window", "speed", "speed", "none", "speed")
   )
   # side by side: a second approach is a column of its own; the same name twice stops
-  both <- rb_assign_fishing(
+  both <- rb_add_fishing(
     win,
     m,
     method = c("window", "speed"),
@@ -392,14 +392,14 @@ test_that("fishing by speed and as a cascade: the window where a record holds th
   )
   expect_equal(both$fishing, win$fishing)
   expect_error(
-    rb_assign_fishing(win, m, speed_min = "s1", speed_max = "s2"),
+    rb_add_fishing(win, m, speed_min = "s1", speed_max = "s2"),
     "already has"
   )
   expect_error(
-    rb_assign_fishing(pings, method = "window"),
+    rb_add_fishing(pings, method = "window"),
     "rb_link_record_pings"
   )
-  lz <- dplyr::collect(rb_assign_fishing(
+  lz <- dplyr::collect(rb_add_fishing(
     duckdbfs::as_dataset(pings),
     duckdbfs::as_dataset(m),
     method = c("window", "speed"),
@@ -428,7 +428,7 @@ test_that("positions for records with no pings: along the record's line, every i
     lon2 = c(-22.2, NA, -20),
     lat2 = c(64.05, NA, 65.3)
   )
-  p <- rb_build_record_pings(r, key = "id", interval_s = 900)
+  p <- rb_create_record_pings(r, key = "id", interval_s = 900)
   expect_equal(as.vector(table(p$id)), c(4, 1, 12)) # an hour in 15 min, no length, three hours
   one <- p[p$id == 1, ]
   expect_equal(one$lon, -22 - 0.2 * c(0, 0.25, 0.5, 0.75))
@@ -447,7 +447,7 @@ test_that("positions for records with no pings: along the record's line, every i
     tolerance = 1e-9
   )
   expect_true(is.na(p$speed[p$id == 2]))
-  l <- dplyr::collect(rb_build_record_pings(
+  l <- dplyr::collect(rb_create_record_pings(
     duckdbfs::as_dataset(r),
     key = "id",
     interval_s = 900
@@ -458,7 +458,7 @@ test_that("positions for records with no pings: along the record's line, every i
     ignore_attr = TRUE
   )
   # they run through effort like any pings
-  e <- rb_assign_effort(p, by = "id")
+  e <- rb_add_effort(p, by = "id")
   expect_equal(sum(e$hours, na.rm = TRUE), 0.75 + 2.75)
 })
 

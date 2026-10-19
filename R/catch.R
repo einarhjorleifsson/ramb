@@ -46,8 +46,8 @@
 #'   resolution = c("haul", "day", "day", "day", "landing")
 #' )
 #' # the two day records share a unit (they overlap); "c"'s second window joins it by key
-#' rb_build_catch_units(events, key = "id")
-rb_build_catch_units <- function(
+#' rb_add_catch_units(events, key = "id")
+rb_add_catch_units <- function(
   events,
   key,
   match_by = NULL,
@@ -58,7 +58,7 @@ rb_build_catch_units <- function(
 ) {
   .rb_check_input(
     events,
-    "rb_build_catch_units",
+    "rb_add_catch_units",
     cols = c(vid = vid, start = start, end = end),
     also = c(stats::setNames(key, key), stats::setNames(match_by, match_by)),
     types = c(start = "time", end = "time")
@@ -152,7 +152,7 @@ rb_build_catch_units <- function(
 
 #' Share catch over the fishing pings
 #'
-#' Step 6 of the flow. Each catch unit's catch ([rb_build_catch_units()]) is shared over the unit's fishing pings
+#' Step 6 of the flow. Each catch unit's catch ([rb_add_catch_units()]) is shared over the unit's fishing pings
 #' by effort (their `hours`), species by species. The pings at a coarser level go to its pings not already
 #' served at a finer level, and to all its pings if none is left. Catch whose unit holds no fishing ping moves up
 #' to the unit of the next level that overlaps it in time (a haul's to its trip, a trip's to its landing), and
@@ -168,8 +168,8 @@ rb_build_catch_units <- function(
 #' `LE_EURO` and `.how`; see `vignette("catch")`.
 #'
 #' @param pings A data frame or lazy DuckDB table with `vid`, `time`, the fishing column and `hours`
-#'   ([rb_assign_effort()]).
-#' @param units Units from [rb_build_catch_units()]: `unit_id`, `level`, `resolution`, `vid`, `start`, `end`,
+#'   ([rb_add_effort()]).
+#' @param units Units from [rb_add_catch_units()]: `unit_id`, `level`, `resolution`, `vid`, `start`, `end`,
 #'   the `key` columns and any `match_by` columns.
 #' @param catch A data frame or lazy table with the `key` columns, the species and the weight (and optionally
 #'   the value), in one unit of weight.
@@ -177,7 +177,7 @@ rb_build_catch_units <- function(
 #' @param key The columns that tie the catch to the units' events; `"unit_id"` when the catch is already per unit.
 #' @param species,kg,value The catch's species, weight and (optional) value columns.
 #' @param fishing,hours The pings' fishing column (one approach) and effort column.
-#' @param match_by As in [rb_build_catch_units()].
+#' @param match_by As in [rb_add_catch_units()].
 #' @param vid,time,start,end The vessel, time and interval columns.
 #' @param ... For `method = "eflalo"`: `remove_diagnostic`, `raise_unallocated`, `raise_unmatched`.
 #' @return One row per (fishing ping, unit, species): `vid`, `time`, `unit_id` and `resolution` (the unit the
@@ -195,7 +195,7 @@ rb_build_catch_units <- function(
 #'   id = c("haul", "trip"), vid = 1L, start = h(c(0, 0)), end = h(c(4, 40)),
 #'   level = 1:2, resolution = c("haul", "trip")
 #' )
-#' units <- rb_build_catch_units(events, key = "id")
+#' units <- rb_add_catch_units(events, key = "id")
 #' catch <- tibble::tibble(id = c("haul", "trip"), species = "cod", kg = c(300, 100))
 #' rb_share_catch(pings, units, catch, key = "id")
 rb_share_catch <- function(
@@ -244,7 +244,7 @@ rb_share_catch <- function(
       if (!identical(key, "unit_id")) key,
       match_by
     ),
-    hint = "Build the units with rb_build_catch_units()."
+    hint = "Build the units with rb_add_catch_units()."
   )
   if (is.null(catch)) {
     rlang::abort("`catch` must be given for method \"units\".")

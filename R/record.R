@@ -81,7 +81,7 @@ rb_limit_record_duration <- function(
     dplyr::select(-dur_max_min)
 }
 
-#' Build the time windows in which a vessel is busy with each logbook record
+#' Create the time windows in which a vessel is busy with each logbook record
 #'
 #' One row per (record, phase). Towed gear: one `tow` window (`t2`-`t3`). Static gear: a `set` window from `t1`
 #' of the gear's set length, and a `haul` window (`t3`-`t4`, or the gear's typical haul ending at `t4`). Jigged
@@ -115,7 +115,7 @@ rb_limit_record_duration <- function(
 #' @return The windows: the record's columns (without `date`), `phase`, `w_start`, `w_end`, `win_basis`,
 #'   `win_closed_by`, `win_opened_by`, `n_events` and `events` (which of `t1`-`t4` the record has).
 #' @export
-rb_build_record_windows <- function(
+rb_create_record_windows <- function(
   records,
   key = c(".sid", "schema"),
   min_hauls = 50
@@ -240,10 +240,10 @@ rb_build_record_windows <- function(
 #' `w_end` is not in it. Windows of a `fallback` phase (the whole-day windows) claim only pings that no other
 #' window claims. A record matched in two of its own phases counts once, the phase earliest in `phase_rank`
 #' winning. The result is a table of candidates: windows that overlap (two records on one whole day, or windows
-#' built by other rules than [rb_build_record_windows()]) give one row per (ping, record).
+#' built by other rules than [rb_create_record_windows()]) give one row per (ping, record).
 #'
 #' @param pings A data frame or lazy DuckDB table with `vid`, `time` and the speed column.
-#' @param windows Windows from [rb_build_record_windows()]: `vid`, `w_start`, `w_end`, `phase`, the `key`
+#' @param windows Windows from [rb_create_record_windows()]: `vid`, `w_start`, `w_end`, `phase`, the `key`
 #'   columns and the `carry` columns.
 #' @param key The columns that identify a record.
 #' @param carry Window columns to carry onto each match.
@@ -251,7 +251,7 @@ rb_build_record_windows <- function(
 #' @param phase_rank Phases in order of preference when one record matches a ping in several of them.
 #' @param not_fishing Phases that are never fishing.
 #' @param speed,speed_min,speed_max The ping speed and the window's speed range columns.
-#' @param window_s Half the speed window for `fishing`, in seconds, as in [rb_assign_fishing()]: the median
+#' @param window_s Half the speed window for `fishing`, in seconds, as in [rb_add_fishing()]: the median
 #'   speed over the pings given within `window_s` either side ([rb_calc_speed_smooth()]); 0 (the default) tests
 #'   each ping's own speed.
 #' @return One row per (ping, record): `vid`, `time`, the key, the carried columns, `phase`, `phase_frac`
@@ -454,7 +454,7 @@ rb_link_record_events <- function(
   .rb_out(con, sql, lazy_in, by = c("vid", "event_time", "event"))
 }
 
-#' Assign each ping its logbook record
+#' Add the logbook record to each ping
 #'
 #' Step 2 of the flow. Each ping gets `n_records`, the number of records whose windows hold it (0 for none),
 #' and, where exactly one does, that record's key, the carried columns, its `phase` and `phase_frac`. Where
@@ -465,13 +465,13 @@ rb_link_record_events <- function(
 #' @param key,carry The record key and the columns to carry, as in the matches.
 #' @return `pings` with `n_records`, the key, the carried columns, `phase` and `phase_frac`.
 #' @export
-rb_assign_record <- function(
+rb_add_record <- function(
   pings,
   matches,
   key = c(".sid", "schema"),
   carry = character(0)
 ) {
-  .rb_check_input(pings, "rb_assign_record", types = c(time = "time"))
+  .rb_check_input(pings, "rb_add_record", types = c(time = "time"))
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
   p_sql <- .rb_in_sql(pings, con)
@@ -514,7 +514,7 @@ rb_assign_record <- function(
 #' `method`, `<name>_basis` says which method decided each ping: `"window"`, `"speed"` or `"none"`.
 #'
 #' Each approach can be kept as a column of its own (`name`), so the effort and catch of each can be summed
-#' and compared ([rb_assign_effort()], [rb_share_catch()]).
+#' and compared ([rb_add_effort()], [rb_share_catch()]).
 #'
 #' With `window_s`, the speed tested is the median over `window_s` seconds either side of the ping
 #' ([rb_calc_speed_smooth()]), not its own. ±10 minutes (`window_s = 600`) called 92.7 % of the Icelandic
@@ -533,7 +533,7 @@ rb_assign_record <- function(
 #' @param name The name of the column added.
 #' @return `pings` with `name` (and `<name>_basis` when `"speed"` is used).
 #' @export
-rb_assign_fishing <- function(
+rb_add_fishing <- function(
   pings,
   matches = NULL,
   method = "window",
@@ -550,7 +550,7 @@ rb_assign_fishing <- function(
   by_speed <- "speed" %in% method
   proto <- .rb_check_input(
     pings,
-    "rb_assign_fishing",
+    "rb_add_fishing",
     cols = c(speed = speed),
     also = if (by_speed) {
       c(ping_speed_min = ping_speed_min, ping_speed_max = ping_speed_max)
@@ -666,7 +666,7 @@ rb_assign_fishing <- function(
   .rb_out(con, sql, lazy_in, by = c("vid", "time"))
 }
 
-#' Build positions for records that have no pings
+#' Create positions for records that have no pings
 #'
 #' A step-2 builder for the records no track covers: the years before vessel tracking, or a vessel the
 #' tracking does not reach. Each record gets positions every `interval_s` seconds over its window
@@ -675,7 +675,7 @@ rb_assign_fishing <- function(
 #' gets one position, at its start. `pos_basis` is `"synthesised"`, and `speed` (knots) is the straight-line
 #' distance over the window's length, where there is an end position.
 #'
-#' The positions are pings like any other: [rb_assign_effort()] gives them their hours (`by` the key), and
+#' The positions are pings like any other: [rb_add_effort()] gives them their hours (`by` the key), and
 #' [rb_share_catch()] the record's catch. They stand for the record's own window, so whether they are fishing is
 #' the record's to say (e.g. `fishing = TRUE` for a haul's window), not the track's.
 #'
@@ -693,8 +693,8 @@ rb_assign_fishing <- function(
 #'   start = as.POSIXct("1998-05-02 06:00", tz = "UTC"), end = as.POSIXct("1998-05-02 07:00", tz = "UTC"),
 #'   lon1 = -22, lat1 = 64, lon2 = -22.2, lat2 = 64.05
 #' )
-#' rb_build_record_pings(r, key = "id", interval_s = 900)
-rb_build_record_pings <- function(
+#' rb_create_record_pings(r, key = "id", interval_s = 900)
+rb_create_record_pings <- function(
   records,
   key,
   interval_s = 600,
@@ -709,7 +709,7 @@ rb_build_record_pings <- function(
   stopifnot(is.numeric(interval_s), length(interval_s) == 1, interval_s > 0)
   .rb_check_input(
     records,
-    "rb_build_record_pings",
+    "rb_create_record_pings",
     cols = c(vid = vid, start = start, end = end, lon1 = lon1, lat1 = lat1),
     also = c(stats::setNames(key, key)),
     types = c(start = "time", end = "time", lon1 = "numeric", lat1 = "numeric")

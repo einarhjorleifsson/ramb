@@ -1,4 +1,4 @@
-# cnr_trips.R — the test fixture of rb_cut_trip_voyages(method = "cnr"): CNR-IRBIM's own trip finder, run as
+# cnr_trips.R — the test fixture of rb_create_voyages(method = "cnr"): CNR-IRBIM's own trip finder, run as
 # published on its own Italian tracks.
 #
 # Input:  create_fishing_trip() and the functions it calls, from R-dev/galdelli_pulcinella_tassetti/R/

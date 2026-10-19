@@ -23,8 +23,10 @@ times larger than memory (opened with
 The flow takes a vessel's raw track to fishing activity, effort and
 catch. Each step takes the best source available for a ping, falls back
 when it is missing, labels the ping with a *basis*, and accounts for
-every ping. The function names mark where they sit:
-`rb_<verb>_<stage>`.
+every ping. The function names mark where they sit,
+`rb_<verb>_<stage>`, and the verb says what comes back: `rb_create_*()`
+a table of its own (port calls, voyages, record windows), `rb_add_*()`
+the input with columns added.
 
 ```{r}
 #| echo: false
@@ -33,13 +35,13 @@ tibble::tribble(
   "0", "ping", "Which pings are usable?",
   "[rb_flag_ping_invalid()](../reference/rb_flag_ping_invalid.html), [rb_flag_ping_duplicate()](../reference/rb_flag_ping_duplicate.html), [rb_flag_ping_impossible()](../reference/rb_flag_ping_impossible.html), [rb_flag_ping_port()](../reference/rb_flag_ping_port.html)",
   "1", "trip", "Which trip does the ping belong to?",
-  "[rb_find_trip_stays()](../reference/rb_find_trip_stays.html), [rb_cut_trip_voyages()](../reference/rb_cut_trip_voyages.html), [rb_assign_trip()](../reference/rb_assign_trip.html), [rb_link_trip_logbook()](../reference/rb_link_trip_logbook.html)",
+  "[rb_create_port_calls()](../reference/rb_create_port_calls.html), [rb_create_voyages()](../reference/rb_create_voyages.html), [rb_add_voyages()](../reference/rb_add_voyages.html), [rb_add_logbook_trip()](../reference/rb_add_logbook_trip.html)",
   "2", "record", "Which logbook record covers the ping?",
-  "[rb_build_record_windows()](../reference/rb_build_record_windows.html), [rb_link_record_pings()](../reference/rb_link_record_pings.html), [rb_link_record_events()](../reference/rb_link_record_events.html), [rb_assign_record()](../reference/rb_assign_record.html)",
+  "[rb_create_record_windows()](../reference/rb_create_record_windows.html), [rb_link_record_pings()](../reference/rb_link_record_pings.html), [rb_link_record_events()](../reference/rb_link_record_events.html), [rb_add_record()](../reference/rb_add_record.html)",
   "3", "gear", "What gear, and how wide?",
   "[rb_extract_metier()](../reference/rb_extract_metier.html), [rb_predict_gear_width()](../reference/rb_predict_gear_width.html)",
   "4", "fishing", "Is the ping fishing?",
-  "[rb_assign_fishing()](../reference/rb_assign_fishing.html)",
+  "[rb_add_fishing()](../reference/rb_add_fishing.html)",
   "5", "effort", "How much effort (hours, kW-hours, swept area)?",
   "[rb_cap_effort()](../reference/rb_cap_effort.html)",
   "6", "catch", "How is the catch shared over the fishing pings?",

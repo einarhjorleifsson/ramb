@@ -1,5 +1,6 @@
-# rb_find_trip_stays(): port of fishycode's curate/port_stay.R (plan 013 phase 2). Its exactness was
-# checked on the Icelandic data (1,551,604 stays, identical); here: data frame = lazy table, and the window.
+# rb_create_port_calls(method = "dwell"): port of fishycode's curate/port_stay.R (plan 013 phase 2), where a port
+# call was a stay. Its exactness was checked on the Icelandic data (1,551,604 port calls, identical); here: data
+# frame = lazy table, and the window.
 
 pings <- dansk |>
   dplyr::filter(vessel_id %in% unique(dansk$vessel_id)[1:2]) |>
@@ -13,13 +14,13 @@ pings <- dansk |>
 ports <- sf::st_transform(dansk_harbours, 4326) |>
   dplyr::mutate(port_id = as.character(SI_HARB))
 
-test_that("a data frame and a lazy table give the same stays", {
+test_that("a data frame and a lazy table give the same port calls", {
   skip_if_not_installed("duckdbfs")
-  a <- rb_find_trip_stays(pings, ports, min_stay_h = 2)
-  b <- dplyr::collect(rb_find_trip_stays(
+  a <- rb_create_port_calls(pings, ports, min_dwell_h = 2)
+  b <- dplyr::collect(rb_create_port_calls(
     duckdbfs::as_dataset(pings),
     ports,
-    min_stay_h = 2
+    min_dwell_h = 2
   ))
   b <- b[order(b$vid, b$T_in), ]
   expect_gt(nrow(a), 0)
@@ -28,6 +29,8 @@ test_that("a data frame and a lazy table give the same stays", {
     names(a),
     c(
       "vid",
+      "year",
+      "port_call_id",
       "port_id",
       "T_in",
       "T_out",
@@ -46,20 +49,20 @@ test_that("a data frame and a lazy table give the same stays", {
   ))
 })
 
-test_that("the window keeps only stays that begin in it; a longer minimum gives fewer stays", {
-  a <- rb_find_trip_stays(pings, ports, min_stay_h = 2)
+test_that("the window keeps only port calls that begin in it; a longer minimum gives fewer", {
+  a <- rb_create_port_calls(pings, ports, min_dwell_h = 2)
   w <- range(a$T_in)
   w <- c(w[1], w[1] + (w[2] - w[1]) / 2)
-  b <- rb_find_trip_stays(pings, ports, min_stay_h = 2, t_in_window = w)
+  b <- rb_create_port_calls(pings, ports, min_dwell_h = 2, t_in_window = w)
   expect_true(all(b$T_in >= w[1] & b$T_in < w[2]))
   expect_lt(nrow(b), nrow(a))
-  ms <- data.frame(port_id = unique(a$port_id), min_stay_h = 24)
+  ms <- data.frame(port_id = unique(a$port_id), min_dwell_h = 24)
   expect_lte(
-    nrow(rb_find_trip_stays(pings, ports, min_stay_h = 2, min_stay = ms)),
+    nrow(rb_create_port_calls(pings, ports, min_dwell_h = 2, min_dwell = ms)),
     nrow(a)
   )
 })
-# rb_cut_trip_voyages() and rb_assign_trip(): port of fishycode's curate/ais_trip.R (plan 013 phase 2). Exact on
+# rb_create_voyages() and rb_add_voyages(): port of fishycode's curate/ais_trip.R (plan 013 phase 2). Exact on
 # the Icelandic data (1,372,656 voyages; 535,613,643 pings, every year's fingerprint equal); here: data frame =
 # lazy table, every ping kept, the minimum-pings rule.
 
@@ -74,37 +77,44 @@ pings <- dansk |>
   dplyr::slice_head(n = 20000, by = vid)
 ports <- sf::st_transform(dansk_harbours, 4326) |>
   dplyr::mutate(port_id = as.character(SI_HARB))
-stays <- rb_find_trip_stays(pings, ports, min_stay_h = 2)
+calls <- rb_create_port_calls(pings, ports, min_dwell_h = 2)
 
 test_that("voyages and trip labels agree between a data frame and a lazy table", {
   skip_if_not_installed("duckdbfs")
-  v <- rb_cut_trip_voyages(pings, stays, min_pings = 10)
-  vl <- dplyr::collect(rb_cut_trip_voyages(
+  v <- rb_create_voyages(pings, calls, min_pings = 10)
+  vl <- dplyr::collect(rb_create_voyages(
     duckdbfs::as_dataset(pings),
-    duckdbfs::as_dataset(stays),
+    duckdbfs::as_dataset(calls),
     min_pings = 10
   ))
   vl <- vl[order(vl$vid, vl$T1), ]
   expect_gt(nrow(v), 0)
   expect_equal(as.data.frame(vl), as.data.frame(v), ignore_attr = TRUE)
   expect_true(all(v$n_pings >= 10))
-  a <- rb_assign_trip(pings, v, stays = stays)
-  al <- dplyr::collect(rb_assign_trip(
+  a <- rb_add_voyages(pings, v, port_calls = calls)
+  al <- dplyr::collect(rb_add_voyages(
     duckdbfs::as_dataset(pings),
     duckdbfs::as_dataset(v),
-    stays = duckdbfs::as_dataset(stays)
+    port_calls = duckdbfs::as_dataset(calls)
   ))
   expect_equal(nrow(a), nrow(pings))
   k <- function(d) {
     d[
       order(d$vid, d$time, d$lon, d$lat),
-      c("vid", "time", "stay_port_id", "voyage_id", "trip_basis")
+      c(
+        "vid",
+        "time",
+        "port_call_port_id",
+        "port_call_id",
+        "voyage_id",
+        "trip_basis"
+      )
     ]
   }
   expect_equal(as.data.frame(k(al)), as.data.frame(k(a)), ignore_attr = TRUE)
   expect_setequal(unique(a$trip_basis), c("reconstructed", "none"))
-  # a ping in a stay is never on a voyage
-  expect_true(all(is.na(a$voyage_id[!is.na(a$stay_port_id)])))
+  # a ping in a port call is never on a voyage
+  expect_true(all(is.na(a$voyage_id[!is.na(a$port_call_port_id)])))
 })
 
 # The "runs" and "jepol" methods, against the functions they replace (snapshot taken before the recode).
@@ -147,13 +157,13 @@ test_that("method jepol reproduces rb_trip_jepol() except at the fixed off-by-on
     )
   }
   for (md in c(72, 48, 24)) {
-    v <- suppressWarnings(rb_cut_trip_voyages(
+    v <- suppressWarnings(rb_create_voyages(
       tagged,
       method = "jepol",
       by_year = FALSE,
       max_dur_h = md
     ))
-    a <- rb_assign_trip(tagged, v, by_year = FALSE)
+    a <- rb_add_voyages(tagged, v, by_year = FALSE)
     a <- a[order(a$rid), ]
     old_id <- old[[paste0("jepol_", md)]]
     new_id <- ifelse(is.na(a$voyage_id), NA, paste(a$vid, a$voyage_id))
@@ -173,14 +183,14 @@ test_that("method jepol reproduces rb_trip_jepol() except at the fixed off-by-on
     )
   }
   # without splits the reproduction is still exact
-  v <- rb_cut_trip_voyages(
+  v <- rb_create_voyages(
     tagged,
     method = "jepol",
     by_year = FALSE,
     max_dur_h = 12,
     split = FALSE
   )
-  a <- rb_assign_trip(tagged, v, by_year = FALSE)
+  a <- rb_add_voyages(tagged, v, by_year = FALSE)
   a <- a[order(a$rid), ]
   same_partition(
     old$jepol_nosplit,
@@ -197,7 +207,7 @@ test_that("method jepol splits a long voyage at its longest gap", {
     time = base + c(-1, 0, 1, 2, 12, 13, 14, 15) * 3600,
     port_id = c("h", NA, NA, NA, NA, NA, NA, "h")
   )
-  v <- rb_cut_trip_voyages(d, method = "jepol", by_year = FALSE, max_dur_h = 5)
+  v <- rb_create_voyages(d, method = "jepol", by_year = FALSE, max_dur_h = 5)
   expect_equal(nrow(v), 2)
   # the cut falls at the gap: the first voyage ends at hour 2, the second starts at hour 12
   expect_equal(v$T2[1], base + 2 * 3600)
@@ -207,7 +217,7 @@ test_that("method jepol splits a long voyage at its longest gap", {
 test_that("method jepol: a last ping that is itself a departure neither merges nor stops", {
   # define_trips() overwrote the last ping's departure with an arrival, one departure
   # short: after one voyage the departures were recycled into a voyage across the port
-  # stay, after two the run stopped ("departures and arrivals do not pair"), as it did
+  # call, after two the run stopped ("departures and arrivals do not pair"), as it did
   # on 2023 of the Icelandic data. The one-ping voyage at the end now has no duration
   # and is dropped; the voyages before it are untouched.
   mk <- function(inh) {
@@ -217,11 +227,11 @@ test_that("method jepol: a last ping that is itself a departure neither merges n
       port_id = ifelse(inh == 1, "P1", NA_character_)
     )
   }
-  one <- rb_cut_trip_voyages(mk(c(1, 1, 0, 0, 0, 1, 1, 0)), method = "jepol")
+  one <- rb_create_voyages(mk(c(1, 1, 0, 0, 0, 1, 1, 0)), method = "jepol")
   expect_equal(nrow(one), 1)
   expect_equal(one$port_to, "P1")
   expect_equal(one$n_pings, 4)
-  two <- rb_cut_trip_voyages(mk(c(1, 0, 0, 1, 0, 0, 1, 0)), method = "jepol")
+  two <- rb_create_voyages(mk(c(1, 0, 0, 1, 0, 0, 1, 0)), method = "jepol")
   expect_equal(nrow(two), 2)
   expect_true(all(two$port_to == "P1"))
   expect_true(all(two$T1[-1] >= two$T2[-nrow(two)]))
@@ -240,8 +250,8 @@ test_that("method runs numbers the sea runs as the old rb_trip() did, vessel by 
       dplyr::ungroup() |>
       dplyr::pull(tid)
   }
-  v <- rb_cut_trip_voyages(tagged, method = "runs", by_year = FALSE)
-  a <- rb_assign_trip(tagged, v, by_year = FALSE)
+  v <- rb_create_voyages(tagged, method = "runs", by_year = FALSE)
+  a <- rb_add_voyages(tagged, v, by_year = FALSE)
   a <- a[order(a$vid, a$time), ]
   r <- unlist(lapply(split(!is.na(a$port_id), a$vid), rb_trip_ref))
   expect_equal(ifelse(r > 0, r, NA), a$voyage_id, ignore_attr = TRUE)
@@ -250,8 +260,8 @@ test_that("method runs numbers the sea runs as the old rb_trip() did, vessel by 
 test_that("methods runs and jepol: a data frame and a lazy table give the same voyages", {
   skip_if_not_installed("duckdbfs")
   for (m in c("runs", "jepol")) {
-    a <- rb_cut_trip_voyages(tagged, method = m)
-    b <- dplyr::collect(rb_cut_trip_voyages(
+    a <- rb_create_voyages(tagged, method = m)
+    b <- dplyr::collect(rb_create_voyages(
       duckdbfs::as_dataset(tagged),
       method = m,
       batch_pings = 1e5
@@ -266,16 +276,31 @@ test_that("methods runs and jepol: a data frame and a lazy table give the same v
   }
 })
 
-test_that("a stay key in the stays reaches the pings (stay_id), the stay's values do not", {
-  st <- stays |>
-    dplyr::arrange(vid, T_in) |>
-    dplyr::mutate(stay_id = dplyr::row_number(), .by = vid)
-  v <- rb_cut_trip_voyages(pings, st, min_pings = 10)
-  a <- rb_assign_trip(pings, v, stays = st)
-  expect_true(all(c("stay_id", "stay_port_id") %in% names(a)))
-  expect_equal(is.na(a$stay_id), is.na(a$stay_port_id))
-  b <- rb_assign_trip(pings, v, stays = stays)
-  expect_false("stay_id" %in% names(b))
+test_that("a port call's key reaches the pings (port_call_id), its values do not", {
+  # numbered per vessel by T_in, whatever the year
+  expect_equal(
+    calls$port_call_id,
+    as.numeric(stats::ave(seq_len(nrow(calls)), calls$vid, FUN = seq_along))
+  )
+  expect_equal(calls$year, as.numeric(format(calls$T_in, "%Y")))
+  v <- rb_create_voyages(pings, calls, min_pings = 10)
+  a <- rb_add_voyages(pings, v, port_calls = calls)
+  expect_true(all(c("port_call_id", "port_call_port_id") %in% names(a)))
+  expect_equal(is.na(a$port_call_id), is.na(a$port_call_port_id))
+  expect_false(any(c("T_in", "T_out", "dur_h", "year") %in% names(a)))
+  # the key finds the port call the ping lies in
+  j <- dplyr::inner_join(
+    a[!is.na(a$port_call_id), c("vid", "time", "port_call_id")],
+    calls[, c("vid", "port_call_id", "T_in", "T_out")],
+    by = c("vid", "port_call_id")
+  )
+  expect_true(all(j$time >= j$T_in & j$time <= j$T_out))
+  b <- rb_add_voyages(
+    pings,
+    v,
+    port_calls = dplyr::select(calls, -port_call_id)
+  )
+  expect_false("port_call_id" %in% names(b))
 })
 test_that("rb_add_trips assigns trip ids correctly with robust defaults and warnings", {
   # Minimal mock VMS data with default column names
@@ -307,7 +332,7 @@ test_that("rb_add_trips assigns trip ids correctly with robust defaults and warn
 
   # Run function (no warning expected: nothing missing, no name collision)
   expect_warning(
-    out <- rb_link_trip_logbook(ve, le),
+    out <- rb_add_logbook_trip(ve, le),
     regexp = NA
   )
 
@@ -322,13 +347,13 @@ test_that("rb_add_trips assigns trip ids correctly with robust defaults and warn
   # Test warning on missing columns
   ve_bad <- ve[, -1, drop = FALSE] # drop 'vid'
   expect_warning(
-    rb_link_trip_logbook(ve_bad, le),
+    rb_add_logbook_trip(ve_bad, le),
     "Missing the following columns in VMS data"
   )
 
   le_bad <- le[, -1, drop = FALSE] # drop 'vid'
   expect_warning(
-    rb_link_trip_logbook(ve, le_bad),
+    rb_add_logbook_trip(ve, le_bad),
     "Missing the following columns in logbook data"
   )
 
@@ -338,7 +363,7 @@ test_that("rb_add_trips assigns trip ids correctly with robust defaults and warn
     time = as.POSIXct("2022-01-01 10:00:00")
   )
   expect_warning(
-    rb_link_trip_logbook(ve_nomatch, le),
+    rb_add_logbook_trip(ve_nomatch, le),
     "No trip IDs were matched to the VMS data"
   )
 
@@ -346,7 +371,7 @@ test_that("rb_add_trips assigns trip ids correctly with robust defaults and warn
   # suffixes (.x/.y) and the logbook side survives the drop, with a warning
   ve_clash <- dplyr::mutate(ve, T1 = 1)
   expect_warning(
-    out_clash <- rb_link_trip_logbook(ve_clash, le),
+    out_clash <- rb_add_logbook_trip(ve_clash, le),
     "occur in both"
   )
   expect_true("T1.x" %in% names(out_clash))
@@ -430,7 +455,7 @@ test_that("trips to landings: a cascade of unambiguous steps, then many trips to
 
 test_that("rb_pad_harbour() puts the ports on a voyage's end pings, in port NA or an id of 0 or less", {
   expect_identical(names(formals(rb_pad_harbour)), c("voyage_id", "port_id"))
-  # rb_assign_trip() leaves a ping in port with no voyage
+  # rb_add_voyages() leaves a ping in port with no voyage
   expect_equal(
     rb_pad_harbour(c(NA, 1, 1, 1, NA), c(7, NA, NA, NA, 9)),
     c(7, 7, NA, 9, 9)
@@ -449,7 +474,7 @@ test_that("rb_pad_harbour() puts the ports on a voyage's end pings, in port NA o
   expect_equal(rb_pad_harbour(c(NA, 1, 1, 1), c(NA, 8, NA, 6)), c(NA, 8, NA, 6))
 })
 
-# rb_cut_trip_voyages(method = "cnr"): CNR-IRBIM's create_fishing_trip(), recoded in C++. The fixture is the R
+# rb_create_voyages(method = "cnr"): CNR-IRBIM's create_fishing_trip(), recoded in C++. The fixture is the R
 # function's own output on its own Italian tracks (no coastal zone: ramb does not carry CNR's), made by
 # data-raw/cnr_trips.R.
 cnr_italy <- function() {
@@ -469,7 +494,7 @@ test_that("method cnr gives the R function's trips and ports on its Italian trac
   d <- cnr_italy()
   # collected once: a data-frame call unregisters the tables behind lazy ones, here the harbours behind d$pings
   p <- as.data.frame(dplyr::collect(d$pings))
-  v <- rb_cut_trip_voyages(
+  v <- rb_create_voyages(
     p,
     method = "cnr",
     ports = d$hp,
@@ -494,7 +519,7 @@ test_that("method cnr gives the R function's trips and ports on its Italian trac
   expect_equal(got, ref, ignore_attr = TRUE)
   # on these tracks the sphere gives the same ports as the ellipsoid
   skip_if_not_installed("s2")
-  w <- rb_cut_trip_voyages(
+  w <- rb_create_voyages(
     p,
     method = "cnr",
     ports = d$hp,
@@ -511,7 +536,7 @@ test_that("method cnr gives the R function's trips and ports on its Italian trac
 test_that("method cnr: parquet read lazily, in batches, gives the data frame's voyages", {
   skip_if_not_installed("lwgeom")
   d <- cnr_italy()
-  lz <- rb_cut_trip_voyages(
+  lz <- rb_create_voyages(
     d$pings,
     method = "cnr",
     ports = d$hp,
@@ -523,7 +548,7 @@ test_that("method cnr: parquet read lazily, in batches, gives the data frame's v
   )
   expect_s3_class(lz, "tbl_lazy")
   lz <- as.data.frame(dplyr::collect(lz))
-  df <- rb_cut_trip_voyages(
+  df <- rb_create_voyages(
     as.data.frame(dplyr::collect(d$pings)),
     method = "cnr",
     ports = d$hp,
@@ -601,18 +626,18 @@ test_that("method cnr checks its input and settings", {
     lat = 0,
     port_id = NA_integer_
   )
-  expect_error(rb_cut_trip_voyages(d, method = "cnr"), "speed")
+  expect_error(rb_create_voyages(d, method = "cnr"), "speed")
   d$speed <- 3
   expect_error(
-    rb_cut_trip_voyages(d, method = "cnr", cnr = list(n_pong = 4)),
+    rb_create_voyages(d, method = "cnr", cnr = list(n_pong = 4)),
     "Unknown `cnr` setting"
   )
   expect_error(
-    rb_cut_trip_voyages(d, method = "cnr", cnr = list(distance = "planar")),
+    rb_create_voyages(d, method = "cnr", cnr = list(distance = "planar")),
     "geodesic"
   )
   # all at sea, no silence: no voyage, and the result has the voyage columns
-  v <- rb_cut_trip_voyages(d, method = "cnr")
+  v <- rb_create_voyages(d, method = "cnr")
   expect_equal(nrow(v), 0)
   expect_named(
     v,
@@ -620,7 +645,7 @@ test_that("method cnr checks its input and settings", {
   )
 })
 
-# rb_cut_trip_voyages(method = "iapesca"): Ifremer's Detect_FishingTrips(), recoded as one DuckDB query. The fixture is
+# rb_create_voyages(method = "iapesca"): Ifremer's Detect_FishingTrips(), recoded as one DuckDB query. The fixture is
 # the installed iapesca's own output on CNR-IRBIM's Italian tracks, made by data-raw/iapesca_trips.R.
 ia_italy <- function() {
   h <- dplyr::collect(rb_read_example("wkssfgeo_cnr_med_harbours"))
@@ -635,7 +660,7 @@ ia_italy <- function() {
 
 test_that("method iapesca gives the published function's trips on the Italian tracks", {
   d <- ia_italy()
-  v <- rb_cut_trip_voyages(
+  v <- rb_create_voyages(
     d$p,
     method = "iapesca",
     ports = d$hp,
@@ -659,7 +684,7 @@ test_that("method iapesca gives the published function's trips on the Italian tr
   expect_equal(got, ref, ignore_attr = TRUE)
   expect_true(all(v$port_from %in% c(NA, d$hp$port_id)))
   # the default CRS is the UTM zone of the mean position, here 33N
-  w <- rb_cut_trip_voyages(
+  w <- rb_create_voyages(
     d$p,
     method = "iapesca",
     ports = d$hp,
@@ -674,7 +699,7 @@ test_that("method iapesca gives the published function's trips on the Italian tr
 
 test_that("method iapesca: parquet read lazily gives the data frame's voyages", {
   d <- ia_italy()
-  lz <- rb_cut_trip_voyages(
+  lz <- rb_create_voyages(
     rb_read_example("wkssfgeo_cnr_ais"),
     method = "iapesca",
     ports = d$hp,
@@ -686,7 +711,7 @@ test_that("method iapesca: parquet read lazily gives the data frame's voyages", 
   expect_s3_class(lz, "tbl_lazy")
   lz <- as.data.frame(dplyr::collect(lz))
   lz <- lz[order(lz$MMSI, lz$T1), ]
-  df <- rb_cut_trip_voyages(
+  df <- rb_create_voyages(
     d$p,
     method = "iapesca",
     ports = d$hp,
@@ -740,7 +765,7 @@ test_that("method iapesca cuts at a run in port only an hour after the previous 
     )
   }
   # 40 min out, 5 h in port, out again: one voyage, since the first ended under an hour after the track began
-  a <- rb_cut_trip_voyages(
+  a <- rb_create_voyages(
     track(3, 0.05, 150, 0.2, 3),
     method = "iapesca",
     ports = port,
@@ -749,7 +774,7 @@ test_that("method iapesca cuts at a run in port only an hour after the previous 
   expect_equal(nrow(a), 1)
   expect_equal(c(a$port_from, a$port_to), c(7L, 7L))
   # 2.7 h out, 10 min in port, out again: two voyages
-  b <- rb_cut_trip_voyages(
+  b <- rb_create_voyages(
     track(3, 0.2, 5, 0.2, 3),
     method = "iapesca",
     ports = port,
@@ -765,13 +790,13 @@ test_that("method iapesca checks its input and settings", {
     lon = 3,
     lat = 50
   )
-  expect_error(rb_cut_trip_voyages(d, method = "iapesca"), "needs `ports`")
+  expect_error(rb_create_voyages(d, method = "iapesca"), "needs `ports`")
   port <- sf::st_sf(
     port_id = 1L,
     geometry = sf::st_sfc(sf::st_point(c(3, 50)), crs = 4326)
   )
   expect_error(
-    rb_cut_trip_voyages(
+    rb_create_voyages(
       d,
       method = "iapesca",
       ports = port,
@@ -780,7 +805,7 @@ test_that("method iapesca checks its input and settings", {
     "projected CRS in metres"
   )
   expect_error(
-    rb_cut_trip_voyages(
+    rb_create_voyages(
       d,
       method = "iapesca",
       ports = port,
@@ -788,4 +813,118 @@ test_that("method iapesca checks its input and settings", {
     ),
     "Unknown `iapesca` setting"
   )
+})
+
+# rb_create_port_calls() for the methods other than "dwell": the time in port between two of the method's
+# voyages (fishycode plan 032). The expected port calls are built here in R from the voyages, independently of
+# the function's SQL.
+calls_between <- function(v, vid = "vid") {
+  v <- v[order(v[[vid]], v$T1, v$T2), ]
+  nxt <- function(x) {
+    stats::ave(seq_along(x), v[[vid]], FUN = function(i) c(i[-1], NA))
+  }
+  k <- nxt(v$T1)
+  d <- data.frame(
+    vid = v[[vid]],
+    T_in = v$T2,
+    T_out = v$T1[k],
+    port_id = dplyr::coalesce(v$port_to, v$port_from[k])
+  )
+  d <- d[!is.na(d$T_out) & !is.na(d$port_id), ]
+  d$port_call_id <- as.numeric(stats::ave(
+    seq_len(nrow(d)),
+    d$vid,
+    FUN = seq_along
+  ))
+  rownames(d) <- NULL
+  d
+}
+
+test_that("port calls of runs and jepol lie between the method's voyages, a split at sea makes none", {
+  for (m in c("runs", "jepol")) {
+    v <- rb_create_voyages(tagged, method = m, by_year = FALSE, max_dur_h = 24)
+    pc <- rb_create_port_calls(tagged, method = m, max_dur_h = 24)
+    expect_gt(nrow(pc), 0)
+    expect_true(all(
+      pc$rule == m & pc$evidence == m & pc$basis == "reconstructed"
+    ))
+    expect_equal(pc$year, as.numeric(format(pc$T_in, "%Y")))
+    want <- calls_between(as.data.frame(v))
+    got <- as.data.frame(pc)[, c(
+      "vid",
+      "T_in",
+      "T_out",
+      "port_id",
+      "port_call_id"
+    )]
+    rownames(got) <- NULL
+    expect_equal(got, want[, names(got)], ignore_attr = TRUE, info = m)
+  }
+  # jepol splits voyages over max_dur_h at sea: those cuts have no port at either end, so fewer port calls
+  # than gaps between voyages
+  v <- rb_create_voyages(
+    tagged,
+    method = "jepol",
+    by_year = FALSE,
+    max_dur_h = 24
+  )
+  gaps <- nrow(v) - length(unique(v$vid))
+  expect_lt(
+    nrow(rb_create_port_calls(tagged, method = "jepol", max_dur_h = 24)),
+    gaps
+  )
+})
+
+test_that("port calls of runs: a lazy table gives the data frame's, and dwell refuses the other methods' arguments", {
+  skip_if_not_installed("duckdbfs")
+  a <- rb_create_port_calls(tagged, method = "runs")
+  b <- dplyr::collect(rb_create_port_calls(
+    duckdbfs::as_dataset(tagged),
+    method = "runs"
+  ))
+  b <- b[order(b$vid, b$T_in), ]
+  expect_equal(as.data.frame(b), as.data.frame(a), ignore_attr = TRUE)
+  w <- range(a$T_in)
+  w <- c(w[1], w[1] + (w[2] - w[1]) / 2)
+  aw <- rb_create_port_calls(tagged, method = "runs", t_in_window = w)
+  expect_true(all(aw$T_in >= w[1] & aw$T_in < w[2]))
+  expect_lt(nrow(aw), nrow(a))
+  expect_error(rb_create_port_calls(pings, ports, min_pings = 3), "other than")
+  expect_error(rb_create_port_calls(pings), "needs `ports`")
+})
+
+test_that("port calls of iapesca lie between its voyages, columns renamed alike", {
+  d <- ia_italy()
+  v <- rb_create_voyages(
+    d$p,
+    method = "iapesca",
+    ports = d$hp,
+    by_year = FALSE,
+    iapesca = list(crs_m = 32633),
+    vid = MMSI,
+    time = datetime,
+    lon = longitude,
+    lat = latitude
+  )
+  pc <- rb_create_port_calls(
+    d$p,
+    method = "iapesca",
+    ports = d$hp,
+    iapesca = list(crs_m = 32633),
+    vid = MMSI,
+    time = datetime,
+    lon = longitude,
+    lat = latitude
+  )
+  expect_true("MMSI" %in% names(pc))
+  expect_gt(nrow(pc), 0)
+  want <- calls_between(as.data.frame(v), vid = "MMSI")
+  got <- data.frame(
+    vid = pc$MMSI,
+    T_in = pc$T_in,
+    T_out = pc$T_out,
+    port_id = pc$port_id,
+    port_call_id = pc$port_call_id
+  )
+  expect_equal(got, want[, names(got)], ignore_attr = TRUE)
 })

@@ -1,3 +1,44 @@
+# ramb 2026.10.19.2
+
+## Names by output shape, and port calls (fishycode plan 032)
+
+A function's verb now says what it returns, after tidyverse's `count()`/`add_count()` (the maintainer, 2026-10-19): `rb_create_*()` a table of its own, `rb_add_*()` the input with columns added; `rb_flag_*()` and `rb_link_*()` (a table of pairs) keep their verbs. A vessel's time in port is a **port call**, no longer a "stay".
+
+| old | new |
+|---|---|
+| `rb_find_trip_stays()` | `rb_create_port_calls()` |
+| `rb_cut_trip_voyages()` | `rb_create_voyages()` |
+| `rb_cut_record_stretches()` | `rb_create_record_stretches()` |
+| `rb_build_record_windows()` | `rb_create_record_windows()` |
+| `rb_build_record_pings()` | `rb_create_record_pings()` |
+| `rb_assign_trip()` | `rb_add_voyages()` |
+| `rb_assign_record()` | `rb_add_record()` |
+| `rb_assign_fishing()` | `rb_add_fishing()` |
+| `rb_assign_effort()` | `rb_add_effort()` |
+| `rb_link_trip_logbook()` | `rb_add_logbook_trip()` |
+| `rb_build_catch_units()` | `rb_add_catch_units()` |
+| `rb_create_timestamp()` | `rb_add_timestamp()` |
+
+- Each old name is kept for this release only, as an alias (`?ramb-renamed`) that warns once per session, takes the old argument names and gives the old result: `rb_find_trip_stays()` without the new `year` and `port_call_id`, `rb_assign_trip()` with `stay_port_id` and `stay_id`, `rb_create_timestamp()` a vector. Tested in `test-renamed.R`.
+- `rb_create_port_calls()` takes the methods of `rb_create_voyages()`: port calls and voyages are the two halves of a track. `"dwell"` (the default) is the old stay rule, in port for at least `min_dwell_h` (was `min_stay_h`; the per-port table `min_dwell`, was `min_stay`, has a column `min_dwell_h`). For `"runs"`, `"jepol"`, `"cnr"` and `"iapesca"` a port call is the time in port between two of the method's voyages, from the end of one to the start of the next, at the port the first ended in, else the port the second began from; where neither voyage reaches a port (a jepol split, a silence at sea) there is none. Their arguments go in `...`; `ports` is needed only by `"dwell"` and `"iapesca"`.
+- Port calls carry `year` (of `T_in`) and the key `port_call_id`, numbered per vessel by `T_in`, not per year: a port call is not cut at New Year, so a ping in one over New Year finds it by `vid` and `port_call_id` alone (the maintainer, 2026-10-19). Voyages keep `voyage_id` per vessel-year, since they are cut at New Year.
+- `rb_create_voyages()`: `method = "stays"` is `"dwell"`, and the argument `stays` is `port_calls`.
+- `rb_add_voyages()`: the argument `stays` is `port_calls`; the pings get `port_call_port_id` (was `stay_port_id`) and `port_call_id` (was `stay_id`) where the port calls carry the key, which those of `rb_create_port_calls()` now always do.
+- `rb_create_record_stretches()`: the argument `stay` is `port_call`.
+- `rb_add_timestamp(data, date, time, name = "time")` returns `data` with the timestamp column added, never overwriting one; `rb_create_timestamp()` returned a vector.
+- Not renamed: `rb_limit_record_duration()`, `rb_share_catch()`, `rb_interpolate_track()` (their verbs say what they do), `rb_pad_harbour()` and `rb_read_harbours_mfri()`, and the methods `"runs"`, `"jepol"`, `"cnr"`, `"iapesca"` with their settings lists `cnr` and `iapesca`.
+- The step registry has the new names; its test checks that a step's verb is `add` or `flag`, and that step 1 names its objects (`voyages`, `port_calls`) where the other steps name their stage.
+
+Fix list for fishycode (all calls found there on 2026-10-19):
+
+- `curate/port_stay.R:103`: `rb_find_trip_stays(…, min_stay_h = G_H, …)` → `rb_create_port_calls(…, min_dwell_h = G_H, …)` (it returns `year` and `port_call_id` too).
+- `curate/ais_voyage.R:109`: `rb_cut_trip_voyages(clean, st_g, …)` → `rb_create_voyages(clean, st_g, …)` (positional `port_calls`).
+- `curate/ais_voyage.R:119`: `rb_assign_trip(clean, v_b, stays = st_g)` → `rb_add_voyages(clean, v_b, port_calls = st_g)`, with the key column `port_call_id` (was `stay_id`) in `st_g` and on the pings.
+- `curate/station_window.R:102`: `rb_build_record_windows()` → `rb_create_record_windows()`.
+- `curate/ais_catch.R:133`: `rb_build_catch_units()` → `rb_add_catch_units()`.
+- `R/trail_sql.R:93-97`: `rb_assign_fishing()`, `rb_assign_effort()`, `rb_assign_record()` → `rb_add_fishing()`, `rb_add_effort()`, `rb_add_record()`.
+- `curate/checks/survey_tow_times.R:32`: `rb_cut_record_stretches(…, stay = "stay", …)` → `rb_create_record_stretches(…, port_call = "stay", …)`.
+
 # ramb 2026.10.19.1
 
 - `rb_cut_trip_voyages(method = "iapesca")`: new, Ifremer's trip finder (`Detect_FishingTrips()` of iapesca 0.1, J. Rodriguez, GPL; its harbour mode), recoded as one DuckDB query for fishycode plan 031's voyage bench (the maintainer, 2026-10-19). Its rule is vectorised, so unlike `"cnr"` it needs no C++: data frames and lazy tables (parquet) run the same query, with no batching. Pings duplicated in time and place are dropped, then up to five times the first of each run of pings reached at 25 knots or more; a ping is in port within a buffer of the `ports` polygons (2 km, or 1 % of the track's diagonal up to 2 nautical miles, grown when no ping falls inside); a voyage is a run of pings outside it, cut at a run in port only if an hour has passed since the previous voyage end. New argument `iapesca` (a list overriding `max_speed_kn`, `max_pass`, `buf_start_m`, `buf_max_m`, `min_stop_s`, `crs_m`). The geometry is planar in a metric CRS, by default the UTM zone of the pings' mean position, as the R function is with projected input; it never reads `sf::sf_use_s2()`. Added: `port_from` and `port_to`, the nearest port of the in-port ping before and after the voyage.

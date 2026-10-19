@@ -18,8 +18,8 @@ were missing.
 \description{
 Warns if any trip in an eflalo table starts in one year and lands in
 another: \code{vmstools::splitAmongPings()} does not handle such trips, so they
-should be split first. Departure and landing timestamps are added with
-\code{\link[=rb_create_timestamp]{rb_create_timestamp()}} where missing; the check is
+should be split first. Departure and landing timestamps are added where
+missing, as \code{\link[=rb_add_timestamp]{rb_add_timestamp()}} adds them; the check is
 \code{\link[=rb_detect_crosses_year]{rb_detect_crosses_year()}}.
 }
 \examples{

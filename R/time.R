@@ -1,37 +1,71 @@
-#' Create timestamps from date and time character columns
+#' Add a timestamp from a date and a time column
 #'
-#' Combines separate date and time character vectors into `POSIXct`
-#' timestamps, warning where the conversion fails; an impossible leap day
-#' (29 February in a non-leap year, with a `%d/%m/%Y` date format) is set
+#' Combines a column of dates and a column of times, both character, into one `POSIXct` column, warning where the
+#' conversion fails; an impossible leap day (29 February in a non-leap year, with a `%d/%m/%Y` date format) is set
 #' to `NA`.
 #'
-#' @param date,time Character vectors of dates and times, of equal length.
+#' @param data A data frame.
+#' @param date,time The columns of `data` that hold the dates and the times, as character.
+#' @param name The name of the new column, default `"time"`. An existing column is never overwritten.
 #' @param tz The time zone of the result, default `"GMT"`.
 #' @param format The date-time format, default `"%d/%m/%Y %H:%M:%S"`.
 #'
-#' @return A `POSIXct` vector the length of `date`, `NA` where the
-#'   conversion fails.
+#' @return `data` with the column `name` added, `NA` where the conversion fails.
 #'
 #' @examples
-#' rb_create_timestamp("14/09/2025", "15:30:00")
-#' rb_create_timestamp(c("01/01/2020", "31/12/2021"), c("00:00:00", "23:59:59"))
-#' rb_create_timestamp("2025-09-14", "12:01:57", format = "%Y-%m-%d %H:%M:%S")
-#' rb_create_timestamp("14/09/2025", "15:30:00", tz = "Europe/Reykjavik")
-#' try(rb_create_timestamp("2025-09-14", "12:01:57"))
-#' try(rb_create_timestamp(c("14/09/2025", "15/09/2025"), "15:30:00"))
-#' rb_create_timestamp("29/02/2023", "12:00:00")
+#' d <- data.frame(date = c("14/09/2025", "29/02/2023"), clock = c("15:30:00", "12:00:00"))
+#' rb_add_timestamp(d, date, clock)
+#' rb_add_timestamp(d, date, clock, name = "departure", tz = "Europe/Reykjavik")
+#' iso <- data.frame(date = "2025-09-14", clock = "12:01:57")
+#' rb_add_timestamp(iso, date, clock, format = "%Y-%m-%d %H:%M:%S")
+#' try(rb_add_timestamp(iso, date, clock))
 #'
 #' @export
-rb_create_timestamp <- function(
+rb_add_timestamp <- function(
+  data,
+  date,
+  time,
+  name = "time",
+  tz = "GMT",
+  format = "%d/%m/%Y %H:%M:%S"
+) {
+  if (!is.data.frame(data)) {
+    stop(
+      "`data` must be a data frame; collect a lazy table first.",
+      call. = FALSE
+    )
+  }
+  if (missing(date) || missing(time)) {
+    stop("Both `date` and `time` must be given.", call. = FALSE)
+  }
+  if (!is.character(name) || length(name) != 1) {
+    stop("`name` must be a single character string.", call. = FALSE)
+  }
+  if (name %in% names(data)) {
+    stop(
+      "column `",
+      name,
+      "` already exists; choose another `name`",
+      call. = FALSE
+    )
+  }
+  data[[name]] <- .rb_timestamp(
+    dplyr::pull(data, {{ date }}),
+    dplyr::pull(data, {{ time }}),
+    tz = tz,
+    format = format
+  )
+  data
+}
+
+# The vector body of rb_add_timestamp(), and of the alias rb_create_timestamp().
+.rb_timestamp <- function(
   date,
   time,
   tz = "GMT",
   format = "%d/%m/%Y %H:%M:%S"
 ) {
   # Input checks
-  if (missing(date) || missing(time)) {
-    stop("Both 'date' and 'time' must be provided.", call. = FALSE)
-  }
   if (!is.character(date)) {
     stop("'date' must be a character vector.", call. = FALSE)
   }
@@ -255,8 +289,8 @@ rb_detect_crosses_year <- function(datetime1, datetime2) {
 #'
 #' Warns if any trip in an eflalo table starts in one year and lands in
 #' another: `vmstools::splitAmongPings()` does not handle such trips, so they
-#' should be split first. Departure and landing timestamps are added with
-#' [rb_create_timestamp()] where missing; the check is
+#' should be split first. Departure and landing timestamps are added where
+#' missing, as [rb_add_timestamp()] adds them; the check is
 #' [rb_detect_crosses_year()].
 #'
 #' @param eflalo A data frame with `FT_DDAT`, `FT_DTIME`, `FT_LDAT` and
@@ -308,12 +342,12 @@ rb_check_trip_crosses_year <- function(eflalo) {
     ))
   }
 
-  # Add (if necessary) combined POSIXct columns using rb_create_timestamp
+  # Add (if necessary) combined POSIXct columns, as rb_add_timestamp() does
   if (!"FT_DDATIM" %in% colnames(eflalo)) {
-    eflalo$FT_DDATIM <- rb_create_timestamp(eflalo$FT_DDAT, eflalo$FT_DTIME)
+    eflalo$FT_DDATIM <- .rb_timestamp(eflalo$FT_DDAT, eflalo$FT_DTIME)
   }
   if (!"FT_LDATIM" %in% colnames(eflalo)) {
-    eflalo$FT_LDATIM <- rb_create_timestamp(eflalo$FT_LDAT, eflalo$FT_LTIME)
+    eflalo$FT_LDATIM <- .rb_timestamp(eflalo$FT_LDAT, eflalo$FT_LTIME)
   }
 
   # Check for trips that cross the year using rb_detect_crosses_year

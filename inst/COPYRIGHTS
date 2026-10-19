@@ -11,14 +11,14 @@ src/geodesic.h
 
 ramb recodes (does not copy) this third-party code:
 
-src/trip_cnr.cpp (rb_cut_trip_voyages(method = "cnr"))
+src/trip_cnr.cpp (rb_create_voyages(method = "cnr"))
   The trip rule of create_fishing_trip() and its helpers in
   R-dev/galdelli_pulcinella_tassetti/R/global_functions.R of the ICES Workshop
   WKSSFGEO, branch dev_branch (R4AIS v1.0.1, doi 10.5281/zenodo.4757505),
   by A. Galdelli, J. Pulcinella, A.N. Tassetti and E. Armelloni (CNR-IRBIM).
   License: GNU GPL 3, the folder's own licence, as ramb's GPL (>= 3) allows.
 
-R/trip.R (rb_cut_trip_voyages(method = "iapesca"))
+R/trip.R (rb_create_voyages(method = "iapesca"))
   The trip rule of Detect_FishingTrips(), CleanSpuriousSpeeds() and CalcSpeed()
   of the R package iapesca 0.1 by Julien Rodriguez (Ifremer),
   https://github.com/JulRodrigu/r-packages_iapesca, commit 1b7248c, recoded as

@@ -16,7 +16,7 @@
 #'
 #' A ping stands for the interval to the vessel's next ping (`interval = "next"`) or since its previous one
 #' (`"previous"`, the ICES VMS data call's choice), within the vessel and the `by` groups (e.g. the voyage, so
-#' an interval never spans a stay in port). An interval longer than `max_interval_s` is capped at it or dropped
+#' an interval never spans a port call). An interval longer than `max_interval_s` is capped at it or dropped
 #' (`long`); one shorter than `min_interval_s` is dropped. The ICES data call drops intervals over 2 hours and
 #' under 5 seconds: `long = "drop"`, `min_interval_s = 5`. The first or last ping of a group has no interval.
 #'
@@ -53,11 +53,11 @@
 #'   width = 60
 #' )
 #' vessels <- tibble::tibble(vid = 1L, kw = 1000)
-#' e <- rb_assign_effort(pings, vessels, width = "width")
+#' e <- rb_add_effort(pings, vessels, width = "width")
 #' e[, c("time", "hours", "kw_hours", "pressure", "interval_flag")]
 #' # the effort of the pings called fishing
 #' sum(e$hours[e$fishing])
-rb_assign_effort <- function(
+rb_add_effort <- function(
   pings,
   vessels = NULL,
   by = NULL,
@@ -80,7 +80,7 @@ rb_assign_effort <- function(
   )
   proto <- .rb_check_input(
     pings,
-    "rb_assign_effort",
+    "rb_add_effort",
     cols = c(vid = vid, time = time),
     also = also,
     types = c(

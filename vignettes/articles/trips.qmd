@@ -86,7 +86,7 @@ d <-
 
 ## Step 1: cut the track into voyages
 
-[rb_cut_trip_voyages()](../reference/rb_cut_trip_voyages.html) offers five rules (`method`); here we compare
+[rb_create_voyages()](../reference/rb_create_voyages.html) offers five rules (`method`); here we compare
 two of them:
 
 * `method = "runs"`: every run of pings in port, however short, ends a
@@ -99,8 +99,8 @@ two of them:
   longer than `max_dur_h` hours are split at long gaps between pings.
 
 ```{r}
-jepol <- rb_cut_trip_voyages(d, method = "jepol")
-runs  <- rb_cut_trip_voyages(d, method = "runs")
+jepol <- rb_create_voyages(d, method = "jepol")
+runs  <- rb_create_voyages(d, method = "runs")
 ```
 
 Both return one row per voyage: vessel, year, voyage id, start and end
@@ -118,20 +118,29 @@ count(jepol, vid, name = "voyages_jepol") |>
   full_join(count(runs, vid, name = "voyages_runs"), by = "vid")
 ```
 
-A third rule, `method = "stays"`, cuts the track at port *stays* found
-by [rb_find_trip_stays()](../reference/rb_find_trip_stays.html) — stays being longer stops, so brief harbour
-passages do not end a voyage. That is the rule used in the full
+A third rule, `method = "dwell"`, cuts the track at *port calls* found
+by [rb_create_port_calls()](../reference/rb_create_port_calls.html): time in port of at least a minimum dwell,
+so brief harbour passages do not end a voyage. That is the rule used in the full
 fishing-activity flow.
+
+Port calls and voyages are the two halves of a track, and
+[rb_create_port_calls()](../reference/rb_create_port_calls.html) takes the same methods. With
+`method = "jepol"` its port calls are the times in port between jepol's
+voyages, numbered per vessel:
+
+```{r}
+rb_create_port_calls(d, method = "jepol")
+```
 
 ## Putting the trip back on the pings
 
-[rb_assign_trip()](../reference/rb_assign_trip.html) joins the voyage table back onto the pings. Each
+[rb_add_voyages()](../reference/rb_add_voyages.html) joins the voyage table back onto the pings. Each
 ping gets a `trip_id` and a `trip_basis` — `"reconstructed"` when the
 trip was rebuilt from the track, `"none"` where no voyage covers the
 ping (the port pings here):
 
 ```{r}
-p <- d |> rb_assign_trip(jepol)
+p <- d |> rb_add_voyages(jepol)
 p |> count(trip_basis)
 ```
 
@@ -196,7 +205,7 @@ this year, the jepol rule five — the difference is one afternoon:
 ```{r}
 ex10 <-
   d |>
-  rb_assign_trip(runs) |>
+  rb_add_voyages(runs) |>
   filter(vid == "EX_10", lubridate::date(time) == as.Date("2014-07-18"))
 
 mapview(harbours |> filter(port_id == 141),
@@ -213,9 +222,10 @@ mapview(harbours |> filter(port_id == 141),
 
 Which is right? If the afternoon runs were the skipper moving berth or
 testing the engine, dropping them (jepol) is honest; if gear was in the
-water, only `"runs"` keeps them. The third rule, `"stays"`, goes the
-other way entirely: it ends a voyage only at a *stay*, so a brief
-harbour passage mid-trip would not split the day's trip either.
+water, only `"runs"` keeps them. The third rule, `"dwell"`, goes the
+other way entirely: it ends a voyage only at a *port call* of a minimum
+time in port, so a brief harbour passage mid-trip would not split the
+day's trip either.
 
 ### Trouble pings that bend the track
 
@@ -371,5 +381,5 @@ streams without a feed column is open work; for now, know your feeds
 and flag duplicates before impossibles.
 
 From here the flow continues with the logbook record (step 2): which
-declared trip or haul covers each ping. [rb_link_trip_logbook()](../reference/rb_link_trip_logbook.html) builds
+declared trip or haul covers each ping. [rb_add_logbook_trip()](../reference/rb_add_logbook_trip.html) builds
 the VMS-to-logbook crosswalk for that.

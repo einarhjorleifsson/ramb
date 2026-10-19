@@ -44,7 +44,7 @@ pings <- tibble::tibble(
   speed = spd,
   speed_min = 2,
   speed_max = 5,
-  stay = ifelse(mins > 490, 7L, NA_integer_)
+  port_call = ifelse(mins > 490, 7L, NA_integer_)
 )
 tows <- tibble::tibble(
   .sid = 1:5,
@@ -56,11 +56,15 @@ tows <- tibble::tibble(
 
 test_that("stretches: the windowed speed, gaps, the shortest dropped, the prior's cut; data frame = lazy table", {
   skip_if_not_installed("duckdbfs")
-  s <- rb_cut_record_stretches(pings, records = tows, stay = "stay")
-  sl <- dplyr::collect(rb_cut_record_stretches(
+  s <- rb_create_record_stretches(
+    pings,
+    records = tows,
+    port_call = "port_call"
+  )
+  sl <- dplyr::collect(rb_create_record_stretches(
     duckdbfs::as_dataset(pings),
     records = duckdbfs::as_dataset(tows),
-    stay = "stay"
+    port_call = "port_call"
   ))
   expect_equal(as.data.frame(sl), as.data.frame(s), ignore_attr = TRUE)
   expect_equal(s$s_start, m(c(60, 181, 360, 435)))
@@ -74,21 +78,30 @@ test_that("stretches: the windowed speed, gaps, the shortest dropped, the prior'
 
 test_that("stretches: own speed and no prior split at the spike and the turn", {
   skip_if_not_installed("duckdbfs")
-  s <- rb_cut_record_stretches(pings, window_s = 0, stay = "stay")
+  s <- rb_create_record_stretches(pings, window_s = 0, port_call = "port_call")
   expect_equal(s$s_start, m(c(60, 91, 185, 360, 435)))
   expect_equal(s$s_end, m(c(89, 179, 299, 390, 465)))
   # without the prior, the windowed speed smooths the turn away: one stretch holds both tows
-  s10 <- rb_cut_record_stretches(pings, stay = "stay")
+  s10 <- rb_create_record_stretches(pings, port_call = "port_call")
   expect_equal(s10$s_start[1:2], m(c(60, 360)))
   expect_equal(s10$s_end[1], m(299))
   # dip_s joins stretches closer than it
-  sd <- rb_cut_record_stretches(pings, window_s = 0, dip_s = 120, stay = "stay")
+  sd <- rb_create_record_stretches(
+    pings,
+    window_s = 0,
+    dip_s = 120,
+    port_call = "port_call"
+  )
   expect_equal(sd$s_start[1:2], m(c(60, 185)))
 })
 
 test_that("pairing: in order, one to one; twins: the lower key keeps the stretch; data frame = lazy table", {
   skip_if_not_installed("duckdbfs")
-  s <- rb_cut_record_stretches(pings, records = tows, stay = "stay")
+  s <- rb_create_record_stretches(
+    pings,
+    records = tows,
+    port_call = "port_call"
+  )
   p <- rb_link_record_stretches(tows, s)
   pl <- dplyr::collect(rb_link_record_stretches(
     duckdbfs::as_dataset(tows),
@@ -124,7 +137,7 @@ test_that("pairing: on equal widened overlap, the tow that overlaps the stretch 
 
 test_that("missing inputs: no stretches, no usable records, no pings in range", {
   skip_if_not_installed("duckdbfs")
-  s0 <- rb_cut_record_stretches(transform(
+  s0 <- rb_create_record_stretches(transform(
     pings,
     speed_min = 20,
     speed_max = 30
@@ -147,10 +160,10 @@ test_that("missing inputs: no stretches, no usable records, no pings in range", 
   expect_true(all(is.na(p0$stretch_id)))
   expect_true(all(p0$n_candidates == 0))
   bad <- transform(tows, t3 = t2)
-  pb <- rb_link_record_stretches(bad, rb_cut_record_stretches(pings))
+  pb <- rb_link_record_stretches(bad, rb_create_record_stretches(pings))
   expect_true(all(is.na(pb$stretch_id) & pb$n_candidates == 0))
   expect_error(
-    rb_cut_record_stretches(pings[, -3]),
+    rb_create_record_stretches(pings[, -3]),
     "must have a column `speed`"
   )
 })

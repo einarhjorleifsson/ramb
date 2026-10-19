@@ -16,7 +16,7 @@ rb_link_record_stretches(
 \arguments{
 \item{records}{A data frame or lazy DuckDB table of declared tows: the \code{key} columns, \code{vid}, \code{start} and \code{end}.}
 
-\item{stretches}{Stretches from \code{\link[=rb_cut_record_stretches]{rb_cut_record_stretches()}}.}
+\item{stretches}{Stretches from \code{\link[=rb_create_record_stretches]{rb_create_record_stretches()}}.}
 
 \item{key}{The columns that identify a record.}
 
@@ -33,7 +33,7 @@ input, a lazy table for lazy input.
 }
 \description{
 A step-2 link of the fishing-activity flow. Each declared tow (a logbook record) is paired with at most one
-stretch of the track at towing speed (\code{\link[=rb_cut_record_stretches]{rb_cut_record_stretches()}}), and each stretch with at most one tow, so
+stretch of the track at towing speed (\code{\link[=rb_create_record_stretches]{rb_create_record_stretches()}}), and each stretch with at most one tow, so
 no ping can belong to two tows. The pairs keep the order of both: per vessel, a later tow pairs with a later
 stretch. Of all such pairings, the one with the most overlap between the stretches and their tows, each tow
 widened by \code{slack_s} on both sides, is taken. A pair needs some overlap.

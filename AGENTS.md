@@ -9,9 +9,22 @@ fishing-activity flow. Functions are typically drafted in fishycode
 - Every exported function is named verb first: `rb_<verb>_<stage>[_<detail>]`
   for a step of the fishing-activity flow, `rb_<verb>_<object>` for a tool
   that serves every step (`rb_calc_distance()`, `rb_encode_ices_rectangle()`).
+- The verb says what comes back (fishycode plan 032, 2026-10-19, after
+  tidyverse's `count()`/`add_count()`): `rb_create_*()` a table of its own,
+  `rb_add_*()` the input with columns added, `rb_flag_*()` the input with a
+  flag column, `rb_link_*()` a table of pairs. Not `find`, `cut`, `build`
+  or `assign` (base R's `assign()` binds a variable). Other verbs name what
+  a function does (`limit`, `share`, `calc`, `detect`, ...).
 - Stage words: vessel, ping, trip, record, gear, fishing, effort, catch.
-  Example: `rb_assign_trip()` is step 1, `rb_find_trip_stays()` a step-1
-  builder.
+  Step 1 names its objects instead of the stage: `voyages`, `port_calls`
+  (`rb_create_voyages()`, `rb_create_port_calls()`, `rb_add_voyages()`);
+  the other steps keep the stage word (`rb_add_fishing()`,
+  `rb_create_record_windows()`). The registry test checks both rules.
+- A vessel's time in port is a **port call** (key `port_call_id`), not a
+  "stay"; "port" is the place word, not "harbour" (`rb_pad_harbour()` and
+  `rb_read_harbours_mfri()` are kept). Port calls and voyages are the two
+  halves of a track and share their methods (`"dwell"`, `"runs"`,
+  `"jepol"`, `"cnr"`, `"iapesca"`).
 - One function per task: variants are a `method`, `part`, `list` or
   `from`/`to` argument, never a new name
   (`rb_flag_ping_impossible(method = "sda")`,

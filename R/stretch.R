@@ -4,9 +4,9 @@
 # Ported from fishycode's TODO 56 prototype ($FISHYDATA/archive/2026-10-todo56/q2all.R; fishycode decision 090,
 # plan 013 phase 4, TODO 59). The windowed speed runs in DuckDB; the cut and the pairing are sequential, so they
 # run in R one vessel at a time, whole vessels collected in batches (tier 4, as the "jepol" method of
-# rb_cut_trip_voyages()).
+# rb_create_voyages()).
 
-#' Cut towing stretches from vessel tracks
+#' Create towing stretches from vessel tracks
 #'
 #' A step-2 builder of the fishing-activity flow: the stretches of a track at towing speed, the track's own
 #' account of where the tows were. [rb_link_record_stretches()] pairs them with the declared tows.
@@ -26,7 +26,7 @@
 #' Pings without a speed are left out. The windowed speed counts the pings in port; the stretches do not.
 #'
 #' @param pings A data frame or lazy DuckDB table with `vid`, `time`, the speed and speed range columns, and
-#'   `stay` if given.
+#'   `port_call` if given.
 #' @param records Optional: the declared tows, a data frame or lazy DuckDB table with `vid` and the `start` and
 #'   `end` columns. Records without both, or that do not end after they start, are not used, and records with
 #'   the same times (twins) count once.
@@ -36,8 +36,8 @@
 #' @param dip_s Stretches this close, in seconds, are joined; 0 joins none.
 #' @param margin_s How far, in seconds, the prior's cut may reach into the tows on either side of a turn.
 #' @param start,end The records' start and end columns.
-#' @param stay A ping column that is not `NA` while the vessel is in port (e.g. `stay_id` from
-#'   [rb_assign_trip()]); `NULL` when every ping is at sea.
+#' @param port_call A ping column that is not `NA` while the vessel is in port (e.g. `port_call_id` from
+#'   [rb_add_voyages()]); `NULL` when every ping is at sea.
 #' @param speed,speed_min,speed_max The ping speed and the speed range of a towing ping. The range is the
 #'   caller's: the gear's, the vessel's commonest, or the trip's.
 #' @param batch_pings About this many pings are collected at a time, whole vessels.
@@ -47,7 +47,7 @@
 #'   left the range), `"gap"` (a gap of more than `max_gap_s`, or the end of the data) or `"record"` (the
 #'   prior's cut). A data frame for data frame input, a lazy table for lazy input.
 #' @export
-rb_cut_record_stretches <- function(
+rb_create_record_stretches <- function(
   pings,
   records = NULL,
   window_s = 600,
@@ -57,7 +57,7 @@ rb_cut_record_stretches <- function(
   margin_s = 900,
   start = "t2",
   end = "t3",
-  stay = NULL,
+  port_call = NULL,
   speed = "speed",
   speed_min = "speed_min",
   speed_max = "speed_max",
@@ -65,11 +65,11 @@ rb_cut_record_stretches <- function(
 ) {
   .rb_check_input(
     pings,
-    "rb_cut_record_stretches",
+    "rb_create_record_stretches",
     cols = c(speed = speed),
     types = c(time = "time", speed = "numeric")
   )
-  need <- unique(c("vid", "time", speed, speed_min, speed_max, stay))
+  need <- unique(c("vid", "time", speed, speed_min, speed_max, port_call))
   miss <- setdiff(need, colnames(pings))
   if (length(miss)) {
     stop("pings lacks: ", paste(miss, collapse = ", "), call. = FALSE)
@@ -87,7 +87,11 @@ rb_cut_record_stretches <- function(
   con <- .rb_con_for(pings)
   p <- .rb_as_lazy(dplyr::select(pings, dplyr::all_of(need)), con)
   q <- function(x) .rb_q(con, x)
-  port <- if (is.null(stay)) "FALSE" else sprintf("%s IS NOT NULL", q(stay))
+  port <- if (is.null(port_call)) {
+    "FALSE"
+  } else {
+    sprintf("%s IS NOT NULL", q(port_call))
+  }
   vn <- dplyr::collect(dplyr::count(p, vid))
   vn <- vn[!is.na(vn$vid), ]
   vn <- vn[order(-vn$n, vn$vid), ]
@@ -298,7 +302,7 @@ SELECT vid, time, rb_s, rb_w, rb_lo, rb_hi FROM w WHERE NOT rb_port",
 #' Pair declared tows with towing stretches, in order and one to one
 #'
 #' A step-2 link of the fishing-activity flow. Each declared tow (a logbook record) is paired with at most one
-#' stretch of the track at towing speed ([rb_cut_record_stretches()]), and each stretch with at most one tow, so
+#' stretch of the track at towing speed ([rb_create_record_stretches()]), and each stretch with at most one tow, so
 #' no ping can belong to two tows. The pairs keep the order of both: per vessel, a later tow pairs with a later
 #' stretch. Of all such pairings, the one with the most overlap between the stretches and their tows, each tow
 #' widened by `slack_s` on both sides, is taken. A pair needs some overlap.
@@ -314,7 +318,7 @@ SELECT vid, time, rb_s, rb_w, rb_lo, rb_hi FROM w WHERE NOT rb_port",
 #' record if they are one tow.
 #'
 #' @param records A data frame or lazy DuckDB table of declared tows: the `key` columns, `vid`, `start` and `end`.
-#' @param stretches Stretches from [rb_cut_record_stretches()].
+#' @param stretches Stretches from [rb_create_record_stretches()].
 #' @param key The columns that identify a record.
 #' @param start,end The records' start and end columns.
 #' @param slack_s How far, in seconds, a tow is widened on either side when it is scored against a stretch.
@@ -367,7 +371,7 @@ rb_link_record_stretches <- function(
   sv <- split(seq_len(nrow(s)), s$vid)
   for (v in intersect(names(rv), names(sv))) {
     # in time, and on a full tie the lower key last: the later row wins a tie (.rb_align), as the lower key keeps
-    # a shared window in rb_build_record_windows()
+    # a shared window in rb_create_record_windows()
     ri <- rv[[v]]
     ri <- ri[do.call(
       base::order,

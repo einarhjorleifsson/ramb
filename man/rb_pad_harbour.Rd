@@ -8,7 +8,7 @@ rb_pad_harbour(voyage_id, port_id)
 }
 \arguments{
 \item{voyage_id}{A voyage id, e.g. the \code{voyage_id} column from
-\code{\link[=rb_assign_trip]{rb_assign_trip()}}.}
+\code{\link[=rb_add_voyages]{rb_add_voyages()}}.}
 
 \item{port_id}{A port id, e.g. the \code{port_id} column from
 \code{\link[=rb_flag_ping_port]{rb_flag_ping_port()}}: the ports' own key, not a source's port code.}
@@ -19,7 +19,7 @@ The \code{port_id} vector, padded.
 \description{
 The first ping of a voyage gets the previous ping's port id, and the last
 ping gets the next one's, so a voyage's end pings carry the ports it sailed
-between. A ping in port has no voyage: \code{NA}, as \code{\link[=rb_assign_trip]{rb_assign_trip()}} leaves
+between. A ping in port has no voyage: \code{NA}, as \code{\link[=rb_add_voyages]{rb_add_voyages()}} leaves
 it, or an id of 0 or less. Where the neighbour has no port id, the ping keeps
 its own. The pings are in time order, one vessel at a time.
 }

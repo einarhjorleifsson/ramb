@@ -370,7 +370,7 @@ rb_calc_speed <- function(
 #' decision 090). The window is a time span: positions without a speed are not counted, and get `NA`. Give one
 #' vessel at a time (`dplyr::mutate(.by = vid)`).
 #'
-#' The same median is the `window_s` argument of [rb_assign_fishing()] and [rb_cut_record_stretches()], where
+#' The same median is the `window_s` argument of [rb_add_fishing()] and [rb_create_record_stretches()], where
 #' it runs in DuckDB.
 #'
 #' @param speed A numeric vector of speeds.
@@ -465,7 +465,7 @@ rb_number_runs <- function(x) {
 #' and the number of distinct voyages and ports.
 #'
 #' @param d A (grouped) data frame with `time`, `speed`, `dist`, `dura` and,
-#'   for the counts, `voyage_id` (from [rb_assign_trip()]) and `port_id`.
+#'   for the counts, `voyage_id` (from [rb_add_voyages()]) and `port_id`.
 #'
 #' @return A tibble with one row per group: `pings`, `t_min`, `t_max`,
 #'   `s_min`, `s_med`, `s_max`, `di_min`, `di_med`, `di_max`, `du_min`,

@@ -68,3 +68,28 @@ test_that("invalid unit is rejected on both table kinds", {
   dl <- dplyr::copy_to(con, d, "duration_test")
   expect_error(rb_calc_duration(dl, T1, T2, unit = "fortnight"), "secs")
 })
+
+# rb_add_timestamp(): the data with a timestamp column added (fishycode plan 032; was rb_create_timestamp(), a
+# vector).
+test_that("rb_add_timestamp adds the column, sets impossible dates to NA, and never overwrites", {
+  d <- data.frame(
+    date = c("14/09/2025", "29/02/2023"),
+    clock = c("15:30:00", "12:00:00")
+  )
+  expect_warning(
+    expect_warning(a <- rb_add_timestamp(d, date, clock), "29/02"),
+    "could not be converted"
+  )
+  expect_equal(names(a), c("date", "clock", "time"))
+  expect_equal(a$time[1], as.POSIXct("2025-09-14 15:30:00", tz = "GMT"))
+  expect_true(is.na(a$time[2]))
+  b <- rb_add_timestamp(d[1, ], date, clock, name = "departure", tz = "UTC")
+  expect_equal(attr(b$departure, "tzone"), "UTC")
+  expect_error(rb_add_timestamp(a, date, clock), "already exists")
+  expect_error(rb_add_timestamp(d, date), "must be given")
+  skip_if_not_installed("duckdbfs")
+  expect_error(
+    rb_add_timestamp(duckdbfs::as_dataset(d), date, clock),
+    "data frame"
+  )
+})

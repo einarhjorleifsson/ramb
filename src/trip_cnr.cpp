@@ -1,4 +1,4 @@
-// trip_cnr.cpp — compiled core of rb_cut_trip_voyages(method = "cnr"): CNR-IRBIM's trip finder.
+// trip_cnr.cpp — compiled core of rb_create_voyages(method = "cnr"): CNR-IRBIM's trip finder.
 //
 // After create_fishing_trip() by A. Galdelli, J. Pulcinella, A.N. Tassetti and E. Armelloni (CNR-IRBIM,
 // R4AIS v1.0.1, doi 10.5281/zenodo.4757505; WKSSFGEO dev_branch, R-dev/galdelli_pulcinella_tassetti/R/
@@ -19,7 +19,7 @@
 // Kept from the R function on purpose, so the two agree ping for ping: the first n_in pings are tested
 // together (port run, or first-to-n_in-th ping over gap_h); a departure port is read n_in - 1 pings before
 // the trip's start; the gap test is strict (> gap_h); a vessel of fewer than min_n pings has no trips; and a
-// silence that ends inside a port starts a trip there that runs on through the stay (the vessel only arrives
+// silence that ends inside a port starts a trip there that runs on through the time in port (the vessel only arrives
 // after a run of n_in pings all at sea), so a port call reached through a silence is not found.
 // Different on purpose: a missing speed makes no ping run slow (R stops on it).
 #include <Rcpp.h>

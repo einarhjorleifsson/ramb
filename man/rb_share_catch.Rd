@@ -25,9 +25,9 @@ rb_share_catch(
 }
 \arguments{
 \item{pings}{A data frame or lazy DuckDB table with \code{vid}, \code{time}, the fishing column and \code{hours}
-(\code{\link[=rb_assign_effort]{rb_assign_effort()}}).}
+(\code{\link[=rb_add_effort]{rb_add_effort()}}).}
 
-\item{units}{Units from \code{\link[=rb_build_catch_units]{rb_build_catch_units()}}: \code{unit_id}, \code{level}, \code{resolution}, \code{vid}, \code{start}, \code{end},
+\item{units}{Units from \code{\link[=rb_add_catch_units]{rb_add_catch_units()}}: \code{unit_id}, \code{level}, \code{resolution}, \code{vid}, \code{start}, \code{end},
 the \code{key} columns and any \code{match_by} columns.}
 
 \item{catch}{A data frame or lazy table with the \code{key} columns, the species and the weight (and optionally
@@ -41,7 +41,7 @@ the value), in one unit of weight.}
 
 \item{fishing, hours}{The pings' fishing column (one approach) and effort column.}
 
-\item{match_by}{As in \code{\link[=rb_build_catch_units]{rb_build_catch_units()}}.}
+\item{match_by}{As in \code{\link[=rb_add_catch_units]{rb_add_catch_units()}}.}
 
 \item{vid, time, start, end}{The vessel, time and interval columns.}
 
@@ -56,7 +56,7 @@ coarser one, or \code{"vessel_month"}), the species, the weight (and value), \co
 a lazy table for lazy input.
 }
 \description{
-Step 6 of the flow. Each catch unit's catch (\code{\link[=rb_build_catch_units]{rb_build_catch_units()}}) is shared over the unit's fishing pings
+Step 6 of the flow. Each catch unit's catch (\code{\link[=rb_add_catch_units]{rb_add_catch_units()}}) is shared over the unit's fishing pings
 by effort (their \code{hours}), species by species. The pings at a coarser level go to its pings not already
 served at a finer level, and to all its pings if none is left. Catch whose unit holds no fishing ping moves up
 to the unit of the next level that overlaps it in time (a haul's to its trip, a trip's to its landing), and
@@ -80,7 +80,7 @@ events <- tibble::tibble(
   id = c("haul", "trip"), vid = 1L, start = h(c(0, 0)), end = h(c(4, 40)),
   level = 1:2, resolution = c("haul", "trip")
 )
-units <- rb_build_catch_units(events, key = "id")
+units <- rb_add_catch_units(events, key = "id")
 catch <- tibble::tibble(id = c("haul", "trip"), species = "cod", kg = c(300, 100))
 rb_share_catch(pings, units, catch, key = "id")
 }

@@ -5,13 +5,16 @@
 # read from columns, never from classes or attributes, because those do not survive parquet or a lazy DuckDB
 # query. The check helper below reads the registry, so a missing column is reported with the step that adds it.
 #
-# Kinds: "step" adds columns to the pings and passes every ping on; "builder" returns a table of its own (stays,
-# voyages, windows, links); "tool" serves a step but is not one (plots, vocabularies, the MFRI logbook helpers).
+# Kinds: "step" adds columns to the pings and passes every ping on; "builder" returns a table of its own (port
+# calls, voyages, windows, links); "tool" serves a step but is not one (plots, vocabularies, the MFRI logbook
+# helpers). The verbs follow the shape (fishycode plan 032): rb_create_*() for a table of its own, rb_add_*() for
+# the input with columns added, rb_flag_*() for a flag column, rb_link_*() for a table of pairs.
+# A step's name holds its stage word, or for step 1 the objects it makes or adds: voyages, port_calls.
 # Column names are the grammar's; a function whose columns can be renamed passes the user's names to the check.
 # `paths` is the per-unit path a step serves (plan 013, "paths are branches in the code"); "all" until the path
 # column exists.
 #
-# Only rb_assign_effort() calls the check so far. The other rows are data until each function is retrofitted.
+# Most step functions call the check; the rows of those that do not yet are data until each is retrofitted.
 
 .rb_step <- function(
   fn,
@@ -92,22 +95,31 @@
   ),
   # step 1: trips
   .rb_step(
-    "rb_find_trip_stays",
+    "rb_create_port_calls",
     "trip",
     "builder",
     "pings",
-    c("vid", "time", "lon", "lat"),
-    c("port_id", "T_in", "T_out", "dur_h", "rule", "basis"),
+    c("vid", "time"),
+    c(
+      "year",
+      "port_call_id",
+      "port_id",
+      "T_in",
+      "T_out",
+      "dur_h",
+      "rule",
+      "basis"
+    ),
     after = "rb_flag_ping_port"
   ),
   .rb_step(
-    "rb_cut_trip_voyages",
+    "rb_create_voyages",
     "trip",
     "builder",
     "pings",
     c("vid", "time"),
     c("voyage_id", "T1", "T2", "port_from", "port_to", "n_pings"),
-    after = "rb_find_trip_stays"
+    after = "rb_create_port_calls"
   ),
   .rb_step(
     "rb_link_trip_voyages",
@@ -124,7 +136,7 @@
       "n_candidates",
       "basis"
     ),
-    after = "rb_cut_trip_voyages"
+    after = "rb_create_voyages"
   ),
   .rb_step(
     "rb_link_trip_landings",
@@ -133,10 +145,10 @@
     "trips",
     c("vid", "T2"),
     c("match_type", "dt_days", "n_trips", "n_landings"),
-    after = "rb_cut_trip_voyages"
+    after = "rb_create_voyages"
   ),
   .rb_step(
-    "rb_link_trip_logbook",
+    "rb_add_logbook_trip",
     "trip",
     "step",
     "ve",
@@ -144,13 +156,19 @@
     "trip_id"
   ),
   .rb_step(
-    "rb_assign_trip",
+    "rb_add_voyages",
     "trip",
     "step",
     "pings",
     c("vid", "time"),
-    c("stay_port_id", "voyage_id", "trip_id", "trip_basis"),
-    after = "rb_cut_trip_voyages"
+    c(
+      "port_call_port_id",
+      "port_call_id",
+      "voyage_id",
+      "trip_id",
+      "trip_basis"
+    ),
+    after = "rb_create_voyages"
   ),
   .rb_step(
     "rb_check_trip_crosses_year",
@@ -178,7 +196,7 @@
     "duration_source"
   ),
   .rb_step(
-    "rb_build_record_windows",
+    "rb_create_record_windows",
     "record",
     "builder",
     "records",
@@ -202,7 +220,7 @@
     "pings",
     c("vid", "time"),
     c("phase", "phase_frac", "w_start", "w_end", "fishing"),
-    after = "rb_build_record_windows"
+    after = "rb_create_record_windows"
   ),
   .rb_step(
     "rb_link_record_events",
@@ -211,10 +229,10 @@
     "pings",
     c("vid", "time"),
     c("event", "event_time", "dt_s", "gap_s", "ping_lost"),
-    after = "rb_build_record_windows"
+    after = "rb_create_record_windows"
   ),
   .rb_step(
-    "rb_cut_record_stretches",
+    "rb_create_record_stretches",
     "record",
     "builder",
     "pings",
@@ -236,16 +254,16 @@
       "n_candidates",
       "stretch_lost"
     ),
-    after = "rb_cut_record_stretches"
+    after = "rb_create_record_stretches"
   ),
   .rb_step(
-    "rb_build_record_pings",
+    "rb_create_record_pings",
     "record",
     "builder",
     "records",
     c("vid", "start", "end", "lon1", "lat1"),
     c("time", "lon", "lat", "speed", "pos_basis"),
-    after = "rb_build_record_windows"
+    after = "rb_create_record_windows"
   ),
   .rb_step(
     "rb_link_record_sets",
@@ -262,10 +280,10 @@
       "set_basis",
       "set_method"
     ),
-    after = "rb_build_record_windows"
+    after = "rb_create_record_windows"
   ),
   .rb_step(
-    "rb_assign_record",
+    "rb_add_record",
     "record",
     "step",
     "pings",
@@ -301,7 +319,7 @@
   ),
   # step 4: fishing
   .rb_step(
-    "rb_assign_fishing",
+    "rb_add_fishing",
     "fishing",
     "step",
     "pings",
@@ -319,7 +337,7 @@
     character(0)
   ),
   .rb_step(
-    "rb_assign_effort",
+    "rb_add_effort",
     "effort",
     "step",
     "pings",
@@ -332,18 +350,18 @@
       "interval_flag",
       "effort_basis"
     ),
-    after = "rb_assign_fishing"
+    after = "rb_add_fishing"
   ),
   # step 6: catch. rb_share_catch() returns a table of its own (one row per fishing ping, unit and species),
   # so it is a builder; its method = "eflalo" keeps its own checks.
   .rb_step(
-    "rb_build_catch_units",
+    "rb_add_catch_units",
     "catch",
     "builder",
     "events",
     c("vid", "start", "end", "level", "resolution"),
     c("start_filled", "unit_id", "n_events"),
-    after = "rb_build_record_windows"
+    after = "rb_create_record_windows"
   ),
   .rb_step(
     "rb_share_catch",
@@ -352,7 +370,7 @@
     "pings",
     c("vid", "time"),
     c("shared_unit_id", "shared_resolution", "catch_basis", "approach"),
-    after = "rb_assign_effort"
+    after = "rb_add_effort"
   )
 )
 names(.rb_steps) <- vapply(.rb_steps, `[[`, "", "fn")

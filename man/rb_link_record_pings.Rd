@@ -21,7 +21,7 @@ rb_link_record_pings(
 \arguments{
 \item{pings}{A data frame or lazy DuckDB table with \code{vid}, \code{time} and the speed column.}
 
-\item{windows}{Windows from \code{\link[=rb_build_record_windows]{rb_build_record_windows()}}: \code{vid}, \code{w_start}, \code{w_end}, \code{phase}, the \code{key}
+\item{windows}{Windows from \code{\link[=rb_create_record_windows]{rb_create_record_windows()}}: \code{vid}, \code{w_start}, \code{w_end}, \code{phase}, the \code{key}
 columns and the \code{carry} columns.}
 
 \item{key}{The columns that identify a record.}
@@ -36,7 +36,7 @@ columns and the \code{carry} columns.}
 
 \item{speed, speed_min, speed_max}{The ping speed and the window's speed range columns.}
 
-\item{window_s}{Half the speed window for \code{fishing}, in seconds, as in \code{\link[=rb_assign_fishing]{rb_assign_fishing()}}: the median
+\item{window_s}{Half the speed window for \code{fishing}, in seconds, as in \code{\link[=rb_add_fishing]{rb_add_fishing()}}: the median
 speed over the pings given within \code{window_s} either side (\code{\link[=rb_calc_speed_smooth]{rb_calc_speed_smooth()}}); 0 (the default) tests
 each ping's own speed.}
 }
@@ -50,5 +50,5 @@ A ping matches every window of its vessel that contains its time; a window is ha
 \code{w_end} is not in it. Windows of a \code{fallback} phase (the whole-day windows) claim only pings that no other
 window claims. A record matched in two of its own phases counts once, the phase earliest in \code{phase_rank}
 winning. The result is a table of candidates: windows that overlap (two records on one whole day, or windows
-built by other rules than \code{\link[=rb_build_record_windows]{rb_build_record_windows()}}) give one row per (ping, record).
+built by other rules than \code{\link[=rb_create_record_windows]{rb_create_record_windows()}}) give one row per (ping, record).
 }

@@ -131,11 +131,12 @@ x <- c(rnorm(20, 3, 0.5), 25)
 rb_cap_outliers(x, method = "miller") |> round(1)
 ```
 
-[rb_create_timestamp()](../reference/rb_create_timestamp.html) builds a POSIXct from separate date and time
-character columns, with explicit format and time zone:
+[rb_add_timestamp()](../reference/rb_add_timestamp.html) adds a POSIXct column built from separate date and
+time character columns, with explicit format and time zone:
 
 ```{r}
-rb_create_timestamp("14/09/2025", "15:30:00")
+data.frame(date = "14/09/2025", clock = "15:30:00") |>
+  rb_add_timestamp(date, clock)
 ```
 
 And for AIS work, [rb_classify_mmsi()](../reference/rb_classify_mmsi.html) tells vessels from the other

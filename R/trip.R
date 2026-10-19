@@ -1,8 +1,9 @@
-# find_trip_stays.R — a step-1 builder: port stays, measured in elapsed time.
+# trip.R — step 1: port calls and voyages, the two halves of a track, and the trip each ping belongs to.
 #
-# Ported from fishycode's curate/port_stay.R (plan 011, decisions 060-064; ramb plan 013 phase 2). A stay
-# is time spent at a port, not a ping inside its polygon: one port ping followed by silence is not a
-# stay. Runs in DuckDB (tier 2): a data frame is registered and the result collected; a lazy table stays lazy.
+# The "dwell" rule of rb_create_port_calls() is ported from fishycode's curate/port_stay.R (plan 011, decisions
+# 060-064; ramb plan 013 phase 2), where a port call was called a stay (renamed by fishycode plan 032). A port call
+# is time spent at a port, not a ping inside its polygon: one port ping followed by silence is not a port call.
+# Runs in DuckDB (tier 2): a data frame is registered and the result collected; a lazy table stays lazy.
 
 .rb_con_for <- function(x, ...) {
   # the connection of the lazy inputs, which must share one; a data frame is registered in it
@@ -70,67 +71,121 @@
 }
 .rb_sql <- function(x) as.character(dbplyr::sql_render(dplyr::ungroup(x)))
 
-#' Find port stays in vessel tracks
+#' Create port calls from vessel tracks
 #'
-#' A step-1 builder of the fishing-activity flow: the stays that cut a track into voyages
-#' ([rb_cut_trip_voyages()]). A stay is elapsed time at a port, from any of three rules on the pings
-#' and, optionally, from declared port events:
+#' A step-1 builder of the fishing-activity flow: the port calls, the times a vessel spends in port. Port calls
+#' and voyages ([rb_create_voyages()]) are the two halves of a track, and the two functions share their methods.
+#'
+#' * `"dwell"`: a port call is elapsed time at a port, in port for at least a minimum time (`min_dwell_h`), from
+#'   any of three rules on the pings and, optionally, from declared port events (below). [rb_create_voyages()]
+#'   with `method = "dwell"` cuts the track at these port calls.
+#' * `"runs"`, `"jepol"`, `"cnr"`, `"iapesca"`: a port call is the time in port between two voyages of the
+#'   method ([rb_create_voyages()], whose arguments for these methods go in `...`), from the end of one voyage
+#'   to the start of the next, at the port the first ended in, else the port the second began from. Where
+#'   neither voyage reaches a port (a long voyage split, or a silence at sea), there is no port call between
+#'   them, nor before a vessel's first voyage or after its last.
+#'
+#' The rules of `"dwell"`:
 #'
 #' * `tag_then_gap`: two consecutive pings at the same port, the first within `radius_in` of it, at least
-#'   the minimum stay apart, one of them inside the polygon;
+#'   the minimum dwell apart, one of them inside the polygon;
 #' * `gap_near_port`: the same, neither inside the polygon;
-#' * `tag_span`: a run of pings inside the polygon spanning at least the minimum stay;
+#' * `tag_span`: a run of pings inside the polygon spanning at least the minimum dwell;
 #' * `event_pair` (with `events`): an arrival then a departure event at the same port, adjacent in the
-#'   vessel's events, both judged good, at least the minimum stay apart.
+#'   vessel's events, both judged good, at least the minimum dwell apart.
 #'
 #' A ping takes the port among those whose `radius_out` buffer holds it, preferring one whose
 #' `radius_in` buffer also holds it, then the nearest. Seeds are extended over the contiguous inside pings
-#' at either end and merged; ping stays and event stays are merged in time. `rule` names the strongest
-#' evidence: event_pair > tag_then_gap > tag_span > gap_near_port.
+#' at either end and merged; port calls from pings and from events are merged in time. `rule` names the
+#' strongest evidence: event_pair > tag_then_gap > tag_span > gap_near_port.
 #'
-#' @param pings A data frame or lazy DuckDB table of cleaned pings: `vid`, `time`, `lon`, `lat`.
-#' @param ports An sf object of port polygons with `port_id`, and optionally `radius_out` (metres;
-#'   the departure radius, at least `radius_in`).
-#' @param min_stay_h Minimum stay, hours, where `min_stay` has no row for the port.
-#' @param min_stay Optional data frame `port_id`, `min_stay_h`: a minimum per port.
-#' @param radius_in Arrival radius, metres.
-#' @param events Optional data frame or lazy table of port events: `vid`, `time`, `io` (`"I"` arrival,
-#'   `"U"` departure), `port_id`, `good` (logical).
-#' @param t_in_window Optional `c(from, to)` (POSIXct): keep only stays that begin in `[from, to)`, applied
-#'   before ping and event stays are merged. For processing a long series in chunks.
-#' @param crs_m A metric CRS for the buffers (EPSG code). The default, 3575, suits the North Atlantic.
+#' @param pings A data frame or lazy DuckDB table of cleaned pings: `vid`, `time`, and `lon`, `lat` for
+#'   `"dwell"`; for the other methods, the columns [rb_create_voyages()] needs.
+#' @param ports An sf object of port polygons with `port_id`, and for `"dwell"` optionally `radius_out`
+#'   (metres; the departure radius, at least `radius_in`). Required for `"dwell"` and `"iapesca"`, optional for
+#'   `"cnr"`, not used by `"runs"` and `"jepol"` (they read `port_id` on the pings).
+#' @param method `"dwell"`, `"runs"`, `"jepol"`, `"cnr"` or `"iapesca"`.
+#' @param min_dwell_h For `"dwell"`: the minimum time in port, hours, where `min_dwell` has no row for the port.
+#' @param min_dwell For `"dwell"`: optional data frame `port_id`, `min_dwell_h`: a minimum per port.
+#' @param radius_in For `"dwell"`: the arrival radius, metres.
+#' @param events For `"dwell"`: optional data frame or lazy table of port events: `vid`, `time`, `io` (`"I"`
+#'   arrival, `"U"` departure), `port_id`, `good` (logical).
+#' @param t_in_window Optional `c(from, to)` (POSIXct): keep only port calls that begin in `[from, to)` (for
+#'   `"dwell"`, applied before the port calls from pings and from events are merged). For processing a long
+#'   series in chunks; the port calls are then numbered within the window, so renumber them once the chunks
+#'   are bound.
+#' @param crs_m For `"dwell"`: a metric CRS for the buffers (EPSG code). The default, 3575, suits the North
+#'   Atlantic.
+#' @param ... For `"runs"`, `"jepol"`, `"cnr"` and `"iapesca"`: arguments of [rb_create_voyages()] (such as
+#'   `min_pings`, `max_dur_h`, `coast`, `cnr`, `iapesca`, or the ping columns `port_id` and `speed`).
 #' @param vid,time,lon,lat The ping columns, if named otherwise.
 #'
-#' @return One row per stay: `vid`, `port_id`, `T_in`, `T_out`, `dur_h`, `rule`, `evidence`,
-#'   `T_in_ping`, `T_out_ping`, `T_in_ev`, `T_out_ev`, `basis` (`"reconstructed"`). A data frame for data
-#'   frame input, a lazy table for lazy input.
+#' @return One row per port call: `vid`, `year` (of `T_in`; a port call is not cut at New Year), `port_call_id`
+#'   (numbered per vessel by `T_in`, so a ping in a port call over New Year finds it by `vid` and `port_call_id`
+#'   alone), `port_id`, `T_in`, `T_out`, `dur_h`, `rule`, `evidence`, `T_in_ping`, `T_out_ping`, `T_in_ev`, `T_out_ev`,
+#'   `basis` (`"reconstructed"`). For the methods other than `"dwell"`, `rule` and `evidence` are the method and
+#'   the event times are NA. A data frame for data frame input, a lazy table for lazy input.
 #' @family trip
 #' @export
-rb_find_trip_stays <- function(
+rb_create_port_calls <- function(
   pings,
-  ports,
-  min_stay_h = 4,
-  min_stay = NULL,
+  ports = NULL,
+  method = c("dwell", "runs", "jepol", "cnr", "iapesca"),
+  min_dwell_h = 4,
+  min_dwell = NULL,
   radius_in = 2000,
   events = NULL,
   t_in_window = NULL,
   crs_m = 3575,
+  ...,
   vid = vid,
   time = time,
   lon = lon,
   lat = lat
 ) {
+  method <- match.arg(method)
+  if (method != "dwell") {
+    v <- rb_create_voyages(
+      pings,
+      method = method,
+      ports = ports,
+      by_year = FALSE,
+      ...,
+      vid = {{ vid }},
+      time = {{ time }},
+      lon = {{ lon }},
+      lat = {{ lat }}
+    )
+    return(.rb_calls_between(
+      v,
+      inherits(pings, "tbl_lazy"),
+      rlang::as_name(rlang::enquo(vid)),
+      method,
+      t_in_window
+    ))
+  }
+  if (...length() > 0) {
+    stop(
+      "The arguments in `...` are for the methods other than \"dwell\".",
+      call. = FALSE
+    )
+  }
   .rb_check_input(
     pings,
-    "rb_find_trip_stays",
+    "rb_create_port_calls",
     cols = c(
       vid = rlang::as_name(rlang::enquo(vid)),
-      time = rlang::as_name(rlang::enquo(time)),
+      time = rlang::as_name(rlang::enquo(time))
+    ),
+    also = c(
       lon = rlang::as_name(rlang::enquo(lon)),
       lat = rlang::as_name(rlang::enquo(lat))
     ),
     types = c(time = "time", lon = "numeric", lat = "numeric")
   )
+  if (is.null(ports)) {
+    stop("Method \"dwell\" needs `ports`: the port polygons.", call. = FALSE)
+  }
   map <- .rb_cols(
     vid = {{ vid }},
     time = {{ time }},
@@ -163,10 +218,10 @@ rb_find_trip_stays <- function(
     near_out = sf::st_as_text(sf::st_geometry(buf(r_out)), digits = 15)
   )
   hw_nm <- .rb_register(con, hw, "rb_hw_")
-  hg <- if (is.null(min_stay)) {
+  hg <- if (is.null(min_dwell)) {
     data.frame(port_id = character(0), g_h = numeric(0))
   } else {
-    data.frame(port_id = min_stay$port_id, g_h = min_stay$min_stay_h)
+    data.frame(port_id = min_dwell$port_id, g_h = min_dwell$min_dwell_h)
   }
   hg_nm <- .rb_register(con, hg, "rb_hg_")
 
@@ -184,7 +239,7 @@ rb_find_trip_stays <- function(
       .rb_as_lazy(events, con) |> dplyr::select(vid, time, io, port_id, good)
     )
   }
-  G <- min_stay_h
+  G <- min_dwell_h
   sql <- sprintf(
     "
 WITH seq AS (SELECT vid, time, lon, lat, row_number() OVER (PARTITION BY vid ORDER BY time) AS rn FROM (%s)),
@@ -216,16 +271,16 @@ ext AS (SELECT sd.vid, sd.h, least(sd.s, coalesce(r1.s, sd.s)) AS s, greatest(sd
         LEFT JOIN runs r2 ON r2.vid = sd.vid AND r2.h = sd.h AND sd.e BETWEEN r2.s AND r2.e),
 m AS (SELECT *, max(e) OVER (PARTITION BY vid, h ORDER BY s, e ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS pe FROM ext),
 g AS (SELECT *, sum(CASE WHEN pe IS NULL OR s > pe + 1 THEN 1 ELSE 0 END) OVER (PARTITION BY vid, h ORDER BY s, e) AS grp FROM m),
-pstay AS (SELECT vid, h AS pid, min(t_s) AS t_in, max(t_e) AS t_out, list_distinct(list(rule)) AS rules FROM g GROUP BY vid, h, grp),
+pcall AS (SELECT vid, h AS pid, min(t_s) AS t_in, max(t_e) AS t_out, list_distinct(list(rule)) AS rules FROM g GROUP BY vid, h, grp),
 ev AS (SELECT vid, time, io, port_id AS hid_pid, good,
               lead(io) OVER w AS nio, lead(time) OVER w AS nt, lead(port_id) OVER w AS nh, lead(good) OVER w AS ngood
        FROM (%s) WINDOW w AS (PARTITION BY vid ORDER BY time, io)),
-estay AS (SELECT vid, hid_pid AS pid, time AS t_in, nt AS t_out, ['event_pair'] AS rules
+ecall AS (SELECT vid, hid_pid AS pid, time AS t_in, nt AS t_out, ['event_pair'] AS rules
           FROM ev LEFT JOIN hg ON hg.pid = ev.hid_pid
           WHERE io = 'I' AND nio = 'U' AND good AND ngood AND hid_pid IS NOT NULL AND nh = hid_pid
             AND epoch(nt - time) >= coalesce(hg.g_h, %f) * 3600 AND %s),
-u AS (SELECT vid, pid, t_in, t_out, rules, 'ping' AS src FROM pstay WHERE %s
-      UNION ALL SELECT vid, pid, t_in, t_out, rules, 'ev' FROM estay),
+u AS (SELECT vid, pid, t_in, t_out, rules, 'ping' AS src FROM pcall WHERE %s
+      UNION ALL SELECT vid, pid, t_in, t_out, rules, 'ev' FROM ecall),
 m2 AS (SELECT *, max(t_out) OVER (PARTITION BY vid, pid ORDER BY t_in, t_out ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS pe FROM u),
 g2 AS (SELECT *, sum(CASE WHEN pe IS NULL OR t_in > pe THEN 1 ELSE 0 END) OVER (PARTITION BY vid, pid ORDER BY t_in, t_out) AS grp FROM m2),
 st AS (SELECT vid, pid, min(t_in) AS T_in, max(t_out) AS T_out,
@@ -233,7 +288,8 @@ st AS (SELECT vid, pid, min(t_in) AS T_in, max(t_out) AS T_out,
               min(t_in) FILTER (src = 'ev') AS T_in_ev, max(t_out) FILTER (src = 'ev') AS T_out_ev,
               array_to_string(list_sort(list_distinct(flatten(list(rules)))), '+') AS evidence
        FROM g2 GROUP BY vid, pid, grp)
-SELECT vid, pid AS port_id, T_in, T_out, epoch(T_out - T_in) / 3600 AS dur_h,
+SELECT vid, year(T_in) AS year, row_number() OVER (PARTITION BY vid ORDER BY T_in, T_out, pid) AS port_call_id,
+       pid AS port_id, T_in, T_out, epoch(T_out - T_in) / 3600 AS dur_h,
        CASE WHEN evidence LIKE '%%event_pair%%' THEN 'event_pair'
             WHEN evidence LIKE '%%tag_then_gap%%' THEN 'tag_then_gap'
             WHEN evidence LIKE '%%tag_span%%' THEN 'tag_span'
@@ -261,6 +317,48 @@ FROM st",
   out <- dplyr::collect(out)
   .rb_unregister(con)
   out[order(out[[map[["vid"]]]], out$T_in), ]
+}
+
+# The port calls of the methods other than "dwell": the time in port between two voyages of one vessel, from the
+# end of one to the start of the next, at the port the first ended in, else the port the second began from. The
+# voyages come uncut at New Year (by_year = FALSE), so a New Year cut at sea makes no port call; a split at sea or
+# a silence with no port at either side makes none either, since neither voyage end has a port.
+.rb_calls_between <- function(voyages, lazy_in, vid_name, method, t_in_window) {
+  con <- .rb_con_for(voyages)
+  v <- .rb_as_lazy(voyages, con) |>
+    dplyr::rename(!!!stats::setNames(rlang::syms(vid_name), "vid"))
+  win <- "TRUE"
+  if (!is.null(t_in_window)) {
+    win <- sprintf(
+      "T_in >= TIMESTAMP '%s' AND T_in < TIMESTAMP '%s'",
+      format(t_in_window[1], "%Y-%m-%d %H:%M:%S", tz = "UTC"),
+      format(t_in_window[2], "%Y-%m-%d %H:%M:%S", tz = "UTC")
+    )
+  }
+  sql <- sprintf(
+    "
+WITH v AS (SELECT vid, T1, T2, port_from, port_to FROM (%s)),
+w AS (SELECT vid, T2 AS T_in, lead(T1) OVER o AS T_out, coalesce(port_to, lead(port_from) OVER o) AS port_id
+      FROM v WINDOW o AS (PARTITION BY vid ORDER BY T1, T2)),
+c AS (SELECT * FROM w WHERE T_out IS NOT NULL AND port_id IS NOT NULL AND %s)
+SELECT vid, year(T_in) AS year, row_number() OVER (PARTITION BY vid ORDER BY T_in, T_out, port_id) AS port_call_id,
+       port_id, T_in, T_out, epoch(T_out - T_in) / 3600 AS dur_h, '%s' AS rule, '%s' AS evidence,
+       T_in AS T_in_ping, T_out AS T_out_ping, NULL::TIMESTAMP AS T_in_ev, NULL::TIMESTAMP AS T_out_ev,
+       'reconstructed' AS basis
+FROM c",
+    .rb_sql(v),
+    win,
+    method,
+    method
+  )
+  out <- dplyr::tbl(con, dplyr::sql(sql)) |>
+    dplyr::rename(!!!stats::setNames(rlang::syms("vid"), vid_name))
+  if (lazy_in) {
+    return(out)
+  }
+  out <- dplyr::collect(out)
+  .rb_unregister(con)
+  out[order(out[[vid_name]], out$T_in), ]
 }
 
 # A Suggests package, checked where a function needs it.
@@ -292,26 +390,25 @@ FROM st",
   ))
   template
 }
-# cut_trip_voyages.R — step 1: voyages from port stays, and the trip each ping belongs to.
-#
-# Ported from fishycode's curate/ais_trip.R (decision 061; ramb plan 013 phase 2). Tier 2: one DuckDB query
-# each; a data frame is registered and the result collected, a lazy table stays lazy.
+# Voyages, and the voyage each ping belongs to. Ported from fishycode's curate/ais_trip.R (decision 061; ramb plan
+# 013 phase 2). Tier 2: one DuckDB query each; a data frame is registered and the result collected, a lazy table
+# stays lazy.
 
-# A ping takes the stay it falls in; inside two overlapping stays, the earlier one. Rows are numbered within the
-# vessel (rb_rid), not over the whole table: an unpartitioned row_number() runs on one core, which made the
-# step 5.5 times slower than the code it replaced (fishycode TODO 48).
-# With `stay_id` in the stays, the ping also takes the stay's key, so a ping can carry the key and not the
-# stay's values (fishycode plan 014).
-.rb_ping_stay_sql <- function(p_sql, s_sql, by_year, stay_id = FALSE) {
+# A ping takes the port call it falls in; inside two overlapping port calls, the earlier one. Rows are numbered
+# within the vessel (rb_rid), not over the whole table: an unpartitioned row_number() runs on one core, which made
+# the step 5.5 times slower than the code it replaced (fishycode TODO 48).
+# With `port_call_id` in the port calls, the ping also takes the port call's key, so a ping can carry the key and
+# not the port call's values (fishycode plan 014).
+.rb_ping_call_sql <- function(p_sql, s_sql, by_year, call_id = FALSE) {
   sprintf(
     "
 WITH p AS (SELECT *, row_number() OVER (PARTITION BY vid ORDER BY time) AS rb_rid FROM (%s)),
-s AS (SELECT vid, port_id, T_in, T_out, %s AS stay_id FROM (%s)),
-ps AS (SELECT p.*, s.port_id AS stay_port_id, s.stay_id FROM p LEFT JOIN s ON s.vid = p.vid AND p.time BETWEEN s.T_in AND s.T_out
+s AS (SELECT vid, port_id, T_in, T_out, %s AS port_call_id FROM (%s)),
+ps AS (SELECT p.*, s.port_id AS port_call_port_id, s.port_call_id FROM p LEFT JOIN s ON s.vid = p.vid AND p.time BETWEEN s.T_in AND s.T_out
        QUALIFY row_number() OVER (PARTITION BY p.vid, p.rb_rid ORDER BY s.T_in NULLS LAST, s.port_id) = 1)
 SELECT *, %s AS rb_year FROM ps",
     p_sql,
-    if (stay_id) "stay_id" else "NULL::BIGINT",
+    if (call_id) "port_call_id" else "NULL::BIGINT",
     s_sql,
     if (by_year) "year(time)" else "0"
   )
@@ -321,14 +418,15 @@ SELECT *, %s AS rb_year FROM ps",
 # fixed on 2026-10-12 (the old function cut one ping before the longest gap); see the comment above
 # .rb_jepol_one() below, and NEWS.md.
 
-#' Cut vessel tracks into voyages between port stays
+#' Create voyages from vessel tracks
 #'
-#' A step-1 builder of the fishing-activity flow. Four methods, one result: a table of voyages.
+#' A step-1 builder of the fishing-activity flow. Five methods, one result: a table of voyages. Voyages and port
+#' calls ([rb_create_port_calls()]) are the two halves of a track, and the two functions share their methods.
 #'
-#' * `"stays"`: a voyage is the sea between two stays (see [rb_find_trip_stays()]). A ping takes the stay it
-#'   falls in (the earlier of two that overlap), the track is cut into runs of stay and sea, and each sea run
-#'   becomes a voyage, from the port of the stay before it to the port of the stay after it.
-#' * `"runs"`: as `"stays"`, but every run of pings tagged in a port ([rb_flag_ping_port()]) is a stay,
+#' * `"dwell"`: a voyage is the sea between two port calls (see [rb_create_port_calls()]). A ping takes the port
+#'   call it falls in (the earlier of two that overlap), the track is cut into runs of port call and sea, and each
+#'   sea run becomes a voyage, from the port of the port call before it to the port of the port call after it.
+#' * `"runs"`: as `"dwell"`, but every run of pings tagged in a port ([rb_flag_ping_port()]) is a port call,
 #'   however short.
 #' * `"jepol"`: the ICES VMS datacall rule (`define_trips_pol`): a voyage runs from the
 #'   first ping at sea to the first ping back in port; voyages of `min_dur_h` hours or less are dropped, and
@@ -367,10 +465,11 @@ SELECT *, %s AS rb_year FROM ps",
 #' @param pings A data frame or lazy DuckDB table with `vid` and `time`, and `port_id` for `"runs"`,
 #'   `"jepol"` and `"cnr"` (NA at sea). For `"cnr"` also `speed` (knots, recorded) and `lon`, `lat`; for
 #'   `"iapesca"`, `lon` and `lat`.
-#' @param stays For `"stays"`: stays as returned by [rb_find_trip_stays()]: `vid`, `port_id`, `T_in`, `T_out`.
-#' @param method `"stays"`, `"runs"`, `"jepol"`, `"cnr"` or `"iapesca"`.
+#' @param port_calls For `"dwell"`: port calls as returned by [rb_create_port_calls()]: `vid`, `port_id`, `T_in`,
+#'   `T_out`.
+#' @param method `"dwell"`, `"runs"`, `"jepol"`, `"cnr"` or `"iapesca"`.
 #' @param min_pings Voyages with fewer pings are dropped. They are numbered before they are dropped, so the
-#'   numbers have gaps where a short voyage was. Default 10 for `"stays"`, 1 (none dropped) otherwise.
+#'   numbers have gaps where a short voyage was. Default 10 for `"dwell"`, 1 (none dropped) otherwise.
 #' @param by_year Cut voyages at New Year and number them per vessel and year.
 #' @param min_dur_h,max_dur_h,split For `"jepol"`: the minimum and maximum voyage length in hours, and whether
 #'   longer voyages are split.
@@ -408,10 +507,10 @@ SELECT *, %s AS rb_year FROM ps",
 #'   R package version 0.1 (Ifremer, GPL), <https://github.com/JulRodrigu/r-packages_iapesca>.
 #' @family trip
 #' @export
-rb_cut_trip_voyages <- function(
+rb_create_voyages <- function(
   pings,
-  stays = NULL,
-  method = c("stays", "runs", "jepol", "cnr", "iapesca"),
+  port_calls = NULL,
+  method = c("dwell", "runs", "jepol", "cnr", "iapesca"),
   min_pings = NULL,
   by_year = TRUE,
   min_dur_h = 0.5,
@@ -432,7 +531,7 @@ rb_cut_trip_voyages <- function(
   method <- match.arg(method)
   .rb_check_input(
     pings,
-    "rb_cut_trip_voyages",
+    "rb_create_voyages",
     cols = c(
       vid = rlang::as_name(rlang::enquo(vid)),
       time = rlang::as_name(rlang::enquo(time))
@@ -454,10 +553,10 @@ rb_cut_trip_voyages <- function(
     types = c(time = "time")
   )
   if (is.null(min_pings)) {
-    min_pings <- if (method == "stays") 10 else 1
+    min_pings <- if (method == "dwell") 10 else 1
   }
-  if (method == "stays" && is.null(stays)) {
-    stop("Method \"stays\" needs `stays`.", call. = FALSE)
+  if (method == "dwell" && is.null(port_calls)) {
+    stop("Method \"dwell\" needs `port_calls`.", call. = FALSE)
   }
   if (method == "iapesca" && is.null(ports)) {
     stop(
@@ -475,7 +574,7 @@ rb_cut_trip_voyages <- function(
   )
   use <- switch(
     method,
-    stays = c("vid", "time"),
+    dwell = c("vid", "time"),
     cnr = names(map),
     iapesca = c("vid", "time", "lon", "lat"),
     c("vid", "time", "port_id")
@@ -523,15 +622,15 @@ rb_cut_trip_voyages <- function(
       batch_pings
     ))
   }
-  ps <- if (method == "stays") {
-    .rb_ping_stay_sql(
+  ps <- if (method == "dwell") {
+    .rb_ping_call_sql(
       .rb_sql(dplyr::select(p, vid, time)),
-      .rb_sql(.rb_as_lazy(stays, con)),
+      .rb_sql(.rb_as_lazy(port_calls, con)),
       by_year
     )
   } else {
     sprintf(
-      "SELECT *, port_id AS stay_port_id, row_number() OVER (PARTITION BY vid ORDER BY time) AS rb_rid, %s AS rb_year FROM (%s)",
+      "SELECT *, port_id AS port_call_port_id, row_number() OVER (PARTITION BY vid ORDER BY time) AS rb_rid, %s AS rb_year FROM (%s)",
       if (by_year) "year(time)" else "0",
       .rb_sql(dplyr::select(p, vid, time, port_id))
     )
@@ -539,12 +638,12 @@ rb_cut_trip_voyages <- function(
   sql <- sprintf(
     "
 WITH ps AS (%s),
-f AS (SELECT *, stay_port_id IS NOT NULL AS in_h,
-             lag(stay_port_id IS NOT NULL) OVER w AS p_in, lag(stay_port_id) OVER w AS p_h
+f AS (SELECT *, port_call_port_id IS NOT NULL AS in_h,
+             lag(port_call_port_id IS NOT NULL) OVER w AS p_in, lag(port_call_port_id) OVER w AS p_h
       FROM ps WINDOW w AS (PARTITION BY vid, rb_year ORDER BY time, rb_rid)),
-r AS (SELECT *, sum(CASE WHEN p_in IS NULL OR in_h <> p_in OR (in_h AND stay_port_id <> p_h) THEN 1 ELSE 0 END)
+r AS (SELECT *, sum(CASE WHEN p_in IS NULL OR in_h <> p_in OR (in_h AND port_call_port_id <> p_h) THEN 1 ELSE 0 END)
                   OVER (PARTITION BY vid, rb_year ORDER BY time, rb_rid) AS run_id FROM f),
-runs AS (SELECT vid, rb_year, run_id, bool_or(in_h) AS in_h, min(stay_port_id) AS h,
+runs AS (SELECT vid, rb_year, run_id, bool_or(in_h) AS in_h, min(port_call_port_id) AS h,
                 min(time) AS T1, max(time) AS T2, count(*) AS n_pings
          FROM r GROUP BY vid, rb_year, run_id),
 t AS (SELECT *, CASE WHEN NOT in_h THEN lag(h) OVER w END AS port_from,
@@ -569,36 +668,36 @@ SELECT vid, %s voyage_id, T1, T2, port_from, port_to, n_pings FROM v WHERE n_pin
   out[order(out[[map[["vid"]]]], out$T1), ]
 }
 
-#' Assign each ping its trip
+#' Add the voyage to each ping
 #'
 #' Step 1 of the fishing-activity flow. Each ping gets the voyage it lies in (`voyage_id`, from
-#' [rb_cut_trip_voyages()]) and, with `stays`, the port stay it lies in (`stay_port_id`). `trip_id` is
+#' [rb_create_voyages()]) and, with `port_calls`, the port of the port call it lies in (`port_call_port_id`) and
+#' the port call's key (`port_call_id`, where the port calls carry one). `trip_id` is
 #' the voyage and `trip_basis` says where it came from: `"reconstructed"` (the track) or `"none"`. Declared
 #' trips (logbook) and landings as sources, and their reconciliation with the voyages, are planned for a
 #' later release. No ping is dropped.
 #'
 #' @param pings A data frame or lazy DuckDB table with `vid` and `time`.
-#' @param voyages Voyages from [rb_cut_trip_voyages()].
-#' @param stays Optional stays from [rb_find_trip_stays()].
-#' @param by_year As in [rb_cut_trip_voyages()]: voyages are numbered per vessel and year.
+#' @param voyages Voyages from [rb_create_voyages()].
+#' @param port_calls Optional port calls from [rb_create_port_calls()].
+#' @param by_year As in [rb_create_voyages()]: voyages are numbered per vessel and year.
 #' @param vid,time The ping columns, if named otherwise.
 #'
-#' @return `pings` with `stay_port_id` and, where the stays carry a `stay_id`, the stay's key `stay_id` (with
-#'   `stays`), `voyage_id`, `trip_id`, `trip_basis`: the same
-#'   type, the same rows.
+#' @return `pings` with `port_call_port_id` and `port_call_id` (with `port_calls`; the key where the port calls
+#'   carry one), `voyage_id`, `trip_id`, `trip_basis`: the same type, the same rows.
 #' @family trip
 #' @export
-rb_assign_trip <- function(
+rb_add_voyages <- function(
   pings,
   voyages,
-  stays = NULL,
+  port_calls = NULL,
   by_year = TRUE,
   vid = vid,
   time = time
 ) {
   .rb_check_input(
     pings,
-    "rb_assign_trip",
+    "rb_add_voyages",
     cols = c(
       vid = rlang::as_name(rlang::enquo(vid)),
       time = rlang::as_name(rlang::enquo(time))
@@ -610,29 +709,29 @@ rb_assign_trip <- function(
   con <- .rb_con_for(pings)
   p <- .rb_as_lazy(.rb_std_in(pings, map), con)
   v <- .rb_as_lazy(voyages, con)
-  base <- if (is.null(stays)) {
+  base <- if (is.null(port_calls)) {
     sprintf(
-      "SELECT *, NULL::VARCHAR AS stay_port_id, NULL::BIGINT AS stay_id, row_number() OVER (PARTITION BY vid ORDER BY time) AS rb_rid FROM (%s)",
+      "SELECT *, NULL::VARCHAR AS port_call_port_id, NULL::BIGINT AS port_call_id, row_number() OVER (PARTITION BY vid ORDER BY time) AS rb_rid FROM (%s)",
       .rb_sql(p)
     )
   } else {
     sprintf(
       "SELECT * EXCLUDE (rb_year) FROM (%s)",
-      .rb_ping_stay_sql(
+      .rb_ping_call_sql(
         .rb_sql(p),
-        .rb_sql(.rb_as_lazy(stays, con)),
+        .rb_sql(.rb_as_lazy(port_calls, con)),
         by_year,
-        stay_id = "stay_id" %in% colnames(stays)
+        call_id = "port_call_id" %in% colnames(port_calls)
       )
     )
   }
   yr <- if (by_year) "AND v.year = year(b.time)" else ""
-  drop <- if (is.null(stays)) {
-    "rb_rid, stay_port_id, stay_id"
-  } else if ("stay_id" %in% colnames(stays)) {
+  drop <- if (is.null(port_calls)) {
+    "rb_rid, port_call_port_id, port_call_id"
+  } else if ("port_call_id" %in% colnames(port_calls)) {
     "rb_rid"
   } else {
-    "rb_rid, stay_id"
+    "rb_rid, port_call_id"
   }
   sql <- sprintf(
     "
@@ -660,13 +759,13 @@ FROM j",
 #' Link declared trips to voyages by overlap
 #'
 #' A step-1 link of the fishing-activity flow: each declared trip (e.g. a logbook trip) is linked to the voyage
-#' ([rb_cut_trip_voyages()]) of the same vessel that overlaps it by the most seconds (ties: more pings).
+#' ([rb_create_voyages()]) of the same vessel that overlaps it by the most seconds (ties: more pings).
 #' `n_candidates` counts the voyages that overlap it at all; a link is a link, not a merge: one voyage may be
 #' linked to several trips.
 #'
 #' @param trips A data frame or lazy DuckDB table of declared trips: `vid`, `T1`, `T2` and the trip's key
 #'   columns (`keys`).
-#' @param voyages Voyages from [rb_cut_trip_voyages()].
+#' @param voyages Voyages from [rb_create_voyages()].
 #' @param keys The columns that identify a trip, carried through (e.g. `c(".tid", "schema")`).
 #' @param t2_fix `"end_of_t1_day"`: a trip window is extended to at least the end of its departure day, for
 #'   logbooks that record `T2` as a date (midnight) or that put `T2` before `T1` on same-day trips; `"none"`.
@@ -867,7 +966,7 @@ FROM ranked WHERE rn = 1",
   # itself a departure it opens and closes a voyage of one ping, which has no
   # duration and is dropped below. define_trips() overwrote that departure with an
   # arrival, one departure short: the departures were then recycled into a voyage
-  # spanning the port stay, or the vessel stopped the run ("do not pair") - 791 of
+  # spanning the port call, or the vessel stopped the run ("do not pair") - 791 of
   # 34,286 Icelandic vessel-years with port pings end this way.
   last_dep <- inh[n] == 0 && ev[n] == 1
   if (inh[n] == 0 && !last_dep) {
@@ -1505,7 +1604,7 @@ WHERE tr.n_pings >= ",
   out
 }
 
-#' Link VMS records to logbook trips
+#' Add the logbook trip to each VMS record
 #'
 #' Adds the logbook trip id to each VMS record of the same vessel whose
 #' timestamp falls between the trip's departure and arrival; unmatched
@@ -1530,7 +1629,7 @@ WHERE tr.n_pings >= ",
 #'   visualisation of fisheries logbook and VMS data". Fisheries Research,
 #'   115–116, 31–43. \doi{10.1016/j.fishres.2011.11.007}.
 #' @export
-rb_link_trip_logbook <- function(
+rb_add_logbook_trip <- function(
   ve,
   le,
   vessel_id = vid,
@@ -1611,12 +1710,12 @@ rb_link_trip_logbook <- function(
 #'
 #' The first ping of a voyage gets the previous ping's port id, and the last
 #' ping gets the next one's, so a voyage's end pings carry the ports it sailed
-#' between. A ping in port has no voyage: `NA`, as [rb_assign_trip()] leaves
+#' between. A ping in port has no voyage: `NA`, as [rb_add_voyages()] leaves
 #' it, or an id of 0 or less. Where the neighbour has no port id, the ping keeps
 #' its own. The pings are in time order, one vessel at a time.
 #'
 #' @param voyage_id A voyage id, e.g. the `voyage_id` column from
-#'   [rb_assign_trip()].
+#'   [rb_add_voyages()].
 #' @param port_id A port id, e.g. the `port_id` column from
 #'   [rb_flag_ping_port()]: the ports' own key, not a source's port code.
 #'
@@ -1643,7 +1742,7 @@ rb_pad_harbour <- function(voyage_id, port_id) {
 #' Link trips to the landings that ended them
 #'
 #' A step-1 builder: which landing (a sales note, a landing declaration) belongs to which trip. The trips can be
-#' declared trips (a logbook's) or voyages cut from the track ([rb_cut_trip_voyages()]); the landings come from
+#' declared trips (a logbook's) or voyages cut from the track ([rb_create_voyages()]); the landings come from
 #' a buyer or an authority, dated, sometimes with a port. Matching is a cascade of steps from the strictest
 #' (same day, same port) to the loosest (two days apart, any port). A step works only on the trips and landings no
 #' earlier step took, and accepts a pair only when it is the sole candidate both ways, so an ambiguous match is
