@@ -34,3 +34,30 @@ NULL
 
 #' @eval .rb_dataset_rd("ird_mg_gillnet")
 NULL
+
+#' @eval .rb_dataset_rd("wkssfgeo_adriatic_passive")
+NULL
+
+#' @eval .rb_dataset_rd("wkssfgeo_denmark")
+NULL
+
+#' @eval .rb_dataset_rd("wkssfgeo_cnr_ais")
+NULL
+
+#' @eval .rb_dataset_rd("wkssfgeo_cnr_dansk_trips")
+NULL
+
+#' @eval .rb_dataset_rd("wkssfgeo_cnr_dansk_ping_trips")
+NULL
+
+#' @eval .rb_dataset_rd("wkssfgeo_cnr_med_harbours")
+NULL
+
+#' @eval .rb_dataset_rd("wkssfgeo2_irl_pots")
+NULL
+
+#' @eval .rb_dataset_rd("wkssfgeo2_irl_gillnets")
+NULL
+
+#' @eval .rb_dataset_rd("wkssfgeo2_pt_gps")
+NULL

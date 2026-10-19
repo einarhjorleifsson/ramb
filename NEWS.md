@@ -2,6 +2,13 @@
 
 **Breaking.** All of ramb's data are parquet files in `inst/extdata`, tracked with Git LFS and read with `rb_read_example()` (the maintainer, 2026-10-16); `data/` is gone.
 
+- Nine more datasets: the rest of the ICES WKSSFGEO and WKSSFGEO2 example data (the maintainer, 2026-10-19), made by `data-raw/wkssfgeo_examples.R` from each repository at a fixed commit, each with its entry in `data-dict.yaml`, its help page and its sources. Most carry the provider's own trips, so a trip cutter can be scored against trips someone else drew.
+  - `wkssfgeo_adriatic_passive`: one Adriatic vessel with passive gear, AIS, 10 trips.
+  - `wkssfgeo_denmark`: Denmark's land, one polygon on WGS 84 (from UTM 32N), a coastline for `dansk`.
+  - From CNR-IRBIM's folder on WKSSFGEO's `dev_branch` (GNU GPL 3; Galdelli et al. 2019): `wkssfgeo_cnr_ais`, its six-vessel Adriatic test AIS; `wkssfgeo_cnr_dansk_trips` and `wkssfgeo_cnr_dansk_ping_trips`, the Danish tracks (`dansk`) cut into trips by CNR-IRBIM's method (94) and by jepol (90), per trip and per ping; `wkssfgeo_cnr_med_harbours`, 1,415 Mediterranean harbour polygons. The folder's other list, `ices_med_harbours`, is these and `dansk_harbours`, so it is not kept twice.
+  - From WKSSFGEO2 (MIT), in the columns of the labelled tracks: `wkssfgeo2_irl_pots` (one Irish pot vessel, labelled, 6 trips), `wkssfgeo2_irl_gillnets` (four Irish gillnet vessels, inshore VMS, 136 trips, no label) and `wkssfgeo2_pt_gps` (eight Portuguese pot and dredge vessels, 30 s, labelled).
+  - vmstools' and iapesca's data are not copied (the maintainer).
+
 - The eight datasets that were lazy-loaded are now parquet, unchanged (same rows, order and columns; `data-raw/extdata.R` converts each `.rda` as it stood at d693c1b): `dansk`, `dansk_harbours`, `creel`, `trawlsurvey`, `trawlsurveytows`, `whacks1`, `benthis_parameters`, `metier5_benthis_lookup`. Fix: `ramb::dansk` becomes `rb_read_example("dansk")`, a lazy table; add `dplyr::collect()` for a data frame. Their help moved to `?rb_read_example`.
 - `dansk_harbours` and `trawlsurveytows` keep their shapes as DuckDB's own geometry, which DuckDB 1.5 writes as GeoParquet and reads back as geometry with no extension. They no longer come as sf: a collected `geometry` is WKB, and sf where needed is `sf::st_sf(x[names(x) != "geometry"], geometry = sf::st_as_sfc(structure(x$geometry, class = "WKB"), crs = 4326))`. Fix for `rb_detect_in_polygons(geometry, dansk_harbours)` and `rb_flag_ping_port(pings, dansk_harbours)`: make the sf as above first (the articles show it).
 - `rb_predict_gear_width()` reads its BENTHIS lookups from the parquet files; results unchanged.

@@ -37,6 +37,33 @@ inst/extdata/wkssfgeo_pt_gps.parquet
   https://github.com/ices-eg/WKSSFGEO, commit 3da870d.
   Copyright (c) 2021 ICES Expert Groups. License: MIT (text below).
 
+inst/extdata/wkssfgeo_adriatic_passive.parquet
+inst/extdata/wkssfgeo_denmark.parquet
+  From data-examples/passive_vessel_ais_adriatic_2017.csv and data/Denmark.rds
+  of the ICES Workshop WKSSFGEO, https://github.com/ices-eg/WKSSFGEO, commit
+  3da870d. Copyright (c) 2021 ICES Expert Groups. License: MIT (text below).
+
+inst/extdata/wkssfgeo2_irl_pots.parquet
+inst/extdata/wkssfgeo2_irl_gillnets.parquet
+inst/extdata/wkssfgeo2_pt_gps.parquet
+  From IRL_FPO_WKSSFGEO2_Anon.csv, IRL_KY22_WKSSFGEO2_Anon.csv and
+  PT_IPM_2017_GP2.csv of the ICES Workshop WKSSFGEO2,
+  https://github.com/ices-eg/WKSSFGEO2, commit f3e49fe.
+  Copyright (c) 2023 ICES Expert Groups. License: MIT (text below).
+  Changed: columns renamed and harmonised (see data-raw/wkssfgeo_examples.R).
+
+inst/extdata/wkssfgeo_cnr_ais.parquet
+inst/extdata/wkssfgeo_cnr_dansk_trips.parquet
+inst/extdata/wkssfgeo_cnr_dansk_ping_trips.parquet
+inst/extdata/wkssfgeo_cnr_med_harbours.parquet
+  From R-dev/galdelli_pulcinella_tassetti/data (CNR-IRBIM) of the ICES
+  Workshop WKSSFGEO, https://github.com/ices-eg/WKSSFGEO, branch dev_branch,
+  commit efd28a8; the method of Galdelli A., Mancini A., Tassetti A.N.,
+  Ferrà Vega C., Armelloni E., Scarcella G., Fabi G., Zingaretti P. (2019),
+  https://doi.org/10.1115/DETC2019-97779. License: GNU GPL version 3, that
+  folder's own LICENSE, as ramb's GPL (>= 3). Changed: see
+  data-raw/wkssfgeo_examples.R.
+
 inst/extdata/ird_mg_gillnet.parquet
   From "Supplementary material2_Data_gillnet.Rdata" of Etienne M.-P. (2020):
   Supplementary material - Methodological brief (including R code and data) for

@@ -14,7 +14,7 @@ details: >
   file repeats both.
 origin: https://github.com/einarhjorleifsson/ramb/tree/main/data-raw
 version:
-  date: 2026-10-16
+  date: 2026-10-19
 
 tables:
   - name: dansk
@@ -559,4 +559,444 @@ tables:
       - name: op
         type: enum
         description: '"set" or "haul" where `label` says so, else null.'
+        values: [haul, set]
+
+  - name: wkssfgeo_adriatic_passive
+    label: Adriatic vessel with passive gear, AIS, with its trips
+    description: >
+      Each row is an AIS position, about 6 min apart, of one Adriatic fishing vessel with passive gear, January and
+      February 2017, with the provider's trip (10 trips).
+    details: |
+      **Cite:** [@ices2022wkssfgeo; @wkssfgeo_github]
+
+      **Licence:** MIT, Copyright (c) 2021 ICES Expert Groups.
+
+      **Changes:** `data-examples/passive_vessel_ais_adriatic_2017.csv` of the WKSSFGEO repository (put there by
+      CNR-IRBIM), unchanged; its speed checked against the track: 0.99 of the speed from distance and time
+      (`data-raw/wkssfgeo_examples.R`).
+    source:
+      parquet: wkssfgeo_adriatic_passive.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/wkssfgeo_examples.R
+    columns:
+      - name: vessel_id
+        type: number(id)
+        description: The vessel, anonymised.
+        examples: [1]
+      - name: time_stamp
+        type: datetime
+        time_zone: naive
+        description: Time of the position, as given; the source states no zone.
+        range: [2017-01-07T13:59:49, 2017-02-21T12:59:19]
+      - name: lon
+        type: number(quantity)
+        units: degrees east
+        description: Longitude.
+        range: [12.7093, 13.55]
+      - name: lat
+        type: number(quantity)
+        units: degrees north
+        description: Latitude.
+        range: [43.8515, 44.5575]
+      - name: speed
+        type: number(quantity)
+        units: knots
+        description: Speed over ground, knots.
+        range: [0, 11]
+      - name: course
+        type: number(quantity)
+        units: degrees
+        description: Course over ground, degrees.
+        range: [0, 360]
+      - name: trip
+        type: string
+        description: The provider's trip, the vessel and the trip's number.
+        examples: [1_1, 1_2, 1_10]
+
+  - name: wkssfgeo_denmark
+    label: Denmark's land, one polygon
+    description: >
+      One row: the land of Denmark as one multipolygon of 1.09 million points, a coastline for the Danish tracks
+      (`dansk`).
+    details: |
+      **Cite:** [@ices2022wkssfgeo; @wkssfgeo_github]
+
+      **Licence:** MIT, Copyright (c) 2021 ICES Expert Groups.
+
+      **Changes:** `data/Denmark.rds` of the WKSSFGEO repository, its shape transformed from UTM zone 32N (EPSG:32632)
+      to WGS 84 (`data-raw/wkssfgeo_examples.R`).
+    source:
+      parquet: wkssfgeo_denmark.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/wkssfgeo_examples.R
+    columns:
+      - name: OBJECTID
+        type: number(id)
+        description: The source's id of the shape.
+        examples: [1]
+      - name: Shape_Leng
+        type: number(quantity)
+        units: m
+        description: The outline's length, as the source gives it, measured in UTM zone 32N.
+        range: [8463792.23654, 8463792.23654]
+      - name: Shape_Area
+        type: number(quantity)
+        description: The area, as the source gives it; it reads as square kilometres.
+        range: [43051.7679217, 43051.7679217]
+      - name: geometry
+        description: Denmark's land (MULTIPOLYGON), DuckDB GEOMETRY, longitude and latitude on WGS 84.
+
+  - name: wkssfgeo_cnr_ais
+    label: Adriatic AIS of six vessels, CNR-IRBIM's test data
+    description: >
+      Each row is an AIS position, about 6 min apart, of one of six fishing vessels in the Adriatic Sea, April 2015 to
+      June 2018: the test subset of the annotated AIS that CNR-IRBIM's method of finding trips and gears was developed
+      on (Galdelli et al. 2019).
+    details: |
+      **Cite:** [@galdelli2019; @wkssfgeo_cnr_github; @ices2022wkssfgeo]
+
+      **Licence:** GNU GPL version 3, the licence of the folder `R-dev/galdelli_pulcinella_tassetti`.
+
+      **Changes:** `R-dev/galdelli_pulcinella_tassetti/data/datatest.csv` of the WKSSFGEO repository's `dev_branch`,
+      unchanged; its speed checked against the track: 0.97 of the speed from distance and time
+      (`data-raw/wkssfgeo_examples.R`).
+    source:
+      parquet: wkssfgeo_cnr_ais.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/wkssfgeo_examples.R
+    columns:
+      - name: MMSI
+        type: number(id)
+        description: The vessel, anonymised (1 to 6).
+        examples: [1, 2, 3, 4, 5, 6]
+      - name: datetime
+        type: datetime
+        time_zone: naive
+        description: Time of the position, as given; the source states no zone.
+        range: [2015-04-01T17:47:53, 2018-06-28T06:42:20]
+      - name: longitude
+        type: number(quantity)
+        units: degrees east
+        description: Longitude.
+        range: [12.2809, 16.8744]
+      - name: latitude
+        type: number(quantity)
+        units: degrees north
+        description: Latitude.
+        range: [41.2055, 44.5326]
+      - name: speed
+        type: number(quantity)
+        units: knots
+        description: Speed over ground, knots.
+        range: [0, 12.3]
+
+  - name: wkssfgeo_cnr_dansk_trips
+    label: The Danish tracks cut into trips by two methods
+    description: >
+      Each row is a trip of the Danish tracks (`dansk`) as one of two methods cut them: CNR-IRBIM's (94 trips) and
+      jepol, the ICES data call's rule `define_trips_pol` (90 trips). CNR-IRBIM made both for WKSSFGEO, to compare the
+      methods.
+    details: |
+      **Cite:** [@galdelli2019; @wkssfgeo_cnr_github; @ices2022wkssfgeo]
+
+      **Licence:** GNU GPL version 3, the licence of the folder `R-dev/galdelli_pulcinella_tassetti`.
+
+      **Changes:** `galdelli_trips.rData` and `jepol_trips.rData` of `R-dev/galdelli_pulcinella_tassetti/data`
+      (WKSSFGEO, `dev_branch`), stacked with `method` added. Columns renamed: `start_timestamp` and `depart` to `T1`,
+      `end_timestamp` and `return` to `T2`, `departure` and `arrival` to `port_from` and `port_to`. The galdelli
+      `trip_id` is made of vessel and trip number; `duration_hrs` is left out, being `T2` less `T1`
+      (`data-raw/wkssfgeo_examples.R`).
+    source:
+      parquet: wkssfgeo_cnr_dansk_trips.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/wkssfgeo_examples.R
+    columns:
+      - name: method
+        type: enum
+        description: The method that cut the trip.
+        values:
+          galdelli: CNR-IRBIM's method (Galdelli et al. 2019), its table `galdelli_trips`
+          jepol: the ICES data call's rule `define_trips_pol`, its table `jepol_trips`
+      - name: vessel_id
+        type: string
+        description: The vessel of `dansk`.
+        examples: [EX_1, EX_10, EX_9]
+      - name: trip_id
+        type: string
+        description: >
+          The trip: the vessel and the method's trip number. galdelli numbers its trips over all vessels, jepol per
+          vessel.
+        examples: [EX_10_1, EX_11_3, EX_1_1]
+      - name: T1
+        type: datetime
+        time_zone: naive
+        description: The trip's start, as the method gives it.
+        range: [2012-12-03T05:08:58, 2020-10-24T07:04:06]
+      - name: T2
+        type: datetime
+        time_zone: naive
+        description: The trip's end, as the method gives it.
+        range: [2012-12-03T10:01:50, 2020-10-24T13:37:53]
+      - name: port_from
+        type: number(id)
+        description: The departure harbour, the `SI_HARB` of `dansk_harbours`; galdelli only, null for jepol.
+        examples: [86, 141, 903]
+      - name: port_to
+        type: number(id)
+        description: The arrival harbour, the `SI_HARB` of `dansk_harbours`; galdelli only, null for jepol.
+        examples: [136, 141, 903]
+
+  - name: wkssfgeo_cnr_dansk_ping_trips
+    label: The trip of each Danish ping, by two methods
+    description: >
+      Each row is a ping of the Danish tracks (`dansk`) and the trip one of two methods put it in: 331,561 pings for
+      galdelli, 331,774 for jepol. Join it to `dansk` on `vessel_id` and `time_stamp`.
+    details: |
+      **Cite:** [@galdelli2019; @wkssfgeo_cnr_github; @ices2022wkssfgeo]
+
+      **Licence:** GNU GPL version 3, the licence of the folder `R-dev/galdelli_pulcinella_tassetti`.
+
+      **Changes:** `galdelli_pp_trips.rData` and `jepol_pp_trip.rData` of `R-dev/galdelli_pulcinella_tassetti/data`
+      (WKSSFGEO, `dev_branch`), the methods' output per ping, cut to their keys and stacked, with `method` added. A ping
+      the source holds twice keeps one row (277 for galdelli). As in the source, galdelli's trip `EX_9_62` (5,165 pings,
+      5 and 6 June 2016) has no row in `wkssfgeo_cnr_dansk_trips`, and 1,996 jepol pings have no ping of that vessel
+      and time in `dansk` (`data-raw/wkssfgeo_examples.R`).
+    source:
+      parquet: wkssfgeo_cnr_dansk_ping_trips.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/wkssfgeo_examples.R
+    columns:
+      - name: method
+        type: enum
+        description: The method that put the ping in the trip.
+        values:
+          galdelli: CNR-IRBIM's method (Galdelli et al. 2019), its table `galdelli_pp_trips`
+          jepol: the ICES data call's rule `define_trips_pol`, its table `jepol_pp_trip`
+      - name: vessel_id
+        type: string
+        description: The vessel of `dansk`.
+        examples: [EX_1, EX_10, EX_9]
+      - name: time_stamp
+        type: datetime
+        time_zone: naive
+        description: Time of the ping, as in `dansk`.
+        range: [2012-12-03T05:08:58, 2020-10-24T13:37:53]
+      - name: trip_id
+        type: string
+        description: The trip, as in `wkssfgeo_cnr_dansk_trips`.
+        examples: [EX_10_1, EX_11_3, EX_1_1]
+
+  - name: wkssfgeo_cnr_med_harbours
+    label: Mediterranean harbour polygons, CNR-IRBIM's list
+    description: >
+      Each row is a harbour of the Mediterranean, as a polygon: 1,415 harbours of 22 countries, each with its GFCM
+      geographical sub-area. The harbour list of CNR-IRBIM's method of finding trips.
+    details: |
+      **Cite:** [@galdelli2019; @wkssfgeo_cnr_github; @ices2022wkssfgeo]
+
+      **Licence:** GNU GPL version 3, the licence of the folder `R-dev/galdelli_pulcinella_tassetti`.
+
+      **Changes:** `med_harb_gsa.rData` of `R-dev/galdelli_pulcinella_tassetti/data` (WKSSFGEO, `dev_branch`),
+      unchanged. The folder's other list, `ices_med_harbours`, is these 1,415 harbours and the 942 of
+      `dansk_harbours`, numbered by their `SI_HARB` in `harbour`, `Country` and `area`; that number is the port of
+      `wkssfgeo_cnr_dansk_trips`. It is not kept twice (checked in `data-raw/wkssfgeo_examples.R`).
+    source:
+      parquet: wkssfgeo_cnr_med_harbours.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/wkssfgeo_examples.R
+    columns:
+      - name: harbour
+        type: string
+        description: The harbour's name, as given.
+        examples: [Acciaroli, Durres, Orikum]
+      - name: Country
+        type: string
+        description: The country, in capitals, as given (one reads FRANCEC).
+        examples: [GREECE, ITALY, TURKEY]
+      - name: SI_HARB
+        type: number(quantity)
+        description: 1 for every harbour, as in the source.
+        range: [1, 1]
+      - name: area
+        type: string
+        description: The harbour's GFCM geographical sub-area (GSA), as given.
+        examples: [GSA10, GSA17, GSA22]
+      - name: geometry
+        description: The harbour's polygon (MULTIPOLYGON), DuckDB GEOMETRY, longitude and latitude on WGS 84.
+
+  - name: wkssfgeo2_irl_pots
+    label: Irish pot vessel, labelled, with its trips
+    description: >
+      Each row is a position, every 6 min, of one Irish pot vessel on 6 trips, labelled fishing, transit or mixed by
+      the data's provider, the Marine Institute. Positions and dates are anonymised (the dates read 1977).
+    details: |
+      **Cite:** [@ices2023wkssfgeo2; @wkssfgeo2_github]
+
+      **Licence:** MIT, Copyright (c) 2023 ICES Expert Groups.
+
+      **Changes:** `data_examples/IRL_FPO_WKSSFGEO2_Anon.csv` of the WKSSFGEO2 repository, in the columns of the other
+      labelled tracks: columns renamed, `Source`, `Bearing_course` and `QualityIndex` (empty) left out, `op` added
+      (`data-raw/wkssfgeo_examples.R`).
+    source:
+      parquet: wkssfgeo2_irl_pots.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/wkssfgeo_examples.R
+    columns:
+      - name: vid
+        type: string
+        description: The vessel, anonymised.
+        examples: ["280"]
+      - name: trip
+        type: string
+        description: The source's trip.
+        examples: [280_0, 280_1, 280_10]
+      - name: time
+        type: datetime
+        time_zone: naive
+        description: Time of the position, anonymised.
+        range: [1977-03-25T07:49:00, 1977-04-18T11:09:00]
+      - name: lon
+        type: number(quantity)
+        units: degrees east
+        description: Longitude, anonymised.
+        range: [-1.157654, -0.98083]
+      - name: lat
+        type: number(quantity)
+        units: degrees north
+        description: Latitude, anonymised.
+        range: [55.07697, 55.142299]
+      - name: speed
+        type: number(quantity)
+        description: >
+          Speed, as the source gives it; one null. Against the anonymised track it is 0.64 of the speed from distance
+          and time, so its unit cannot be checked here.
+        range: [0, 3.892446]
+      - name: gear
+        type: enum
+        description: The gear.
+        values:
+          FPO: pots
+      - name: label
+        type: enum
+        description: The provider's label, verbatim; one null.
+        values: [FISHING, MIX_TRANSIT, TRANSIT]
+      - name: op
+        type: enum
+        description: Null throughout, as no label names a set or a haul; kept for the columns of the other labelled tracks.
+        values: [haul, set]
+
+  - name: wkssfgeo2_irl_gillnets
+    label: Irish gillnet vessels, inshore VMS, with their trips
+    description: >
+      Each row is an inshore VMS (iVMS) position, every 10 min, of one of four Irish gillnet vessels on 136 trips, with
+      no label. Positions and dates are anonymised: the dates read 1978 and 1979, and the trips lie scattered from 36
+      to 64 degrees north, so not where the vessels fished.
+    details: |
+      **Cite:** [@ices2023wkssfgeo2; @wkssfgeo2_github]
+
+      **Licence:** MIT, Copyright (c) 2023 ICES Expert Groups.
+
+      **Changes:** `data_examples/IRL_KY22_WKSSFGEO2_Anon.csv` of the WKSSFGEO2 repository, in the columns of the other
+      labelled tracks: columns renamed, the trailing space of the trip ids dropped, `Source`, `Bearing_course` and
+      `Quality_index` (empty) left out, `op` added; its speed checked against the track: 1.07 of the speed from
+      distance and time (`data-raw/wkssfgeo_examples.R`).
+    source:
+      parquet: wkssfgeo2_irl_gillnets.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/wkssfgeo_examples.R
+    columns:
+      - name: vid
+        type: string
+        description: The vessel, anonymised.
+        examples: [VE_00001, VE_00002, VE_00003, VE_00004]
+      - name: trip
+        type: string
+        description: The source's trip.
+        examples: [VE_000011, VE_000012, VE_0000116]
+      - name: time
+        type: datetime
+        time_zone: naive
+        description: Time of the position, anonymised.
+        range: [1978-11-23T05:00:00, 1979-06-14T17:00:00]
+      - name: lon
+        type: number(quantity)
+        units: degrees east
+        description: Longitude, anonymised.
+        range: [-28.212199, 27.046993]
+      - name: lat
+        type: number(quantity)
+        units: degrees north
+        description: Latitude, anonymised.
+        range: [35.792087, 63.846434]
+      - name: speed
+        type: number(quantity)
+        units: knots
+        description: Speed, knots, as the source gives it.
+        range: [0, 10.59]
+      - name: gear
+        type: enum
+        description: The gear.
+        values:
+          GNS: set gillnet
+      - name: label
+        type: enum
+        description: Null throughout, as the source gives no label; the values are those of the Irish pot file.
+        values: [FISHING, MIX_TRANSIT, TRANSIT]
+      - name: op
+        type: enum
+        description: Null throughout; kept for the columns of the other labelled tracks.
+        values: [haul, set]
+
+  - name: wkssfgeo2_pt_gps
+    label: Portuguese pot and dredge vessels, GPS, labelled, with their trips
+    description: >
+      Each row is a GPS position, every 30 s, of one of eight small-scale vessels in the south of Portugal on one trip
+      each, September and October 2018: four with pots (octopus traps), four with bivalve dredges. Labelled fishing or
+      not by the data's provider, IPMA.
+    details: |
+      **Cite:** [@ices2023wkssfgeo2; @wkssfgeo2_github]
+
+      **Licence:** MIT, Copyright (c) 2023 ICES Expert Groups.
+
+      **Changes:** `data_examples/PT_IPM_2017_GP2.csv` of the WKSSFGEO2 repository, in the columns of the other labelled
+      tracks: columns renamed, `FILE_NAME`, `SOURCE`, `PASSIVE_ACTIVE`, `COURSE`, `HEADING` and `QUALITY` left out,
+      `op` added; its speed checked against the track: 0.96 of the speed from distance and time. Four times of two
+      vessels appear twice, a few metres apart, and both rows are kept (`data-raw/wkssfgeo_examples.R`).
+    source:
+      parquet: wkssfgeo2_pt_gps.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/wkssfgeo_examples.R
+    columns:
+      - name: vid
+        type: string
+        description: The vessel.
+        examples: [BEN, CAR, FIE, IRM, LUZ, MOL, PER, SOU]
+      - name: trip
+        type: number(id)
+        description: The source's trip number.
+        examples: [1, 2, 4, 5, 6, 10, 11, 16]
+      - name: time
+        type: datetime
+        time_zone: naive
+        description: Time of the position, as given; the source states no zone.
+        range: [2018-09-26T10:25:50, 2018-10-20T12:28:37]
+      - name: lon
+        type: number(quantity)
+        units: degrees east
+        description: Longitude.
+        range: [-8.2187881, -7.3267301]
+      - name: lat
+        type: number(quantity)
+        units: degrees north
+        description: Latitude.
+        range: [36.951183, 37.2062658]
+      - name: speed
+        type: number(quantity)
+        units: knots
+        description: Speed, knots, as the source gives it.
+        range: [0.539956986904144, 10.7991399765015]
+      - name: gear
+        type: enum
+        description: The gear.
+        values:
+          DRB: boat dredge
+          FPO: pots
+      - name: label
+        type: enum
+        description: The provider's label, verbatim.
+        values: [fishing, not_fishing]
+      - name: op
+        type: enum
+        description: Null throughout, as no label names a set or a haul; kept for the columns of the other labelled tracks.
         values: [haul, set]

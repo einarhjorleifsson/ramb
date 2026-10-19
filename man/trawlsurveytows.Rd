@@ -36,7 +36,16 @@ Other example data:
 \code{\link{metier5_benthis_lookup}},
 \code{\link{trawlsurvey}},
 \code{\link{whacks1}},
+\code{\link{wkssfgeo2_irl_gillnets}},
+\code{\link{wkssfgeo2_irl_pots}},
 \code{\link{wkssfgeo2_it_pots}},
+\code{\link{wkssfgeo2_pt_gps}},
+\code{\link{wkssfgeo_adriatic_passive}},
+\code{\link{wkssfgeo_cnr_ais}},
+\code{\link{wkssfgeo_cnr_dansk_ping_trips}},
+\code{\link{wkssfgeo_cnr_dansk_trips}},
+\code{\link{wkssfgeo_cnr_med_harbours}},
+\code{\link{wkssfgeo_denmark}},
 \code{\link{wkssfgeo_pt_gps}}
 }
 \concept{example data}
