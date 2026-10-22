@@ -1,0 +1,75 @@
+---
+title: "Linking two feeds by co-location"
+format: html
+execute:
+  message: false
+  warning: false
+  collapse: true
+  comment: "#>"
+---
+
+Positions of one vessel often come from several feeds that name it
+differently: a national tracking unit, an AIS transponder's MMSI, a registry
+number. Where the key between them is missing or doubtful, the tracks
+themselves can supply it: two ids are one vessel when their pings move
+together.
+[rb_link_vessel_tracks()](../reference/rb_link_vessel_tracks.html) scores
+every pair of ids for that, per month by default.
+
+```{r}
+library(ramb)
+library(dplyr)
+```
+
+## A small example
+
+The track of the Italian pot vessel shipped with ramb
+([rb_read_example()](../reference/rb_read_example.html)) stands for a
+tracking unit, `x`. A second feed, `y`, holds three ids: `A`, the same vessel
+heard every three minutes and slightly off; `B`, a vessel steaming 800 m
+abreast of it a minute behind (a pair trawler, a tender); and `C`, a vessel
+that works the same ground a day later.
+
+```{r}
+x <- collect(rb_read_example("wkssfgeo2_it_pots")) |>
+  transmute(unit = vid, time, lon, lat, speed)
+three_min <- filter(x, as.numeric(time) %% 180 == 0)
+y <- bind_rows(
+  three_min |> mutate(id = "A", time = time + 15, lat = lat + 0.0003),
+  x |> mutate(id = "B", time = time + 60, lat = lat + 800 / 111195),
+  x |> mutate(id = "C", time = time + 86400)
+) |>
+  select(id, time, lon, lat, speed)
+```
+
+## The scores
+
+A hit is a moving ping of the unit with a moving ping of the other id within
+5 minutes and 2 km. The opportunity is the unit's moving pings with any ping
+of that id within 5 minutes, wherever it is. Dividing by the opportunity
+keeps a sparse feed such as `A` from looking like a poor match.
+
+```{r}
+links <- rb_link_vessel_tracks(x, y, id_x = "unit", id_y = "id")
+links |>
+  select(unit, id, period, n_x, hits, opportunity, score, median_m, rank, id_other, score_other, strong) |>
+  knitr::kable(digits = 2)
+```
+
+`A` and `B` both score fully: co-location alone cannot tell a vessel from one
+that keeps it company. The table keeps that ambiguity. Each row carries the best
+other id and its score, so a link whose runner-up scores as high needs another
+witness: a registry, the MMSI's call sign, the vessel's port calls. The median
+distance of the hits differs (`A` a couple of hundred metres, `B` about 500 m;
+it is measured to the nearest ping within the 5 minutes, so it holds the
+vessel's own movement too), but it is a hint, not proof.
+
+`C` works the same ground a day later, and the pot vessel goes back to the same
+ground day after day, so `C` meets the unit on some of its later trips. It
+scores in part and is not `strong`: a neighbour on the same ground, not the
+same vessel.
+
+The defaults (5 min, 2 km, 1 knot, and a month `strong` at 20 opportunities
+and a score of 0.8) are the Icelandic calibration; a random other vessel
+scored a hit there 2 in 100,000 times. Filter both feeds to the area and
+years of interest first.

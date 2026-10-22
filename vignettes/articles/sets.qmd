@@ -1,0 +1,180 @@
+---
+title: "Finding the set of a static-gear haul"
+format: html
+execute:
+  message: false
+  warning: false
+  collapse: true
+  comment: "#>"
+---
+
+Step 2 of the [fishing-activity flow](flow.html), for static gear (nets, pots,
+longlines). The logbook often records only the haul. The soak starts at the
+set, which is then only on the track:
+[rb_link_record_sets()](../reference/rb_link_record_sets.html) takes the
+vessel's latest earlier pass along the haul's line. The rule is recoded from
+Ifremer's iapesca package. This article measures it on tracks whose pings an
+observer or an expert labelled, and compares the variants the function offers.
+
+```{r}
+library(ramb)
+library(dplyr)
+```
+
+## Labelled tracks
+
+ramb ships three labelled tracks
+([rb_read_example()](../reference/rb_read_example.html)). Two have set and haul
+labels on static gear: one Italian pot vessel (ICES WKSSFGEO2) and two
+Portuguese pot vessels (ICES WKSSFGEO), and four drive-in gillnet fishers in
+Madagascar (Behivoke et al., IRD). The pings are a minute apart or closer.
+
+```{r}
+rd <- function(nm) collect(rb_read_example(nm))
+p0 <- bind_rows(
+  rd("wkssfgeo2_it_pots") |> mutate(ds = "pots"),
+  rd("wkssfgeo_pt_gps") |> filter(gear == "pots") |> mutate(ds = "pots"),
+  rd("ird_mg_gillnet") |> mutate(ds = "gillnet")
+) |>
+  mutate(vid = as.integer(factor(paste(ds, vid))), op = coalesce(op, "other")) |>
+  arrange(vid, time, lon, lat) |>
+  distinct(vid, time, .keep_all = TRUE)
+```
+
+A haul is a run of pings labelled hauling, with its first and last position as
+the logbook would declare them; a set is a run labelled setting.
+
+```{r}
+runs <- function(d, what) {
+  d |>
+    group_by(vid) |>
+    arrange(time, .by_group = TRUE) |>
+    mutate(r = cumsum(op != lag(op, default = "none"))) |>
+    filter(op == what) |>
+    group_by(ds, vid, r) |>
+    summarise(
+      start = min(time),
+      end = max(time) + 1,
+      lon1 = first(lon),
+      lat1 = first(lat),
+      lon2 = last(lon),
+      lat2 = last(lat),
+      .groups = "drop"
+    )
+}
+hauls <- runs(p0, "haul") |> mutate(id = row_number())
+sets <- runs(p0, "set")
+count(hauls, ds)
+```
+
+The true set of a haul is the labelled set run nearest to it in space, ending
+before the haul and starting at most 240 hours earlier.
+
+```{r}
+truth <- lapply(seq_len(nrow(hauls)), function(i) {
+  h <- hauls[i, ]
+  hp <- filter(p0, vid == h$vid, time >= h$start, time < h$end)
+  cand <- filter(sets, vid == h$vid, end <= h$start, start >= h$start - 240 * 3600)
+  if (nrow(cand) == 0) {
+    return(tibble(id = h$id, t_s = as.POSIXct(NA), t_e = as.POSIXct(NA)))
+  }
+  d <- vapply(seq_len(nrow(cand)), function(j) {
+    sp <- filter(p0, vid == h$vid, time >= cand$start[j], time < cand$end[j])
+    g <- expand.grid(a = seq_len(nrow(hp)), b = seq_len(nrow(sp)))
+    min(rb_calc_distance(
+      lon1 = hp$lon[g$a], lat1 = hp$lat[g$a],
+      lon2 = sp$lon[g$b], lat2 = sp$lat[g$b],
+      method = "haversine"
+    ))
+  }, numeric(1))
+  j <- which.min(d)
+  tibble(id = h$id, t_s = cand$start[j], t_e = cand$end[j])
+}) |>
+  bind_rows()
+hauls |>
+  left_join(truth, by = "id") |>
+  group_by(ds) |>
+  summarise(
+    with_a_set = sum(!is.na(t_s)),
+    median_soak_h = median(as.numeric(difftime(start, t_e, units = "hours")), na.rm = TRUE)
+  )
+```
+
+The two gears differ the way static gear does: the pots soak for days, the
+gillnets for an hour or two, with the fish driven into the net between the set
+and the haul.
+
+## The variants, at five ping rates
+
+A found set is right when its pings overlap the true set run. The track is
+thinned to one ping per 2, 5, 10 and 30 minutes to see what remains at VMS
+rates.
+
+```{r}
+thin <- function(p, s) {
+  if (s == 0) {
+    return(p)
+  }
+  p |>
+    mutate(b = floor(as.numeric(time) / s)) |>
+    group_by(vid, b) |>
+    slice(1) |>
+    ungroup()
+}
+score <- function(found) {
+  x <- hauls |>
+    select(id, ds) |>
+    left_join(found, by = "id") |>
+    left_join(truth, by = "id") |>
+    mutate(
+      right = !is.na(set_start) & !is.na(t_s) & set_start < t_e & t_s <= set_end,
+      wrong = !is.na(set_start) & !is.na(t_s) & !right,
+      missed = is.na(set_start) & !is.na(t_s)
+    )
+  x |>
+    group_by(ds) |>
+    summarise(cell = sprintf("%d / %d / %d", sum(right), sum(wrong), sum(missed)))
+}
+variants <- list(
+  "as iapesca (the defaults)" = list(),
+  "no cap on the pass length" = list(max_pass_pings = Inf),
+  "skip the run in, no cap" = list(skip_approach = TRUE, max_pass_pings = Inf),
+  "the haul's line" = list(method = "line"),
+  "declared positions" = list(method = "record"),
+  "pings, else declared positions" = list(method = c("pings", "record"))
+)
+h_in <- select(hauls, id, vid, start, end, lon1, lat1, lon2, lat2)
+res <- list()
+for (s in c(0, 120, 300, 600, 1800)) {
+  p <- thin(p0, s) |> select(vid, time, lon, lat)
+  for (v in names(variants)) {
+    found <- do.call(rb_link_record_sets, c(list(h_in, p, key = "id"), variants[[v]]))
+    res[[length(res) + 1]] <- score(found) |>
+      mutate(variant = v, rate = if (s == 0) "own" else paste(s / 60, "min"))
+  }
+}
+bind_rows(res) |>
+  tidyr::pivot_wider(names_from = rate, values_from = cell) |>
+  arrange(ds) |>
+  knitr::kable(caption = "Right / wrong / missed sets per gear, variant and ping rate.")
+```
+
+## What the labels say
+
+- **Dense pot tracks: the run in to the buoy.** With iapesca's score a pass
+  stops gaining at four pings, so the latest pass wins, and on a track a
+  minute apart that is the vessel's run in to the haul. Skipping the pass
+  that leads straight into the haul and scoring passes by their full length
+  finds most sets.
+- **Drive-in gillnets: the same guard is wrong.** The net is set, the fish
+  driven and the net hauled in one continuous pass, so skipping the run in
+  drops the set itself. The defaults find nearly every set.
+- **Sparse tracks: declared positions.** At 30 minutes many hauls hold no
+  ping, and `method = "line"`, which needs two, loses the most. The haul's
+  declared start and end, where the logbook has them, give the line back:
+  `method = c("pings", "record")` uses the pings where the haul has any and
+  never does worse than `"pings"`.
+
+The best choice differs by gear and by ping rate, so the defaults stay as
+iapesca has them. Each variant is an argument, and `set_method` says which
+line each haul was measured against.
