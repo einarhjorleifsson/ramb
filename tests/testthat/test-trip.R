@@ -1068,3 +1068,66 @@ test_that("port calls of iapesca lie between its voyages, columns renamed alike"
   )
   expect_equal(got, want[, names(got)], ignore_attr = TRUE)
 })
+
+test_that("rb_add_trip_time() takes each field from the best-ranked witness that holds it, and counts every trip", {
+  t0 <- as.POSIXct("2024-03-01 06:00", tz = "UTC")
+  trips <- data.frame(tid = 1:4)
+  w <- data.frame(
+    tid = c(1, 1, 2, 2, 4, 4),
+    witness = c("track", "logbook", "logbook", "notice", "notice", "track"),
+    time = t0 + c(0, 600, 0, 7200, 0, NA),
+    place = c("A", "A", NA, "B", "C", "D")
+  )
+  rk <- c("track", "logbook", "notice")
+  bs <- c(track = "reconstructed", logbook = "recorded", notice = "recorded")
+  r <- rb_add_trip_time(trips, w, keys = "tid", rank = rk, basis = bs)
+  r <- r[order(r$tid), ]
+  expect_equal(r$T1, t0 + c(0, 0, NA, 0))
+  expect_equal(r$T1_from, c("track", "logbook", NA, "notice"))
+  expect_equal(r$T1_basis, c("reconstructed", "recorded", "none", "recorded"))
+  expect_equal(r$T1_n, c(2, 2, 0, 1))
+  expect_equal(r$T1_outcome, c("agree", "differ", "none", "one"))
+  expect_equal(r$T1_spread_s, c(600, 7200, NA, 0))
+  # the place on its own: trip 2's logbook holds no place, trip 4's track a place and no time
+  expect_equal(r$pid1, c("A", "B", NA, "D"))
+  expect_equal(r$pid1_from, c("track", "notice", NA, "track"))
+  expect_equal(r$pid1_outcome, c("agree", "one", "none", "differ"))
+  # a tighter tolerance, no basis given, other names
+  r2 <- rb_add_trip_time(trips, w, keys = "tid", rank = rk, tolerance = 60, name = "T2", place_name = "pid2")
+  r2 <- r2[order(r2$tid), ]
+  expect_equal(r2$T2_outcome, c("differ", "differ", "none", "one"))
+  expect_equal(r2$T2_basis, c(NA, NA, "none", NA))
+  expect_true(all(c("pid2", "pid2_from") %in% names(r2)))
+  # without places
+  r3 <- rb_add_trip_time(trips, w[, c("tid", "witness", "time")], keys = "tid", rank = rk, place_name = NULL)
+  expect_false("pid1" %in% names(r3))
+})
+
+test_that("rb_add_trip_time() gives the same on lazy tables, and refuses an unranked witness or a taken name", {
+  skip_if_not_installed("duckdbfs")
+  t0 <- as.POSIXct("2024-03-01 06:00", tz = "UTC")
+  trips <- data.frame(tid = 1:2, schema = "a")
+  w <- data.frame(
+    tid = c(1, 1, 2),
+    schema = "a",
+    witness = c("track", "logbook", "logbook"),
+    time = t0 + c(0, 4000, 0),
+    place = c("A", "B", "B")
+  )
+  rk <- c("track", "logbook")
+  d <- rb_add_trip_time(trips, w, keys = c("tid", "schema"), rank = rk)
+  l <- rb_add_trip_time(
+    duckdbfs::as_dataset(trips),
+    duckdbfs::as_dataset(w),
+    keys = c("tid", "schema"),
+    rank = rk
+  )
+  expect_s3_class(l, "tbl_lazy")
+  l <- as.data.frame(dplyr::collect(l))
+  expect_equal(l[order(l$tid), names(d)], d[order(d$tid), ], ignore_attr = TRUE)
+  expect_error(rb_add_trip_time(trips, w, keys = c("tid", "schema"), rank = "track"), "logbook")
+  expect_error(
+    rb_add_trip_time(transform(trips, T1 = t0), w, keys = c("tid", "schema"), rank = rk),
+    "already has"
+  )
+})

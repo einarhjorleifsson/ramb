@@ -138,6 +138,26 @@
     ),
     after = "rb_create_voyages"
   ),
+  # the departure (or the return) from ranked witnesses: the track, the logbook, notifications; T1 and pid1 by default
+  .rb_step(
+    "rb_add_trip_time",
+    "trip",
+    "builder",
+    "trips",
+    character(0),
+    c(
+      "T1_from",
+      "T1_basis",
+      "T1_n",
+      "T1_outcome",
+      "T1_spread_s",
+      "pid1_from",
+      "pid1_basis",
+      "pid1_n",
+      "pid1_outcome"
+    ),
+    after = "rb_link_trip_voyages"
+  ),
   .rb_step(
     "rb_link_trip_landings",
     "trip",

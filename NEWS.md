@@ -1,3 +1,9 @@
+# ramb 2026.10.22.1
+
+## A trip's departure (or return) from ranked witnesses (fishycode TODO 121)
+
+- `rb_add_trip_time()` (new, step 1): several sources witness a trip's departure, the track (`rb_link_trip_voyages()`), the logbook, a notification system. Each trip takes its time from the best-ranked witness that holds one and its place (a port) from the best-ranked witness that holds a place, each on its own, with the witness it came from and its basis. Every trip falls in one outcome per field (`"none"`, `"one"`, `"agree"`, `"differ"`; times agree within `tolerance`, 1 hour by default), and `_spread_s` gives the largest distance to another witness's time. `name = "T1"` and `place_name = "pid1"` by default, the departure; `"T2"` and `"pid2"` for the return. It is the step `docs/one_flow.qmd` in fishycode planned as `rb_reconcile_time`, named by its output shape.
+
 # ramb 2026.10.19.3
 
 ## Port calls at any ping rate (fishycode plan 031, step 3)

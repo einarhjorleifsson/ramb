@@ -31,6 +31,7 @@ reference:
   - rb_assign_trip
   - rb_link_trip_voyages
   - rb_link_trip_landings
+  - rb_add_trip_time
   - rb_link_trip_logbook
   - rb_pad_harbour
 - title: "Record (step 2)"

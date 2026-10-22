@@ -1025,6 +1025,152 @@ FROM ranked WHERE rn = 1",
   out
 }
 
+#' Add a time and a place to trips from ranked witnesses
+#'
+#' A step-1 reconciliation of the fishing-activity flow. Several sources witness the same moment of a trip, such as
+#' its departure: the track measures it ([rb_link_trip_voyages()]), the logbook declares it, a notification system
+#' records it. Each trip takes its time from the best-ranked witness that holds one, and its place (a port) from the
+#' best-ranked witness that holds a place, each on its own: a witness may hold a time without a place. Every trip
+#' falls in one outcome per field: no witness, one witness, every witness agrees with the chosen value (within
+#' `tolerance` for the time, the same value for the place), or at least one does not.
+#'
+#' @param trips A data frame or lazy DuckDB table of trips with their key columns (`keys`).
+#' @param witnesses A data frame or lazy DuckDB table, one row per trip and witness: `keys`, `witness`, `time` and,
+#'   unless `place_name` is `NULL`, `place`. A trip may have no row, and a witness `NA` in either field. Where a
+#'   witness has several rows for a trip, its earliest time counts.
+#' @param keys The columns that identify a trip (e.g. `c(".tid", "schema")`).
+#' @param rank The witnesses' names, best first. A witness that is not in `rank` is an error.
+#' @param basis The basis of each witness's values, named by witness (e.g. `c(track = "reconstructed", logbook =
+#'   "recorded")`). A witness not named gives `NA`; a trip with no witness gets `"none"`.
+#' @param tolerance Seconds within which another witness's time agrees with the chosen one.
+#' @param name The name of the time added: `"T1"` (the departure, the default) or `"T2"` (the return).
+#' @param place_name The name of the place added (default `"pid1"`), or `NULL` when the witnesses hold no place.
+#'
+#' @return `trips` with columns added. For the time (`name`): the value, `_from` (the witness it came from),
+#'   `_basis`, `_n` (the witnesses that hold a time), `_outcome` (`"none"`, `"one"`, `"agree"`, `"differ"`) and
+#'   `_spread_s` (the largest distance in seconds from the chosen time to another witness's). For the place
+#'   (`place_name`): the value, `_from`, `_basis`, `_n` and `_outcome`. A data frame for data frame input, a lazy
+#'   table for lazy input.
+#' @family trip
+#' @export
+#' @examples
+#' t0 <- as.POSIXct("2024-03-01 06:00", tz = "UTC")
+#' trips <- data.frame(tid = 1:3)
+#' w <- data.frame(
+#'   tid = c(1, 1, 2, 2),
+#'   witness = c("track", "logbook", "logbook", "notice"),
+#'   time = t0 + c(0, 600, 0, 7200),
+#'   place = c("A", "A", NA, "B")
+#' )
+#' rb_add_trip_time(
+#'   trips, w, keys = "tid", rank = c("track", "logbook", "notice"),
+#'   basis = c(track = "reconstructed", logbook = "recorded", notice = "recorded")
+#' )
+rb_add_trip_time <- function(
+  trips,
+  witnesses,
+  keys,
+  rank,
+  basis = NULL,
+  tolerance = 3600,
+  name = "T1",
+  place_name = "pid1"
+) {
+  .rb_check_input(trips, "rb_add_trip_time", also = stats::setNames(keys, keys))
+  place <- !is.null(place_name)
+  .rb_need_cols(witnesses, "witnesses", c(keys, "witness", "time", if (place) "place"))
+  if (anyDuplicated(rank) || !length(rank)) {
+    rlang::abort("`rank` must name each witness once, best first.")
+  }
+  added <- c(
+    name,
+    paste0(name, c("_from", "_basis", "_n", "_outcome", "_spread_s")),
+    if (place) c(place_name, paste0(place_name, c("_from", "_basis", "_n", "_outcome")))
+  )
+  have <- if (inherits(trips, "tbl_lazy")) colnames(trips) else names(trips)
+  if (length(intersect(added, have))) {
+    rlang::abort(c(
+      "`trips` already has the columns this step adds.",
+      x = paste0("`", intersect(added, have), "`", collapse = ", "),
+      i = "Pass the trips' keys only, or choose another `name` or `place_name`."
+    ))
+  }
+  lazy_in <- inherits(trips, "tbl_lazy") || inherits(witnesses, "tbl_lazy")
+  con <- .rb_con_for(trips, witnesses)
+  tr <- .rb_as_lazy(trips, con)
+  w <- .rb_as_lazy(witnesses, con)
+  seen <- dplyr::collect(dplyr::distinct(w, witness))$witness
+  if (length(setdiff(seen, rank))) {
+    rlang::abort(c(
+      "Every witness must be ranked.",
+      x = sprintf("Not in `rank`: %s.", paste0("`", setdiff(seen, rank), "`", collapse = ", "))
+    ))
+  }
+  lit <- function(x) paste0("'", gsub("'", "''", x), "'")
+  rk <- sprintf("CASE witness %s END", paste(sprintf("WHEN %s THEN %d", lit(rank), seq_along(rank)), collapse = " "))
+  bs <- if (length(basis)) {
+    sprintf("CASE witness %s END", paste(sprintf("WHEN %s THEN %s", lit(names(basis)), lit(basis)), collapse = " "))
+  } else {
+    "NULL::VARCHAR"
+  }
+  kq <- paste(sprintf('"%s"', keys), collapse = ", ")
+  q <- function(x) sprintf('"%s"', x)
+  pl <- if (place) "place" else "NULL::VARCHAR"
+  w_sql <- .rb_sql(w)
+  tr_sql <- .rb_sql(tr)
+  n_t <- q(name)
+  n_from <- q(paste0(name, "_from"))
+  n_basis <- q(paste0(name, "_basis"))
+  n_n <- q(paste0(name, "_n"))
+  n_outcome <- q(paste0(name, "_outcome"))
+  n_spread <- q(paste0(name, "_spread_s"))
+  psel <- if (place) {
+    sprintf(
+      ",
+       pc.rb_p AS %s, pc.rb_p_from AS %s, CASE WHEN pc.rb_p IS NULL THEN 'none' ELSE pc.rb_p_basis END AS %s,
+       coalesce(pc.rb_p_n, 0) AS %s,
+       CASE WHEN pc.rb_p IS NULL THEN 'none' WHEN pc.rb_p_n = 1 THEN 'one' WHEN pc.rb_p_k = 1 THEN 'agree'
+            ELSE 'differ' END AS %s",
+      q(place_name),
+      q(paste0(place_name, "_from")),
+      q(paste0(place_name, "_basis")),
+      q(paste0(place_name, "_n")),
+      q(paste0(place_name, "_outcome"))
+    )
+  } else {
+    ""
+  }
+  pjoin <- if (place) sprintf(" LEFT JOIN pc USING (%s)", kq) else ""
+  # the chosen witness first, then its values joined back: arg_min() would pass over a NULL basis
+  sql <- .rb_fill(
+    "
+WITH w AS (SELECT {kq}, witness, time, {pl} AS place, {rk} AS rb_rank, {bs} AS rb_basis FROM ({w_sql})),
+ws AS (SELECT * FROM w QUALIFY row_number() OVER (PARTITION BY {kq}, witness ORDER BY time NULLS LAST) = 1),
+tw AS (SELECT {kq}, arg_min(witness, rb_rank) AS rb_from, count(*) AS rb_n FROM ws WHERE time IS NOT NULL GROUP BY {kq}),
+tc AS (SELECT tw.*, ws.time AS rb_t, ws.rb_basis AS rb_t_basis FROM tw JOIN ws USING ({kq}) WHERE ws.witness = tw.rb_from),
+tsp AS (SELECT {kq}, max(abs(epoch(ws.time) - epoch(tc.rb_t))) AS rb_spread FROM ws JOIN tc USING ({kq})
+        WHERE ws.time IS NOT NULL GROUP BY {kq}),
+pw AS (SELECT {kq}, arg_min(witness, rb_rank) AS rb_p_from, count(*) AS rb_p_n, count(DISTINCT place) AS rb_p_k
+       FROM ws WHERE place IS NOT NULL GROUP BY {kq}),
+pc AS (SELECT pw.*, ws.place AS rb_p, ws.rb_basis AS rb_p_basis FROM pw JOIN ws USING ({kq}) WHERE ws.witness = pw.rb_p_from)
+SELECT t.*,
+       tc.rb_t AS {n_t}, tc.rb_from AS {n_from},
+       CASE WHEN tc.rb_t IS NULL THEN 'none' ELSE tc.rb_t_basis END AS {n_basis},
+       coalesce(tc.rb_n, 0) AS {n_n},
+       CASE WHEN tc.rb_t IS NULL THEN 'none' WHEN tc.rb_n = 1 THEN 'one'
+            WHEN tsp.rb_spread <= {tolerance} THEN 'agree' ELSE 'differ' END AS {n_outcome},
+       tsp.rb_spread AS {n_spread}{psel}
+FROM ({tr_sql}) t LEFT JOIN tc USING ({kq}) LEFT JOIN tsp USING ({kq}){pjoin}"
+  )
+  out <- dplyr::tbl(con, dplyr::sql(sql))
+  if (lazy_in) {
+    return(out)
+  }
+  out <- as.data.frame(dplyr::collect(out))
+  .rb_unregister(con)
+  out
+}
+
 # The "jepol" method: whole vessels collected in batches, the rule applied in R (R/trip_jepol.R), one voyage table.
 .rb_cut_jepol <- function(
   p,
