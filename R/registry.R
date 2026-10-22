@@ -148,6 +148,7 @@
     c(
       "T1_from",
       "T1_basis",
+      "T1_day",
       "T1_n",
       "T1_outcome",
       "T1_spread_s",

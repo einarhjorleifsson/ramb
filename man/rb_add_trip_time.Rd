@@ -19,8 +19,9 @@ rb_add_trip_time(
 \item{trips}{A data frame or lazy DuckDB table of trips with their key columns (\code{keys}).}
 
 \item{witnesses}{A data frame or lazy DuckDB table, one row per trip and witness: \code{keys}, \code{witness}, \code{time} and,
-unless \code{place_name} is \code{NULL}, \code{place}. A trip may have no row, and a witness \code{NA} in either field. Where a
-witness has several rows for a trip, its earliest time counts.}
+unless \code{place_name} is \code{NULL}, \code{place}; optionally \code{day}, \code{TRUE} where the time is a date only (a landing day,
+a logbook that records the day). A trip may have no row, and a witness \code{NA} in either field. Where a witness has
+several rows for a trip, its earliest time counts.}
 
 \item{keys}{The columns that identify a trip (e.g. \code{c(".tid", "schema")}).}
 
@@ -36,8 +37,9 @@ witness has several rows for a trip, its earliest time counts.}
 }
 \value{
 \code{trips} with columns added. For the time (\code{name}): the value, \verb{_from} (the witness it came from),
-\verb{_basis}, \verb{_n} (the witnesses that hold a time), \verb{_outcome} (\code{"none"}, \code{"one"}, \code{"agree"}, \code{"differ"}) and
-\verb{_spread_s} (the largest distance in seconds from the chosen time to another witness's). For the place
+\verb{_basis}, \verb{_day} (\code{TRUE} where the value is a date only), \verb{_n} (the witnesses that hold a time), \verb{_outcome}
+(\code{"none"}, \code{"one"}, \code{"agree"}, \code{"differ"}) and \verb{_spread_s} (the largest distance in seconds from the chosen time
+to another witness's, by date where either is a date only). For the place
 (\code{place_name}): the value, \verb{_from}, \verb{_basis}, \verb{_n} and \verb{_outcome}. A data frame for data frame input, a lazy
 table for lazy input.
 }
@@ -45,9 +47,10 @@ table for lazy input.
 A step-1 reconciliation of the fishing-activity flow. Several sources witness the same moment of a trip, such as
 its departure: the track measures it (\code{\link[=rb_link_trip_voyages]{rb_link_trip_voyages()}}), the logbook declares it, a notification system
 records it. Each trip takes its time from the best-ranked witness that holds one, and its place (a port) from the
-best-ranked witness that holds a place, each on its own: a witness may hold a time without a place. Every trip
-falls in one outcome per field: no witness, one witness, every witness agrees with the chosen value (within
-\code{tolerance} for the time, the same value for the place), or at least one does not.
+best-ranked witness that holds a place, each on its own: a witness may hold a time without a place. A witness that
+knows only the day (\code{day}) gives way to the best lower-ranked witness with a time on that day. Every trip falls in
+one outcome per field: no witness, one witness, every witness agrees with the chosen value (within \code{tolerance} for
+the time, the same day where either knows only the day, the same value for the place), or at least one does not.
 }
 \examples{
 t0 <- as.POSIXct("2024-03-01 06:00", tz = "UTC")

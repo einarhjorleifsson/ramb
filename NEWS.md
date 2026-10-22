@@ -1,3 +1,7 @@
+# ramb 2026.10.22.2
+
+- `rb_add_trip_time()`: a witness may carry `day` (`TRUE` where its time is a date only, a landing day or a logbook that records the day). Such a witness, when it ranks first, gives way to the best lower-ranked witness with a time on that day, and it agrees with any time on its day. A new column `_day` marks values known only to the day. Without `day` the results are as before (fishycode decision 174: the return, `T2`, from the same ranking as the departure).
+
 # ramb 2026.10.22.1
 
 ## A trip's departure (or return) from ranked witnesses (fishycode TODO 121)

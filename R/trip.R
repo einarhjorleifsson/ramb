@@ -1030,14 +1030,16 @@ FROM ranked WHERE rn = 1",
 #' A step-1 reconciliation of the fishing-activity flow. Several sources witness the same moment of a trip, such as
 #' its departure: the track measures it ([rb_link_trip_voyages()]), the logbook declares it, a notification system
 #' records it. Each trip takes its time from the best-ranked witness that holds one, and its place (a port) from the
-#' best-ranked witness that holds a place, each on its own: a witness may hold a time without a place. Every trip
-#' falls in one outcome per field: no witness, one witness, every witness agrees with the chosen value (within
-#' `tolerance` for the time, the same value for the place), or at least one does not.
+#' best-ranked witness that holds a place, each on its own: a witness may hold a time without a place. A witness that
+#' knows only the day (`day`) gives way to the best lower-ranked witness with a time on that day. Every trip falls in
+#' one outcome per field: no witness, one witness, every witness agrees with the chosen value (within `tolerance` for
+#' the time, the same day where either knows only the day, the same value for the place), or at least one does not.
 #'
 #' @param trips A data frame or lazy DuckDB table of trips with their key columns (`keys`).
 #' @param witnesses A data frame or lazy DuckDB table, one row per trip and witness: `keys`, `witness`, `time` and,
-#'   unless `place_name` is `NULL`, `place`. A trip may have no row, and a witness `NA` in either field. Where a
-#'   witness has several rows for a trip, its earliest time counts.
+#'   unless `place_name` is `NULL`, `place`; optionally `day`, `TRUE` where the time is a date only (a landing day,
+#'   a logbook that records the day). A trip may have no row, and a witness `NA` in either field. Where a witness has
+#'   several rows for a trip, its earliest time counts.
 #' @param keys The columns that identify a trip (e.g. `c(".tid", "schema")`).
 #' @param rank The witnesses' names, best first. A witness that is not in `rank` is an error.
 #' @param basis The basis of each witness's values, named by witness (e.g. `c(track = "reconstructed", logbook =
@@ -1047,8 +1049,9 @@ FROM ranked WHERE rn = 1",
 #' @param place_name The name of the place added (default `"pid1"`), or `NULL` when the witnesses hold no place.
 #'
 #' @return `trips` with columns added. For the time (`name`): the value, `_from` (the witness it came from),
-#'   `_basis`, `_n` (the witnesses that hold a time), `_outcome` (`"none"`, `"one"`, `"agree"`, `"differ"`) and
-#'   `_spread_s` (the largest distance in seconds from the chosen time to another witness's). For the place
+#'   `_basis`, `_day` (`TRUE` where the value is a date only), `_n` (the witnesses that hold a time), `_outcome`
+#'   (`"none"`, `"one"`, `"agree"`, `"differ"`) and `_spread_s` (the largest distance in seconds from the chosen time
+#'   to another witness's, by date where either is a date only). For the place
 #'   (`place_name`): the value, `_from`, `_basis`, `_n` and `_outcome`. A data frame for data frame input, a lazy
 #'   table for lazy input.
 #' @family trip
@@ -1084,7 +1087,7 @@ rb_add_trip_time <- function(
   }
   added <- c(
     name,
-    paste0(name, c("_from", "_basis", "_n", "_outcome", "_spread_s")),
+    paste0(name, c("_from", "_basis", "_day", "_n", "_outcome", "_spread_s")),
     if (place) c(place_name, paste0(place_name, c("_from", "_basis", "_n", "_outcome")))
   )
   have <- if (inherits(trips, "tbl_lazy")) colnames(trips) else names(trips)
@@ -1116,11 +1119,14 @@ rb_add_trip_time <- function(
   kq <- paste(sprintf('"%s"', keys), collapse = ", ")
   q <- function(x) sprintf('"%s"', x)
   pl <- if (place) "place" else "NULL::VARCHAR"
+  wcols <- if (inherits(witnesses, "tbl_lazy")) colnames(witnesses) else names(witnesses)
+  dy <- if ("day" %in% wcols) "coalesce(day, false)" else "false"
   w_sql <- .rb_sql(w)
   tr_sql <- .rb_sql(tr)
   n_t <- q(name)
   n_from <- q(paste0(name, "_from"))
   n_basis <- q(paste0(name, "_basis"))
+  n_day <- q(paste0(name, "_day"))
   n_n <- q(paste0(name, "_n"))
   n_outcome <- q(paste0(name, "_outcome"))
   n_spread <- q(paste0(name, "_spread_s"))
@@ -1141,21 +1147,31 @@ rb_add_trip_time <- function(
     ""
   }
   pjoin <- if (place) sprintf(" LEFT JOIN pc USING (%s)", kq) else ""
-  # the chosen witness first, then its values joined back: arg_min() would pass over a NULL basis
+  # the chosen witness first, then its values joined back: arg_min() would pass over a NULL basis. A first witness that
+  # knows only the day gives way to the best witness with a time on that day (rf).
   sql <- .rb_fill(
     "
-WITH w AS (SELECT {kq}, witness, time, {pl} AS place, {rk} AS rb_rank, {bs} AS rb_basis FROM ({w_sql})),
+WITH w AS (SELECT {kq}, witness, time, {pl} AS place, {dy} AS rb_day, {rk} AS rb_rank, {bs} AS rb_basis FROM ({w_sql})),
 ws AS (SELECT * FROM w QUALIFY row_number() OVER (PARTITION BY {kq}, witness ORDER BY time NULLS LAST) = 1),
-tw AS (SELECT {kq}, arg_min(witness, rb_rank) AS rb_from, count(*) AS rb_n FROM ws WHERE time IS NOT NULL GROUP BY {kq}),
-tc AS (SELECT tw.*, ws.time AS rb_t, ws.rb_basis AS rb_t_basis FROM tw JOIN ws USING ({kq}) WHERE ws.witness = tw.rb_from),
-tsp AS (SELECT {kq}, max(abs(epoch(ws.time) - epoch(tc.rb_t))) AS rb_spread FROM ws JOIN tc USING ({kq})
-        WHERE ws.time IS NOT NULL GROUP BY {kq}),
+tw AS (SELECT {kq}, arg_min(witness, rb_rank) AS rb_first, count(*) AS rb_n FROM ws WHERE time IS NOT NULL GROUP BY {kq}),
+tf AS (SELECT tw.*, ws.time AS rb_t1, ws.rb_day AS rb_d1 FROM tw JOIN ws USING ({kq}) WHERE ws.witness = tw.rb_first),
+rf AS (SELECT {kq}, arg_min(ws.witness, ws.rb_rank) AS rb_rf FROM ws JOIN tf USING ({kq})
+       WHERE tf.rb_d1 AND NOT ws.rb_day AND ws.time IS NOT NULL AND CAST(ws.time AS DATE) = CAST(tf.rb_t1 AS DATE)
+       GROUP BY {kq}),
+tch AS (SELECT tf.*, coalesce(rf.rb_rf, tf.rb_first) AS rb_from FROM tf LEFT JOIN rf USING ({kq})),
+tc AS (SELECT tch.*, ws.time AS rb_t, ws.rb_basis AS rb_t_basis, ws.rb_day AS rb_t_day FROM tch JOIN ws USING ({kq})
+       WHERE ws.witness = tch.rb_from),
+tsp AS (SELECT {kq}, max(CASE WHEN ws.rb_day OR tc.rb_t_day
+                              THEN abs(epoch(CAST(CAST(ws.time AS DATE) AS TIMESTAMP)) - epoch(CAST(CAST(tc.rb_t AS DATE) AS TIMESTAMP)))
+                              ELSE abs(epoch(ws.time) - epoch(tc.rb_t)) END) AS rb_spread
+        FROM ws JOIN tc USING ({kq}) WHERE ws.time IS NOT NULL GROUP BY {kq}),
 pw AS (SELECT {kq}, arg_min(witness, rb_rank) AS rb_p_from, count(*) AS rb_p_n, count(DISTINCT place) AS rb_p_k
        FROM ws WHERE place IS NOT NULL GROUP BY {kq}),
 pc AS (SELECT pw.*, ws.place AS rb_p, ws.rb_basis AS rb_p_basis FROM pw JOIN ws USING ({kq}) WHERE ws.witness = pw.rb_p_from)
 SELECT t.*,
        tc.rb_t AS {n_t}, tc.rb_from AS {n_from},
        CASE WHEN tc.rb_t IS NULL THEN 'none' ELSE tc.rb_t_basis END AS {n_basis},
+       tc.rb_t_day AS {n_day},
        coalesce(tc.rb_n, 0) AS {n_n},
        CASE WHEN tc.rb_t IS NULL THEN 'none' WHEN tc.rb_n = 1 THEN 'one'
             WHEN tsp.rb_spread <= {tolerance} THEN 'agree' ELSE 'differ' END AS {n_outcome},

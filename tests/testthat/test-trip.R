@@ -1131,3 +1131,24 @@ test_that("rb_add_trip_time() gives the same on lazy tables, and refuses an unra
     "already has"
   )
 })
+
+test_that("rb_add_trip_time(): a witness that knows only the day gives way to a time on that day, and agrees by date", {
+  d0 <- as.POSIXct("2024-03-01", tz = "UTC")
+  trips <- data.frame(tid = 1:3)
+  w <- data.frame(
+    tid = c(1, 1, 2, 3, 3),
+    witness = c("logbook", "notice", "logbook", "logbook", "notice"),
+    time = d0 + c(0, 14 * 3600, 0, 0, 86400 + 3600),
+    place = c("A", "A", "B", "C", "C"),
+    day = c(TRUE, FALSE, TRUE, TRUE, FALSE)
+  )
+  r <- rb_add_trip_time(trips, w, keys = "tid", rank = c("logbook", "notice"), name = "T2", place_name = "pid2")
+  r <- r[order(r$tid), ]
+  # trip 1: the logbook's day, the notice's time on it; trip 2: the day alone; trip 3: the notice a day later
+  expect_equal(r$T2, d0 + c(14 * 3600, 0, 0))
+  expect_equal(r$T2_from, c("notice", "logbook", "logbook"))
+  expect_equal(r$T2_day, c(FALSE, TRUE, TRUE))
+  expect_equal(r$T2_outcome, c("agree", "one", "differ"))
+  expect_equal(r$T2_spread_s, c(0, 0, 86400))
+  expect_equal(r$pid2_from, c("logbook", "logbook", "logbook"))
+})
