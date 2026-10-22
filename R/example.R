@@ -88,10 +88,11 @@ rb_read_example <- function(name = NULL) {
 # its sources in inst/REFERENCES.bib. It runs when the package is documented, never when it is used, so yaml and
 # rbibutils are in Suggests.
 .rb_dataset_rd <- function(name) {
-  dd <- yaml::read_yaml(system.file(
-    "extdata",
-    "data-dict.yaml",
-    package = "ramb"
+  # read_yaml() re-encodes to the session's encoding and, outside a UTF-8 locale, stops at the first non-ASCII
+  # character without an error, dropping the datasets after it
+  dd <- yaml::yaml.load(readLines(
+    system.file("extdata", "data-dict.yaml", package = "ramb"),
+    encoding = "UTF-8"
   ))
   t <- Filter(function(x) identical(x$name, name), dd$tables)[[1]]
   bib <- rbibutils::readBib(

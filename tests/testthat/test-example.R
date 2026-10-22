@@ -75,7 +75,7 @@ test_that("the data dictionary, the files and the references agree", {
     info = paste(setdiff(keys, have_keys), collapse = ", ")
   )
   skip_if_not_installed("yaml")
-  dd <- yaml::read_yaml(dd_file)
+  dd <- yaml::yaml.load(dd_text) # read_yaml() truncates outside a UTF-8 locale
   files <- list.files(dir, pattern = "\\.parquet$")
   expect_setequal(vapply(dd$tables, function(t) t$source$parquet, ""), files)
   # each file carries its own entry of the dictionary, unchanged since it was stamped (data-raw/data_dict.R)

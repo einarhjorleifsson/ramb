@@ -17,7 +17,8 @@
 library(DBI)
 options(useFancyQuotes = FALSE)
 
-dd <- yaml::read_yaml("inst/extdata/data-dict.yaml")
+# read_yaml() truncates the file outside a UTF-8 locale
+dd <- yaml::yaml.load(readLines("inst/extdata/data-dict.yaml", encoding = "UTF-8"))
 bib <- rbibutils::readBib("inst/REFERENCES.bib", direct = TRUE)
 for (i in seq_along(bib)) {
   if (!is.null(bib[[i]]$doi)) bib[[i]]$url <- NULL # the reader adds the DOI's URL, which would print it twice
