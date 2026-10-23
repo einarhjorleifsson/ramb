@@ -26,24 +26,24 @@ reference:
   - rb_flag_ping_port
 - title: "Trip (step 1)"
   contents:
-  - rb_find_trip_stays
-  - rb_cut_trip_voyages
-  - rb_assign_trip
+  - rb_create_port_calls
+  - rb_create_voyages
+  - rb_add_voyages
   - rb_link_trip_voyages
   - rb_link_trip_landings
   - rb_add_trip_time
-  - rb_link_trip_logbook
+  - rb_add_logbook_trip
   - rb_pad_harbour
 - title: "Record (step 2)"
   contents:
-  - rb_build_record_windows
+  - rb_create_record_windows
   - rb_link_record_pings
   - rb_link_record_events
-  - rb_cut_record_stretches
+  - rb_create_record_stretches
   - rb_link_record_stretches
   - rb_link_record_sets
-  - rb_assign_record
-  - rb_build_record_pings
+  - rb_add_record
+  - rb_create_record_pings
   - rb_limit_record_duration
   - rb_interpolate_track
   - rb_cap_effort
@@ -56,13 +56,13 @@ reference:
   - rb_standardise_gear_meshsize
 - title: "Fishing (step 4)"
   contents:
-  - rb_assign_fishing
+  - rb_add_fishing
 - title: "Effort (step 5)"
   contents:
-  - rb_assign_effort
+  - rb_add_effort
 - title: "Catch (step 6)"
   contents:
-  - rb_build_catch_units
+  - rb_add_catch_units
   - rb_share_catch
 - title: "Tools: track calculations"
   contents:
@@ -89,7 +89,7 @@ reference:
   - rb_cap_outliers
   - rb_detect_crosses_year
   - rb_check_trip_crosses_year
-  - rb_create_timestamp
+  - rb_add_timestamp
   - rb_classify_mmsi
   - rb_lookup_mmsi_country
   - rb_sum_across
