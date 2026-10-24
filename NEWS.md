@@ -4,6 +4,9 @@
   to text, a small integer to an integer, a decimal to a double). DuckDB's `ST_AsMVT()` refused it, and the layer was
   blank (a factor, found on iapesca's example data).
 - `rb_map_serve()`: a tile function that fails replies 500 with the first line of its error, which the page shows.
+- Four example maps as scripts in `inst/examples/map/` (named in `?rb_map`): the Danish pings by cell, the same with
+  switches (cell size, a sample, the interpolation), the Italian tracks' voyages by the `cnr` and `iapesca` rules, and
+  iapesca's example vessel.
 
 # ramb 2026.10.24.2
 

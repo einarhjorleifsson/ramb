@@ -204,6 +204,11 @@ rb_map_group <- function(id, title = id, layers, open = TRUE) {
 #' legend under it; base maps to choose from; the whole view in the page's address, so a link gives the same view;
 #' and on a phone the sidebar behind a menu button. [rb_map_serve()] serves it.
 #'
+#' Four whole maps on the example data are scripts in `system.file("examples", "map", package = "ramb")`: the Danish
+#' pings by cell (`dansk_map.R`), the same with a cell size, a sample and the interpolation to choose in the page
+#' (`dansk_switches_map.R`), the Italian tracks' voyages by two rules (`cnr_map.R`), and iapesca's example vessel
+#' (`iapesca_map.R`, which needs iapesca).
+#'
 #' @param ... [rb_map_group()]s.
 #' @param title The page's title: a key of `texts`, or the text itself.
 #' @param view The first view: `center` (longitude, latitude) and `zoom`.
