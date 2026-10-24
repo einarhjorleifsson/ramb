@@ -1,3 +1,13 @@
+# ramb 2026.10.24.1
+
+## A map viewer (fishycode plan 046)
+
+- `rb_map_layer()`, `rb_map_group()`, `rb_map()` (new): a map declared in R, its layers in groups. Three kinds of layer: `"grid"` (vector tiles of cells coloured in the page by a numeric field on a log scale, with palette, stretch, floor, cap and histogram, and filters whose values go into the tile address), `"vector"` (vector tiles drawn by MapLibre styles) and `"geojson"`. Texts are keys of the map's `texts`, in any number of languages; the page's own texts are English.
+- `rb_map_serve()`, `rb_map_stop()` (new): the map served from this R session on `127.0.0.1`, by a small httpuv server with fixed routes (`/`, `/config.json`, `/meta`, `/tiles/<id>/{z}/{x}/{y}.pbf`, `/data/<id>.geojson`). A grid's query parameters are checked against its filters before its tile function sees them. The page (`inst/map/index.html`) holds the whole view in its address, so a link gives the same view, and works on a phone.
+- `rb_map_tiles_table()` (new): a table of points, lines or areas (a lazy DuckDB table or a data frame) as vector tiles, cut by DuckDB's `ST_AsMVT()`, with a point on every feature as a second tile layer if asked.
+- `rb_map_palettes()`, `rb_map_basemaps()` (new): the default palettes (viridisLite and tidyterra, nine colours each) and base maps (Carto's vector styles, Esri's raster tiles, none).
+- httpuv and jsonlite are new in Suggests, needed to serve a map only.
+
 # ramb 2026.10.22.2
 
 - `rb_add_trip_time()`: a witness may carry `day` (`TRUE` where its time is a date only, a landing day or a logbook that records the day). Such a witness, when it ranks first, gives way to the best lower-ranked witness with a time on that day, and it agrees with any time on its day. A new column `_day` marks values known only to the day. Without `day` the results are as before (fishycode decision 174: the return, `T2`, from the same ranking as the departure).

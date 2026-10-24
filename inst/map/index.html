@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Map</title>
+<!-- ramb's map viewer (rb_map(), rb_map_serve()): the engine. What it shows comes from its config, which the server
+     writes into the script tag "config" below as it serves the page. -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  /* a sidebar of groups that fold, each layer with its info and, when ticked, its controls and legend under it
+     (after vefsja.is); behind a menu button on a phone */
+  :root { --side: 310px; --bar: #2c5d87; --bar-hover: #234b6d; --line: #dde2e7; --muted: #5f6b76; }
+  html, body { margin: 0; height: 100%; font: 13px/1.35 system-ui, sans-serif; color: #222; background: #fff; }
+  #side { position: absolute; top: 0; bottom: 0; left: 0; width: var(--side); z-index: 3; background: #fff;
+          box-shadow: 1px 0 5px rgba(0,0,0,.2); display: flex; flex-direction: column; }
+  #map { position: absolute; top: 0; bottom: 0; left: var(--side); right: 0; }
+  #side header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  #side header h1 { font-size: 15px; margin: 0; flex: 1; }
+  #groups { flex: 1; overflow-y: auto; scrollbar-gutter: stable; }   /* a scrollbar appearing moves nothing */
+  details.group > summary { list-style: none; cursor: pointer; background: var(--bar); color: #fff; padding: 7px 12px;
+                            border-bottom: 1px solid #fff; user-select: none; }
+  details.group > summary::-webkit-details-marker { display: none; }
+  details.group > summary::before { content: "▸"; display: inline-block; width: 1.1em; transition: transform .15s; }
+  details.group[open] > summary::before { transform: rotate(90deg); }
+  details.group > summary:hover { background: var(--bar-hover); }
+  .body { padding: 6px 12px 10px; }
+  .layer + .layer { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 4px; }
+  .layer .head { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+  .layer .head label { font-weight: 600; }
+  .layer .head .count { flex: 1; color: var(--muted); }
+  .info-btn { border: 0; background: none; color: var(--bar); cursor: pointer; padding: 0 2px; font-size: 15px; }
+  .info { color: #333; background: #f3f5f7; border-radius: 4px; padding: 6px 8px; margin: 2px 0 6px; }
+  .layer.off .when-on { display: none; }
+  .sub { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; margin: 10px 0 2px; }
+  .row { display: flex; align-items: center; gap: 6px; margin: 5px 0; }
+  .row label { width: 74px; color: var(--muted); }
+  .row select, .row input[type=range] { flex: 1; min-width: 0; }
+  .years select { flex: 1; }
+  .range .val { width: 54px; text-align: right; font-variant-numeric: tabular-nums; }
+  button { font: inherit; padding: 2px 8px; }
+  .legend { margin-top: 8px; }
+  .bar { height: 10px; border-radius: 2px; }
+  #hist { display: block; width: 100%; height: 44px; margin-top: 2px; }
+  .ends { display: flex; justify-content: space-between; color: var(--muted); font-variant-numeric: tabular-nums; }
+  #status { color: #777; padding: 6px 12px; border-top: 1px solid var(--line); min-height: 1.3em; }
+  .about p { margin: 4px 0 8px; }
+  #bases label { display: flex; align-items: center; gap: 6px; margin: 3px 0; cursor: pointer; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 2px 0 4px 22px; color: var(--muted); }
+  .swatches span { display: inline-flex; align-items: center; gap: 5px; }
+  .swatches i { display: inline-block; width: 14px; height: 10px; }
+  #copylink { border: 0; background: none; cursor: pointer; font-size: 15px; padding: 0 4px; }
+  .langs button { border: 1px solid var(--line); background: #fff; color: var(--muted); padding: 1px 6px; cursor: pointer; }
+  .langs button + button { border-left: 0; }
+  .langs button.on { background: var(--bar); border-color: var(--bar); color: #fff; }
+  #menu, #close { display: none; }
+  @media (max-width: 700px) {
+    #map { left: 0; }
+    #side { width: min(330px, 90vw); transform: translateX(-105%); transition: transform .2s; }
+    body.side-open #side { transform: none; }
+    #menu { display: block; position: absolute; top: 10px; left: 10px; z-index: 2; font-size: 18px; line-height: 1;
+            padding: 6px 10px; background: #fff; border: 0; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+    #close { display: block; border: 0; background: none; font-size: 18px; cursor: pointer; }
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<button id="menu" data-tt="menu">☰</button>
+<aside id="side">
+  <header><h1></h1>
+    <button id="copylink" data-tt="copyLink">🔗</button>
+    <span class="langs"></span>
+    <button id="close" data-tt="close">✕</button></header>
+  <div id="groups">
+    <details class="group" id="g-base">
+      <summary data-t="gBase"></summary>
+      <div class="body" id="bases"></div>
+    </details>
+    <details class="group about" id="g-about">
+      <summary data-t="gAbout"></summary>
+      <div class="body" id="about"></div>
+    </details>
+  </div>
+  <div id="status"></div>
+</aside>
+<!-- a grid layer's colour controls and legend, put under its filters -->
+<template id="grid-colour">
+  <div class="sub" data-t="colour"></div>
+  <div class="row"><label for="palette" data-t="colours"></label><select id="palette"></select></div>
+  <div class="row"><label for="stretch" data-t="stretch"></label>
+    <select id="stretch" data-tt="stretchTip">
+      <option value="even" data-t="sEven"></option>
+      <option value="equal" data-t="sEqual"></option>
+    </select></div>
+  <div class="row range"><label for="lo" data-t="floor"></label><input id="lo" type="range" min="-4" max="5" step="any"><span class="val" id="loval"></span></div>
+  <div class="row range"><label for="hi" data-t="cap"></label><input id="hi" type="range" min="-4" max="5" step="any"><span class="val" id="hival"></span></div>
+  <div class="row range"><label for="opacity" data-t="opacity"></label><input id="opacity" type="range" min="0" max="100" step="1"><span class="val" id="opval"></span></div>
+  <div class="row"><button id="fit" data-t="fit" data-tt="fitTip"></button></div>
+  <div class="legend" data-tt="legendTip">
+    <div class="bar" id="bar"></div><canvas id="hist"></canvas><div class="ends"><span id="lolab"></span><span id="midlab"></span><span id="hilab"></span></div></div>
+</template>
+<script id="config" type="application/json">__CONFIG__</script>
+<script>
+// The engine's version: rb_map_serve() sends its own in /meta, and a server older than the page is named as such
+const ENGINE = 1;
+// The engine's texts, in English; a config adds languages and the texts of its layers ({1}, {2} filled in here)
+const ENGINE_TEXTS = {
+  menu: "Layers and filters", close: "Close", copyLink: "Copy a link to this view", copied: "link copied",
+  notCopied: "the browser refused to copy the link", infoTip: "About this layer", gBase: "Base map", gAbout: "About",
+  loading: "loading tiles…", zoom: "zoom", refused: "the server refused tiles (HTTP {1})",
+  older: "the server is an older version ({1}) than this page ({2}): restart it", colour: "Colour",
+  colours: "Colours", stretch: "Stretch", stretchTip: "How the colours are spread between floor and cap",
+  sEven: "even on a log scale", sEqual: "equal shares of the cells in view", floor: "Floor", cap: "Cap",
+  opacity: "Opacity", fit: "Fit to view", fitTip: "Floor and cap at the 2nd and 98th percentiles of the cells in view",
+  legendTip: "The colour scale on a log axis, and below it the cells in view: values below the floor and above the cap in the end bars",
+  yes: "yes", no: "no"
+};
+let CONFIG;
+try { CONFIG = JSON.parse(document.getElementById("config").textContent); }
+catch (err) {
+  document.body.innerHTML = "<p style='padding:2em'>The server did not send the page's config: restart it (an older " +
+                            "server may be running).</p>";
+  throw err;
+}
+// the engine's texts, then the base maps' labels (key b_<id>), then the config's texts over both
+const PALETTES = CONFIG.palettes, BASEMAPS = CONFIG.basemaps;
+const T = {};
+const addText = (k, v) => { T[k] = { ...T[k], ...(typeof v === "string" ? { en: v } : v) }; };
+for (const [k, v] of Object.entries(ENGINE_TEXTS)) addText(k, v);
+for (const b of BASEMAPS) addText("b_" + b.id, b.label ?? b.id);
+for (const [k, v] of Object.entries(CONFIG.texts ?? {})) addText(k, v);
+const LANGS = CONFIG.languages ?? ["en"];
+const LAYERS = CONFIG.layers, OTHER = LAYERS.filter(l => l.kind !== "grid");
+const G = LAYERS.find(l => l.kind === "grid");   // one grid layer at most, with the colour controls
+const SOURCES = new Set(LAYERS.map(l => l.id));    // each layer's source is named by its id
+
+const $ = id => document.getElementById(id);
+let LANG = LANGS.includes(CONFIG.language) ? CONFIG.language : LANGS.includes("en") ? "en" : LANGS[0];
+let addressRead = false, userColour = false, addressTimer = 0;
+const counts = {};      // a layer's features, for the text beside it; -1 when the server has none of them
+let FONT = ["Open Sans Regular"];   // the first style's label font, for the layers' labels on any base map
+const tr = (k, ...a) => a.reduce((t, v, i) => t.replaceAll(`{${i + 1}}`, v), T[k]?.[LANG] ?? T[k]?.en ?? k);
+// A language's number format: the first of the config's locales for it that the browser has (a browser may lack one)
+const loc = () => (CONFIG.locales?.[LANG] ?? [LANG]).find(l => Intl.NumberFormat.supportedLocalesOf([l]).length) ?? LANG;
+const fmt = v => v >= 100 ? Math.round(v).toLocaleString(loc())
+  : v >= 1 ? v.toLocaleString(loc(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+  : (+v.toPrecision(2)).toLocaleString(loc(), { maximumSignificantDigits: 2 });
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+let fitted = false, popup = null, tileError = "", gridMeta = {};
+let viewVals = [];   // log10 of the metric in the cells in view, sorted, from the last fit
+let histVals = [];   // the same, for the histogram, from the last time the map settled
+
+// The sidebar ---------------------------------------------------------------------------------------------------------
+// A layer's row: its checkbox, label, count and ⓘ, its info, and under it when on the grid's controls or the legend
+const swatch = w => w.dot
+  ? `<i style="width:8px;height:8px;border-radius:50%;background:${w.dot};border:1px solid #fff;box-shadow:0 0 0 .5px ${w.stroke ?? w.dot}"></i>`
+  : `<i style="background:${w.fill};border:1.2px solid ${w.stroke ?? w.fill}"></i>`;
+// A grid filter: a select of its options (some from /meta), a range of two selects (from /meta), or the metric
+function filterRow(f) {
+  if (f.type === "range")
+    return `<div class="row years"><label data-t="${f.label}"></label><select id="${f.params[0]}"></select><span>–</span>` +
+           `<select id="${f.params[1]}"></select></div>`;
+  const opts = f.type === "metric" ? G.metrics.map(m => ({ value: m.field, label: m.label })) : f.options ?? [];
+  const id = f.type === "metric" ? "metric" : f.id;
+  return `<div class="row"><label for="${id}" data-t="${f.label}"></label><select id="${id}">` +
+         opts.map(o => `<option value="${esc(o.value)}" data-t="${o.label}"${o.tip ? ` data-tt="${o.tip}"` : ""}` +
+                       `${o.value === f.default ? " selected" : ""}></option>`).join("") + "</select></div>";
+}
+function layerRow(l) {
+  const row = document.createElement("div");
+  row.className = "layer" + (l.visible ? "" : " off");
+  row.id = "lyr-" + l.id;
+  row.innerHTML = `<div class="head"><input id="${l.id}" type="checkbox"${l.visible ? " checked" : ""}>` +
+    `<label for="${l.id}" data-t="${l.label}"></label><span class="count" id="${l.id}info"></span>` +
+    `<button class="info-btn" data-info="info-${l.id}" data-tt="infoTip">ⓘ</button></div>` +
+    (l.info ? `<div class="info" id="info-${l.id}" data-t="${l.info}" hidden></div>` : "");
+  if (l.kind === "grid") {
+    const box = document.createElement("div");
+    box.className = "when-on";
+    box.innerHTML = (l.filters ?? []).map(filterRow).join("");
+    box.append($("grid-colour").content.cloneNode(true));
+    row.append(box);
+  }
+  if (l.legend) row.insertAdjacentHTML("beforeend", `<div class="when-on swatches">${l.legend.map(x =>
+    `<span>${swatch(x.swatch)}<span data-t="${x.label}"></span></span>`).join("")}</div>`);
+  return row;
+}
+for (const g of CONFIG.groups) {
+  const d = document.createElement("details");
+  d.className = "group"; d.id = "g-" + g.id; d.open = !!g.open;
+  d.innerHTML = `<summary data-t="${g.title}"></summary><div class="body"></div>`;
+  for (const id of g.layers) d.querySelector(".body").append(layerRow(LAYERS.find(l => l.id === id)));
+  $("groups").insertBefore(d, $("g-base"));
+}
+for (const k of CONFIG.about ?? []) $("about").insertAdjacentHTML("beforeend", `<p data-t="${k}"></p>`);
+if (!(CONFIG.about ?? []).length) $("g-about").hidden = true;
+$("side").querySelector("h1").dataset.t = CONFIG.title;
+if (LANGS.length > 1)
+  for (const l of LANGS) $("side").querySelector(".langs").insertAdjacentHTML("beforeend", `<button data-lang="${l}">${l.toUpperCase()}</button>`);
+if (G) $("opacity").value = G.opacity ?? 85;
+
+// The grid layer: its tiles, colours and histogram -------------------------------------------------------------------
+const metric = () => $("metric")?.value ?? G.metrics[0].field;
+function tileUrl() {
+  const q = new URLSearchParams();
+  for (const f of G.filters ?? []) {
+    if (f.type === "metric") continue;
+    for (const p of f.type === "range" ? f.params : [f.id]) if ($(p).value !== "") q.set(p, $(p).value);
+  }
+  q.set("v", gridMeta.v ?? 0);
+  return `${location.origin}/tiles/${G.id}/{z}/{x}/{y}.pbf?${q}`;
+}
+
+const colors = () => (PALETTES.find(p => p.id === $("palette").value) ?? PALETTES[0]).colors;
+
+// The colour stops, as [log10 value, colour]: evenly spaced between floor and cap, or at the quantiles of the cells in
+// view that lie between them, so that each colour covers an equal share of those cells
+function stops() {
+  const c = colors(), n = c.length;
+  let lo = +$("lo").value, hi = +$("hi").value;
+  if (hi <= lo) hi = lo + 0.05;
+  let v = c.map((_, i) => lo + i * (hi - lo) / (n - 1));
+  const sub = viewVals.filter(x => x >= lo && x <= hi);
+  if ($("stretch").value === "equal" && sub.length >= 2 * n) {
+    v = c.map((_, i) => sub[Math.min(sub.length - 1, Math.round(i * (sub.length - 1) / (n - 1)))]);
+    for (let i = 1; i < n; i++) v[i] = Math.max(v[i], v[i - 1] + 1e-6);   // interpolate needs rising stops
+  }
+  return v.map((x, i) => [x, c[i]]);
+}
+
+// The colour at log10 value x, as the map draws it: linear in RGB between stops, the end colours beyond them
+function colorAt(x, s) {
+  if (x <= s[0][0]) return s[0][1];
+  for (let i = 1; i < s.length; i++) if (x <= s[i][0]) {
+    const f = (x - s[i - 1][0]) / (s[i][0] - s[i - 1][0]);
+    const a = s[i - 1][1].match(/\w\w/g).map(h => parseInt(h, 16)), b = s[i][1].match(/\w\w/g).map(h => parseInt(h, 16));
+    return `rgb(${a.map((v, k) => Math.round(v + f * (b[k] - v))).join(",")})`;
+  }
+  return s[s.length - 1][1];
+}
+
+function drawHist() {
+  const cv = $("hist"), r = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w * r; cv.height = h * r;
+  const g = cv.getContext("2d"); g.scale(r, r); g.clearRect(0, 0, w, h);
+  if (!histVals.length) return;
+  let lo = +$("lo").value, hi = +$("hi").value; if (hi <= lo) hi = lo + 0.05;
+  const nb = 48, n = new Array(nb).fill(0), s = stops();
+  for (const x of histVals) n[Math.max(0, Math.min(nb - 1, Math.floor((x - lo) / (hi - lo) * nb)))]++;
+  const top = Math.max(...n);
+  n.forEach((k, i) => {
+    g.fillStyle = colorAt(lo + (i + 0.5) * (hi - lo) / nb, s);
+    const bh = k ? Math.max(1, k / top * (h - 1)) : 0;
+    g.fillRect(i * w / nb, h - bh, w / nb - 0.5, bh);
+  });
+}
+
+function colorExpr() {
+  // values below the floor take the first colour and above the cap the last: interpolate clamps at its ends
+  return ["interpolate", ["linear"], ["log10", ["max", ["to-number", ["get", metric()]], 1e-9]], ...stops().flat()];
+}
+
+function paint() {
+  if (!G) return;
+  $("loval").textContent = fmt(10 ** +$("lo").value);
+  $("hival").textContent = fmt(10 ** +$("hi").value);
+  $("lolab").textContent = "≤ " + fmt(10 ** +$("lo").value);
+  $("hilab").textContent = "≥ " + fmt(10 ** +$("hi").value);
+  $("opval").textContent = `${$("opacity").value} %`;
+  // the bar on the histogram's log axis: each colour where its stop lies
+  const s = stops(), lo = s[0][0], hi = s[s.length - 1][0];
+  $("midlab").textContent = fmt(10 ** ((lo + hi) / 2));
+  $("bar").style.background = `linear-gradient(to right, ${s.map(([x, c]) => `${c} ${(100 * (x - lo) / (hi - lo)).toFixed(1)}%`).join(",")})`;
+  drawHist();
+  if (map.getLayer(G.id)) map.setPaintProperty(G.id, "fill-color", colorExpr());
+}
+
+// The floor and cap sliders reach the values at hand
+function widen(lo, hi) {
+  const a = Math.min(-4, Math.floor(lo)), b = Math.max(5, Math.ceil(hi));
+  for (const id of ["lo", "hi"]) { $(id).min = Math.min(+$(id).min, a); $(id).max = Math.max(+$(id).max, b); }
+}
+
+function fitToView() {
+  const v = map.queryRenderedFeatures({ layers: [G.id] })
+    .map(f => +f.properties[metric()]).filter(x => x > 0).map(Math.log10).sort((a, b) => a - b);
+  if (v.length < 10) return false;
+  viewVals = v;
+  widen(v[0], v[v.length - 1]);
+  const q = p => v[Math.min(v.length - 1, Math.floor(p * v.length))];
+  $("lo").value = q(0.02).toFixed(2);
+  $("hi").value = q(0.98).toFixed(2);
+  paint();
+  return true;
+}
+
+// The map --------------------------------------------------------------------------------------------------------------
+const map = new maplibregl.Map({
+  container: "map",
+  style: BASEMAPS[0].style,
+  center: CONFIG.view.center, zoom: CONFIG.view.zoom, hash: true
+});
+// a page laid out after the map was made (a tab opened in the background) left the canvas at 400 x 300
+new ResizeObserver(() => map.resize()).observe($("map"));
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+map.addControl(new maplibregl.ScaleControl(), "bottom-right");
+// the style's load event, caught once: map.loaded() is false again while any tile loads, so it cannot tell
+const styleLoaded = new Promise(resolve => map.once("load", resolve));
+
+if (G) for (const p of PALETTES) $("palette").append(new Option(`${p.label}${p.source ? " · " + p.source : ""}`, p.id));
+if (G && CONFIG.palette) $("palette").value = CONFIG.palette;
+for (const b of BASEMAPS)
+  $("bases").insertAdjacentHTML("beforeend",
+    `<label><input type="radio" name="base" value="${b.id}"${b === BASEMAPS[0] ? " checked" : ""}><span data-t="b_${b.id}"></span></label>`);
+
+// The page's language: every [data-t] text and [data-tt] tooltip, then the texts drawn by code
+const zoomText = () => `${tr("zoom")} ${map.getZoom().toLocaleString(loc(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`;
+function applyLang(l) {
+  LANG = LANGS.includes(l) ? l : LANG;
+  document.documentElement.lang = LANG;
+  document.title = tr(CONFIG.title);
+  for (const el of document.querySelectorAll("[data-t]")) el.textContent = tr(el.dataset.t);
+  for (const el of document.querySelectorAll("[data-tt]")) el.title = tr(el.dataset.tt);
+  for (const b of document.querySelectorAll("[data-lang]")) b.classList.toggle("on", b.dataset.lang === LANG);
+  for (const l of OTHER) countText(l);
+  if (!tileError && G && map.getLayer(G.id)) $("status").textContent = zoomText();   // map.loaded() is false while tiles load
+  popup?.remove();
+  paint();
+  if (addressRead) writeAddress();
+}
+for (const b of document.querySelectorAll("[data-lang]")) b.addEventListener("click", () => applyLang(b.dataset.lang));
+applyLang(new URLSearchParams(location.search).get("lang"));
+
+// A raster base or none has no glyphs of its own: the layers' labels keep the previous style's
+function baseStyle(b) {
+  if (b.style) return b.style;
+  const layers = [{ id: "base-bg", type: "background", paint: { "background-color": "#eef0f2" } }];
+  if (!b.tiles) return { version: 8, sources: {}, layers };
+  return { version: 8, layers: [...layers, { id: "base", type: "raster", source: "base" }],
+           sources: { base: { type: "raster", tiles: [b.tiles], tileSize: 256, maxzoom: b.maxzoom,
+                              attribution: b.attribution ?? "" } } };
+}
+function setBase(id) {
+  const b = BASEMAPS.find(x => x.id === id) ?? BASEMAPS[0];
+  map.setStyle(baseStyle(b), { transformStyle: (prev, next) => {
+    if (!prev) return next;
+    const own = prev.layers.filter(l => SOURCES.has(l.source));
+    const sources = Object.fromEntries(Object.entries(prev.sources).filter(([k]) => SOURCES.has(k)));
+    const i = next.layers.findIndex(l => l.type === "symbol");
+    // a grid under the base's labels, the other layers over them in their order
+    const grid = own.filter(l => l.source === G?.id), rest = own.filter(l => l.source !== G?.id);
+    const layers = i < 0 ? [...next.layers, ...grid, ...rest]
+                         : [...next.layers.slice(0, i), ...grid, ...next.layers.slice(i), ...rest];
+    return { ...next, glyphs: next.glyphs ?? prev.glyphs, sources: { ...next.sources, ...sources }, layers };
+  } });
+}
+$("bases").addEventListener("change", e => { popup?.remove(); setBase(e.target.value); });
+
+// The first view: /meta, then the address ----------------------------------------------------------------------------
+const optionLabel = (f, o) => `${o.name ?? (f.unnamed ? tr(f.unnamed) + " " : "") + o.value}${o.code ? " (" + o.code + ")" : ""}`;
+Promise.all([fetch("/meta").then(r => r.json()), styleLoaded]).then(([meta]) => {
+  const q = new URLSearchParams(location.search);
+  if (G) {
+    gridMeta = meta.layers?.[G.id] ?? {};
+    for (const f of G.filters ?? []) {
+      if (f.type === "range") {
+        const [a, b] = gridMeta.ranges?.[f.id] ?? [];
+        for (let y = a; y <= b; y++) for (const p of f.params) $(p).append(new Option(y, y));
+        $(f.params[0]).value = a; $(f.params[1]).value = b;
+      } else if (f.meta) {
+        const opts = gridMeta.options?.[f.id] ?? [];
+        for (const o of opts) $(f.id).append(new Option(optionLabel(f, o), o.value));
+        // several values, from the address: named by their options' names and codes
+        const v = q.get(f.id);
+        if (v && ![...$(f.id).options].some(o => o.value === v)) {
+          const os = v.split(",").map(x => opts.find(o => String(o.value) === x) ?? { value: x });
+          const codes = [...new Set(os.map(o => o.code).filter(Boolean))];
+          $(f.id).append(new Option(`${os.map(o => o.name ?? (f.unnamed ? tr(f.unnamed) + " " : "") + o.value).join(", ")}` +
+                                    `${codes.length ? " (" + codes.join(", ") + ")" : ""}`, v));
+        }
+      }
+    }
+    $("lo").value = -1; $("hi").value = 2;
+    // the first view from the address: a value the page does not offer is left out
+    const sel = [...(G.filters ?? []).flatMap(f => f.type === "range" ? f.params : [f.type === "metric" ? "metric" : f.id]),
+                 "palette", "stretch"];
+    for (const k of sel) if (q.get(k) !== null && [...$(k).options].some(o => o.value === q.get(k))) $(k).value = q.get(k);
+    for (const f of G.filters ?? []) if (f.type === "range" && +$(f.params[0]).value > +$(f.params[1]).value)
+      [$(f.params[0]).value, $(f.params[1]).value] = [$(f.params[1]).value, $(f.params[0]).value];
+    if (+q.get("floor") > 0 && +q.get("cap") > +q.get("floor")) {
+      widen(Math.log10(+q.get("floor")), Math.log10(+q.get("cap")));
+      $("lo").value = Math.log10(+q.get("floor")); $("hi").value = Math.log10(+q.get("cap"));
+      fitted = userColour = true;   // a floor and cap given are kept, not fitted to the view
+    }
+    if (q.get("opacity") !== null && q.get("opacity") !== "" && +q.get("opacity") >= 0 && +q.get("opacity") <= 100)
+      $("opacity").value = Math.round(+q.get("opacity"));
+  }
+  // a layer on by default is turned off by id=0, one off by default on by id=1
+  for (const l of LAYERS) if (q.get(l.id) === (l.visible ? "0" : "1")) {
+    $(l.id).checked = !l.visible; $("lyr-" + l.id).classList.toggle("off", !$(l.id).checked);
+  }
+  FONT = map.getStyle().layers.find(l => l.type === "symbol" && l.layout?.["text-font"])?.layout["text-font"] ?? FONT;
+  if (G) {
+    const firstSymbol = map.getStyle().layers.find(l => l.type === "symbol")?.id;
+    map.addSource(G.id, { type: "vector", tiles: [tileUrl()], minzoom: G.minzoom ?? 2, maxzoom: G.maxzoom ?? 12 });
+    map.addLayer({ id: G.id, type: "fill", source: G.id, "source-layer": G.source_layer ?? "cells",
+                   layout: { visibility: $(G.id).checked ? "visible" : "none" },
+                   paint: { "fill-color": colorExpr(), "fill-opacity": +$("opacity").value / 100, "fill-antialias": false } },
+                 firstSymbol);
+    paint();
+  }
+  for (const l of OTHER) addLayer(l, meta);
+  const base = BASEMAPS.find(b => b.id === q.get("base"));
+  if (base && base !== BASEMAPS[0]) { document.querySelector(`#bases input[value="${base.id}"]`).checked = true; setBase(base.id); }
+  addressRead = true;
+  addressNow();   // the address as the page took it: a value it does not offer is dropped
+});
+
+// The address ---------------------------------------------------------------------------------------------------------
+// The page's state in its address: every control away from its default; the position is in the hash, MapLibre's.
+// Floor and cap go in only once set by hand or given, so a link without them fits to its own view.
+function addressNow() {
+  if (!addressRead) return;
+  const q = new URLSearchParams();
+  const put = (k, v, d) => { if (v != null && v !== "" && v !== d) q.set(k, v); };
+  if (G) {
+    for (const f of G.filters ?? []) {
+      if (f.type === "range") {
+        const ys = [...$(f.params[0]).options].map(o => o.value);
+        if ($(f.params[0]).value !== ys[0] || $(f.params[1]).value !== ys[ys.length - 1])
+          for (const p of f.params) q.set(p, $(p).value);
+      } else if (f.type === "metric") put("metric", metric(), G.metrics[0].field);
+      else put(f.id, $(f.id).value, f.default ?? f.options?.[0]?.value ?? "");
+    }
+    put("palette", $("palette").value, CONFIG.palette ?? PALETTES[0].id);
+    put("stretch", $("stretch").value, "even");
+    if (userColour) { q.set("floor", +(10 ** +$("lo").value).toPrecision(3)); q.set("cap", +(10 ** +$("hi").value).toPrecision(3)); }
+    put("opacity", $("opacity").value, String(G.opacity ?? 85));
+  }
+  for (const l of LAYERS) if (!$(l.id).disabled && $(l.id).checked !== !!l.visible) q.set(l.id, $(l.id).checked ? "1" : "0");
+  put("base", document.querySelector("#bases input:checked")?.value, BASEMAPS[0].id);
+  put("lang", LANG, LANGS.includes(CONFIG.language) ? CONFIG.language : LANGS.includes("en") ? "en" : LANGS[0]);
+  const qs = q.toString().replace(/%2C/g, ",");
+  history.replaceState(history.state, "", `${location.pathname}${qs ? "?" + qs : ""}${location.hash}`);
+}
+function writeAddress() { clearTimeout(addressTimer); addressTimer = setTimeout(addressNow, 150); }
+$("side").addEventListener("change", writeAddress);
+$("side").addEventListener("input", writeAddress);
+$("copylink").addEventListener("click", () => {
+  addressNow();
+  const say = t => { $("status").textContent = t; setTimeout(() => { $("status").textContent = tileError || zoomText(); }, 2500); };
+  navigator.clipboard.writeText(location.href).then(() => say(tr("copied")), () => say(tr("notCopied")));
+});
+
+// The other layers -----------------------------------------------------------------------------------------------------
+// Vector tiles from the server ("vector", its count from /meta) or a GeoJSON file ("geojson", its count from the file),
+// drawn by its styles over the base map's labels; a layer the server does not have is disabled, with its "missing" text
+function addLayer(l, meta) {
+  const draw = () => {
+    for (const st of l.style) {
+      const spec = { ...st, source: l.id };
+      if (spec.type === "symbol" && spec.layout?.["text-field"] && !spec.layout["text-font"]) spec.layout = { ...spec.layout, "text-font": FONT };
+      map.addLayer(spec);
+    }
+    showLayer(l); countText(l);
+  };
+  if (l.kind === "vector") {
+    const n = meta.layers?.[l.id]?.count ?? 0;
+    if (!n) return missing(l);
+    counts[l.id] = n;
+    map.addSource(l.id, { type: "vector", tiles: [`${location.origin}/tiles/${l.id}/{z}/{x}/{y}.pbf?v=${meta.engine}`],
+                          minzoom: l.minzoom ?? 0, maxzoom: l.maxzoom ?? 14 });
+    draw();
+  } else if (l.kind === "geojson") {
+    fetch(`/data/${l.id}.geojson`).then(r => r.ok ? r.json() : Promise.reject(r.status)).then(data => {
+      map.addSource(l.id, { type: "geojson", data });
+      const w = l.count?.where;
+      counts[l.id] = w ? data.features.filter(f => f.properties[w[0]] === w[1]).length : data.features.length;
+      draw();
+    }).catch(() => missing(l));
+  }
+}
+function missing(l) {
+  $(l.id).disabled = true; $("lyr-" + l.id).classList.add("off");
+  counts[l.id] = -1; countText(l);
+}
+function countText(l) {
+  const n = counts[l.id];
+  if (n === undefined) return;
+  $(l.id + "info").textContent = n < 0 ? (l.missing ? tr(l.missing) : "") : l.count?.text ? tr(l.count.text, n.toLocaleString(loc())) : "";
+}
+function showLayer(l) {
+  $("lyr-" + l.id).classList.toggle("off", !$(l.id).checked);
+  for (const st of l.style) if (map.getLayer(st.id)) map.setLayoutProperty(st.id, "visibility", $(l.id).checked ? "visible" : "none");
+}
+for (const l of OTHER) $(l.id).addEventListener("change", () => { popup?.remove(); showLayer(l); });
+
+// A click on a feature: its title and fields; a field's value goes through `values` into a text, or into its
+// `template`, and a text's {name} is filled from the feature. Registered top layer first, so the topmost feature
+// under the click speaks
+function featurePopup(l, e) {
+  const p = e.features[0].properties;
+  const fill = t => t.replace(/\{([a-z_][a-z0-9_]*)\}/gi, (m, k) => esc(p[k] ?? ""));
+  const line = (k, v) => v === undefined || v === null || v === "" || v === "null" ? "" : `<br>${k}: ${v}`;
+  const val = f => {
+    const v = p[f.field];
+    if (f.values?.[v]) return fill(tr(f.values[v]));
+    if (f.template && v !== undefined && v !== null && v !== "" && v !== "null") return fill(tr(f.template));
+    if (f.format === "count" && v !== undefined && v !== null && v !== "") return (+v).toLocaleString(loc());
+    if (f.format === "value" && v !== undefined && v !== null && v !== "") return fmt(+v);
+    return v === undefined || v === null ? v : esc(v);
+  };
+  popup?.remove();
+  popup = new maplibregl.Popup({ closeButton: false, maxWidth: l.popup.maxWidth ?? "300px" }).setLngLat(e.lngLat)
+    .setHTML(`<b>${esc(p[l.popup.title])}</b>${(l.popup.fields ?? []).map(f => line(tr(f.label), val(f))).join("")}`)
+    .addTo(map);
+}
+for (const l of [...OTHER].reverse()) for (const id of l.popup?.click ?? []) {
+  map.on("click", id, e => { if (e.originalEvent.featureShown) return; e.originalEvent.featureShown = true; featurePopup(l, e); });
+  map.on("mouseenter", id, () => { map.getCanvas().style.cursor = "pointer"; });
+  map.on("mouseleave", id, () => { map.getCanvas().style.cursor = ""; });
+}
+
+// The grid's controls --------------------------------------------------------------------------------------------------
+if (G) {
+  for (const f of G.filters ?? []) {
+    if (f.type === "metric") continue;
+    for (const p of f.type === "range" ? f.params : [f.id])
+      $(p).addEventListener("change", () => {
+        if (f.type === "range" && +$(f.params[0]).value > +$(f.params[1]).value)
+          [$(f.params[0]).value, $(f.params[1]).value] = [$(f.params[1]).value, $(f.params[0]).value];
+        popup?.remove();
+        tileError = "";
+        map.getSource(G.id)?.setTiles([tileUrl()]);   // before the first load, the start reads the filters itself
+      });
+  }
+  $("metric")?.addEventListener("change", () => { userColour = false; sampleView(); paint(); fitToView(); });
+  $("lo").addEventListener("input", () => { userColour = true; paint(); });
+  $("hi").addEventListener("input", () => { userColour = true; paint(); });
+  $("palette").addEventListener("change", paint);
+  $("stretch").addEventListener("change", () => { viewVals.length ? paint() : fitToView(); });
+  $("fit").addEventListener("click", () => { userColour = true; fitToView(); writeAddress(); });
+  // the grid on or off (its controls and legend shown only when on), and its opacity
+  $(G.id).addEventListener("change", () => {
+    const on = $(G.id).checked;
+    $("lyr-" + G.id).classList.toggle("off", !on);
+    popup?.remove();
+    if (map.getLayer(G.id)) map.setLayoutProperty(G.id, "visibility", on ? "visible" : "none");
+    if (on) paint();   // the histogram's canvas had no width while hidden
+  });
+  $("opacity").addEventListener("input", () => {
+    $("opval").textContent = `${$("opacity").value} %`;
+    if (map.getLayer(G.id)) map.setPaintProperty(G.id, "fill-opacity", +$("opacity").value / 100);
+  });
+}
+for (const b of document.querySelectorAll(".info-btn"))
+  b.addEventListener("click", () => { const el = $(b.dataset.info); if (el) el.hidden = !el.hidden; });
+// on a phone the sidebar is a drawer over the map
+$("menu").addEventListener("click", () => document.body.classList.add("side-open"));
+$("close").addEventListener("click", () => document.body.classList.remove("side-open"));
+
+map.on("dataloading", () => { $("status").textContent = tr("loading"); });
+// a refused tile would otherwise leave the map blank without a word
+map.on("error", async e => {
+  const s = e.error?.status;
+  if (!s || tileError) return;
+  tileError = tr("refused", s);
+  const why = await e.error.body?.text?.().catch(() => "") ?? "";
+  const engine = await fetch("/meta").then(r => r.json()).then(m => m.engine).catch(() => null);
+  tileError = engine !== ENGINE ? tr("older", engine ?? "?", ENGINE) : `${tr("refused", s)}${why ? ": " + why : ""}`;
+  $("status").textContent = tileError;
+});
+function sampleView() {
+  if (!G || !map.getLayer(G.id)) return;
+  histVals = map.queryRenderedFeatures({ layers: [G.id] }).map(f => +f.properties[metric()]).filter(x => x > 0).map(Math.log10);
+  // an equal stretch with a floor and cap from the address has no fit to take its shares from: the first view gives them
+  if (!viewVals.length && histVals.length >= 10) { viewVals = [...histVals].sort((a, b) => a - b); paint(); }
+  drawHist();
+}
+
+map.on("idle", () => {
+  sampleView();
+  $("status").textContent = tileError || zoomText();
+  // the first fit waits for cells to fit to: a page opened with the grid off fits when it is turned on
+  if (G && !fitted && map.getLayer(G.id) && $(G.id).checked) fitted = fitToView();
+});
+
+if (G) {
+  // the grid's popup, registered after the other layers': a feature over the cell has spoken
+  map.on("click", G.id, e => {
+    if (e.originalEvent.featureShown) return;
+    const p = e.features[0].properties, fs = G.popup?.fields ?? [];
+    const v = f => f.format === "count" ? (+p[f.field]).toLocaleString(loc()) : fmt(+p[f.field]);
+    popup?.remove();
+    popup = new maplibregl.Popup({ closeButton: false }).setLngLat(e.lngLat)
+      .setHTML(fs.map((f, i) => i === 0 ? `<b>${v(f)}</b> ${tr(f.label)}` : `${v(f)} ${tr(f.label)}`).join("<br>"))
+      .addTo(map);
+  });
+  map.on("mouseenter", G.id, () => { map.getCanvas().style.cursor = "pointer"; });
+  map.on("mouseleave", G.id, () => { map.getCanvas().style.cursor = ""; });
+}
+</script>
+</body>
+</html>
