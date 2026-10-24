@@ -1,3 +1,10 @@
+# ramb 2026.10.24.3
+
+- `rb_map_tiles_table()`: a property of a type a vector tile cannot hold is cast to one it can (a factor, date or time
+  to text, a small integer to an integer, a decimal to a double). DuckDB's `ST_AsMVT()` refused it, and the layer was
+  blank (a factor, found on iapesca's example data).
+- `rb_map_serve()`: a tile function that fails replies 500 with the first line of its error, which the page shows.
+
 # ramb 2026.10.24.2
 
 - `rb_map_serve()`: a vector layer's tiles carry the server's start in their address, and a geojson layer's data are

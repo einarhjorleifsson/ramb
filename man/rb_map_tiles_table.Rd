@@ -21,7 +21,8 @@ rb_map_tiles_table(
 
 \item{lon, lat}{The position columns, for points.}
 
-\item{properties}{The columns each feature carries.}
+\item{properties}{The columns each feature carries. A vector tile holds text, numbers and logicals only, so a
+factor, date or time is carried as text, a small integer as an integer and a decimal as a double.}
 
 \item{layer}{The tile layer of the features.}
 

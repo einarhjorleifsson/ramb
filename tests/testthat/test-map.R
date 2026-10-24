@@ -264,6 +264,74 @@ test_that("the server's routes: the page, its config, meta, tiles and data", {
   )
 })
 
+test_that("a table's properties of any type reach its tiles, cast to what a tile holds", {
+  skip_if_no_spatial()
+  con <- duckdbfs::cached_connection()
+  duckdb::duckdb_register(
+    con,
+    "rb_test_types",
+    data.frame(
+      lon = 12.6,
+      lat = 56.0,
+      gear = factor("gillnet"), # an ENUM in DuckDB
+      day = as.Date("2026-10-24"),
+      time = as.POSIXct("2026-10-24 21:00:00", tz = "UTC")
+    )
+  )
+  on.exit(duckdb::duckdb_unregister(con, "rb_test_types"))
+  x <- dplyr::tbl(
+    con,
+    dplyr::sql(
+      "SELECT *, 3::TINYINT AS n, 2.5::DECIMAL(4, 1) AS kg, 7::UINTEGER AS id FROM rb_test_types"
+    )
+  )
+  tiles <- rb_map_tiles_table(
+    x,
+    lon = "lon",
+    lat = "lat",
+    properties = c("gear", "day", "time", "n", "kg", "id")
+  )
+  t <- tile_of(12.6, 56.0, 9)
+  b <- tiles(t["z"], t["x"], t["y"])
+  expect_gt(length(b), 0)
+  text <- rawToChar(b[b >= as.raw(32) & b < as.raw(127)])
+  expect_match(text, "gillnet", fixed = TRUE)
+  expect_match(text, "2026-10-24", fixed = TRUE)
+  expect_equal(
+    .rb_mvt_cast(
+      c("a", "b", "c", "d", "e"),
+      c("INTEGER", "SMALLINT", "UINTEGER", "DECIMAL(4,1)", "ENUM('x')")
+    ),
+    c(
+      "a",
+      "CAST(b AS INTEGER)",
+      "CAST(c AS BIGINT)",
+      "CAST(d AS DOUBLE)",
+      "CAST(e AS VARCHAR)"
+    )
+  )
+})
+
+test_that("a tile function that fails replies with its reason", {
+  skip_if_not_installed("jsonlite")
+  boom <- rb_map_layer(
+    "boom",
+    "vector",
+    label = "Boom",
+    tiles = function(z, x, y) stop("no tile here\nsecond line"),
+    style = list(list(
+      id = "boom-line",
+      type = "line",
+      "source-layer" = "features",
+      paint = list("line-color" = "#333")
+    ))
+  )
+  app <- .rb_map_app(rb_map(rb_map_group("g", "G", list(boom)), title = "Boom"))
+  r <- get(app, "/tiles/boom/1/0/0.pbf")
+  expect_equal(r$status, 500L)
+  expect_equal(r$body, "no tile here")
+})
+
 test_that("a grid's parameters are checked before its tile function sees them", {
   skip_if_not_installed("jsonlite")
   skip_if_no_spatial()

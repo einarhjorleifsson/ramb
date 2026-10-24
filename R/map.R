@@ -637,7 +637,8 @@ rb_map_stop <- function(port = NULL) {
 #' @param x A lazy DuckDB table or a data frame: a geometry column (DuckDB's GEOMETRY, or WKB), or `lon` and `lat`.
 #' @param geometry The geometry column; or `lon`, `lat` for points from two columns.
 #' @param lon,lat The position columns, for points.
-#' @param properties The columns each feature carries.
+#' @param properties The columns each feature carries. A vector tile holds text, numbers and logicals only, so a
+#'   factor, date or time is carried as text, a small integer as an integer and a decimal as a double.
 #' @param layer The tile layer of the features.
 #' @param points The tile layer of a point on every feature (`ST_PointOnSurface()`), for the zooms where an area is
 #'   too small to see; `NULL` for none.
@@ -708,11 +709,18 @@ rb_map_tiles_table <- function(
     con,
     sprintf("SELECT count(*)::INTEGER AS n FROM %s", nm)
   )$n
+  types <- DBI::dbGetQuery(con, sprintf("DESCRIBE %s", nm))
   fields <- paste(
     c(sprintf(
       "%s: %s",
       DBI::dbQuoteString(con, c(properties, "kind")),
-      c(props, "kind")
+      c(
+        .rb_mvt_cast(
+          props,
+          types$column_type[match(properties, types$column_name)]
+        ),
+        "kind"
+      )
     )),
     collapse = ", "
   )
@@ -749,6 +757,25 @@ rb_map_tiles_table <- function(
   }
   attr(tile, "count") <- n
   tile
+}
+
+# ST_AsMVT() takes VARCHAR, FLOAT, DOUBLE, INTEGER, BIGINT and BOOLEAN properties and refuses every other type: an R
+# factor reaches DuckDB as an ENUM, a date as a DATE
+.rb_mvt_cast <- function(expr, type) {
+  to <- ifelse(
+    type %in% c("VARCHAR", "FLOAT", "DOUBLE", "INTEGER", "BIGINT", "BOOLEAN"),
+    NA,
+    ifelse(
+      type %in% c("TINYINT", "SMALLINT", "UTINYINT", "USMALLINT"),
+      "INTEGER",
+      ifelse(
+        type == "UINTEGER",
+        "BIGINT",
+        ifelse(startsWith(type, "DECIMAL"), "DOUBLE", "VARCHAR")
+      )
+    )
+  )
+  ifelse(is.na(to), expr, sprintf("CAST(%s AS %s)", expr, to))
 }
 
 # The server -----------------------------------------------------------------------------------------------------------
@@ -901,7 +928,7 @@ rb_map_tiles_table <- function(
     }
     l <- layers[[m[2]]]
     if (l$config$kind == "vector") {
-      return(.rb_map_tile_reply(l$tiles(z, x, y), reply))
+      return(.rb_map_tile_reply(function() l$tiles(z, x, y), reply))
     }
     p <- .rb_map_params(
       l$config$filters,
@@ -911,11 +938,16 @@ rb_map_tiles_table <- function(
     if (is.character(p)) {
       return(reply(400L, p))
     }
-    .rb_map_tile_reply(l$tiles(z, x, y, p), reply)
+    .rb_map_tile_reply(function() l$tiles(z, x, y, p), reply)
   })
 }
 
-.rb_map_tile_reply <- function(body, reply) {
+# A tile, or the first line of why its function failed: the page shows the reason, where the map would stay blank
+.rb_map_tile_reply <- function(tile, reply) {
+  body <- tryCatch(tile(), error = function(e) e)
+  if (inherits(body, "error")) {
+    return(reply(500L, sub("\n.*", "", conditionMessage(body))))
+  }
   reply(
     200L,
     if (is.null(body)) raw(0) else body,
