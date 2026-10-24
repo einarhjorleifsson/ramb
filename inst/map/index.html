@@ -470,7 +470,7 @@ function addLayer(l, meta) {
     const n = meta.layers?.[l.id]?.count ?? 0;
     if (!n) return missing(l);
     counts[l.id] = n;
-    map.addSource(l.id, { type: "vector", tiles: [`${location.origin}/tiles/${l.id}/{z}/{x}/{y}.pbf?v=${meta.engine}`],
+    map.addSource(l.id, { type: "vector", tiles: [`${location.origin}/tiles/${l.id}/{z}/{x}/{y}.pbf?v=${meta.layers[l.id].v ?? meta.engine}`],
                           minzoom: l.minzoom ?? 0, maxzoom: l.maxzoom ?? 14 });
     draw();
   } else if (l.kind === "geojson") {

@@ -1,3 +1,9 @@
+# ramb 2026.10.24.2
+
+- `rb_map_serve()`: a vector layer's tiles carry the server's start in their address, and a geojson layer's data are
+  not cached, so a map served again on the same port with other data (another voyage) is not drawn from the browser's
+  cache of the last one (found by fishycode plan 046 step 7).
+
 # ramb 2026.10.24.1
 
 ## A map viewer (fishycode plan 046)

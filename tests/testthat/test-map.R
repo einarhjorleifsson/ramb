@@ -223,6 +223,11 @@ test_that("the server's routes: the page, its config, meta, tiles and data", {
   meta <- jsonlite::fromJSON(get(app, "/meta")$body)
   expect_equal(meta$engine, .rb_map_engine)
   expect_equal(meta$layers$harbours$count, 942L)
+  expect_true(nzchar(meta$layers$harbours$v)) # the server's start, in the tiles' address
+  expect_equal(
+    get(app, "/data/outline.geojson")$headers$`Cache-Control`,
+    "no-store"
+  )
   expect_equal(meta$layers$pings$options$behaviour$value, c("Fishing", "Other"))
   t <- tile_of(12.6, 56.0, 7)
   all <- get(app, sprintf("/tiles/pings/%d/%d/%d.pbf", t["z"], t["x"], t["y"]))

@@ -781,6 +781,9 @@ rb_map_tiles_table <- function(
     fixed = TRUE
   )
   layers <- map$layers
+  # a vector layer's tiles carry the server's start in their address, so a server started on other data on the same
+  # port is not hidden by the browser's cache (a grid carries its meta's `v`)
+  started <- format(as.numeric(Sys.time()), digits = 15)
   metas <- lapply(layers, function(l) {
     switch(
       l$config$kind,
@@ -790,7 +793,8 @@ rb_map_tiles_table <- function(
           1L
         } else {
           attr(l$tiles, "count")
-        }
+        },
+        v = started
       ),
       NULL
     )
@@ -865,7 +869,12 @@ rb_map_tiles_table <- function(
       if (is.null(g)) {
         return(reply(404L, "no such data"))
       }
-      return(reply(200L, g, "application/geo+json; charset=utf-8"))
+      return(reply(
+        200L,
+        g,
+        "application/geo+json; charset=utf-8",
+        list(`Cache-Control` = "no-store")
+      ))
     }
     m <- regmatches(
       path,
