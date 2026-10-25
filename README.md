@@ -9,8 +9,8 @@
 
 {ramb} provides tools for vessel-track (AIS/VMS) data and the steps of
 the ICES fishing-activity flow (WGSFD): flagging pings, creating port
-calls and voyages, building record windows, and gear, effort and
-catch handling. Everything returns tibbles for downstream tidyverse
+calls and voyages, building record windows, and gear, effort and catch
+handling. Everything returns tibbles for downstream tidyverse
 processing, and data frames and lazy DuckDB tables give the same result.
 
 The multibeam-bathymetry raster and rayshading functions that used to
