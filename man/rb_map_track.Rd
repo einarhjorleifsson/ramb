@@ -26,7 +26,8 @@ rb_map_track(
 \arguments{
 \item{data}{Pings: a data frame or lazy DuckDB table with \code{lon} and \code{lat} (WGS 84), or an sf object of points.}
 
-\item{col}{The column the points are coloured by, a name or a string.}
+\item{col}{The column the points are coloured by, a name or a string; or several, \code{c(speed, behaviour)}, to
+choose between in the page ("Colour by"), the first shown when it opens.}
 
 \item{path}{Whether to draw the track as a line under the points, one per vessel in time order.}
 
@@ -39,7 +40,7 @@ line through all the pings.}
 
 \item{popup}{Further columns a click on a point shows.}
 
-\item{discrete}{Whether \code{col} takes a colour per value; by default when it is not numeric.}
+\item{discrete}{Whether a column of \code{col} takes a colour per value; by default each that is not numeric.}
 
 \item{radius, radius_max}{The point radius in metres, and its largest size in pixels.}
 
@@ -82,6 +83,8 @@ if (interactive()) {
   rb_read_example("dansk") |> rb_map_track(time = "time_stamp")
   rb_read_example("dansk") |>
     rb_map_track(behaviour, time = "time_stamp", path = TRUE, by = vessel_id)
+  # several columns: "Colour by" in the page switches between them
+  rb_read_example("dansk") |> rb_map_track(c(speed, course, behaviour), time = "time_stamp")
 }
 }
 \seealso{

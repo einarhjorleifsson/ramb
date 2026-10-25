@@ -52,6 +52,10 @@
 #'   hold `{field}` placeholders; `template`, a text with `{field}` placeholders shown in place of the value when there
 #'   is one; and `format`, `"value"` or `"count"`), `maxWidth`. For a grid, `fields` only, the first in bold.
 #' @param legend A list of swatches, each `swatch` (`fill` and `stroke`, or `dot`) and `label`.
+#' @param variants For a vector or geojson layer, styles to choose between in the page, such as the column the
+#'   points are coloured by: `label` (the control's text) and `options`, each a `value`, a `label`, `paint` (by the
+#'   layer's style ids, the paint properties it sets) and optionally `legend` (in place of the layer's). The first
+#'   option is shown when the page opens; a choice goes into the address as `<id>_by`, and nothing is fetched again.
 #' @param count The text beside its label: `text` (a key whose `{1}` is the count) and, for geojson, `where` (a field
 #'   and the value of the features to count). A vector layer's count is its tile function's `count` attribute.
 #' @param missing The text shown when the server has none of it.
@@ -114,6 +118,7 @@ rb_map_layer <- function(
   style = NULL,
   popup = NULL,
   legend = NULL,
+  variants = NULL,
   count = NULL,
   missing = NULL,
   filters = NULL,
@@ -173,6 +178,40 @@ rb_map_layer <- function(
       call. = FALSE
     )
   }
+  if (!is.null(variants)) {
+    if (kind == "grid") {
+      stop(
+        "`variants` are for a vector or geojson layer; a grid is coloured by its `metrics`.",
+        call. = FALSE
+      )
+    }
+    style_ids <- vapply(style, function(s) if (is.null(s$id)) "" else s$id, "")
+    one <- function(o) {
+      is.character(o$value) &&
+        length(o$value) == 1 &&
+        is.list(o$paint) &&
+        length(o$paint) > 0 &&
+        all(names(o$paint) %in% style_ids)
+    }
+    if (
+      !length(variants$options) ||
+        !all(vapply(variants$options, one, logical(1)))
+    ) {
+      stop(
+        "`variants` is a list of `label` and `options`, each option a `value`, a `label` and `paint`: by the layer's style ids, the paint properties it sets.",
+        call. = FALSE
+      )
+    }
+    if (anyDuplicated(vapply(variants$options, `[[`, "", "value"))) {
+      stop("The `options` of `variants` need distinct values.", call. = FALSE)
+    }
+    variants$options <- lapply(variants$options, function(o) {
+      if (is.null(o$label)) {
+        o$label <- o$value
+      }
+      o
+    })
+  }
   # one-element arrays stay arrays in the config's JSON
   if (!is.null(popup$click)) {
     popup$click <- as.list(popup$click)
@@ -195,6 +234,7 @@ rb_map_layer <- function(
     style = style,
     popup = popup,
     legend = legend,
+    variants = variants,
     count = count,
     missing = missing,
     filters = filters,
@@ -860,14 +900,15 @@ rb_map_tiles_table <- function(
 #' same port drops the tables of the map it replaces.
 #'
 #' @param data Pings: a data frame or lazy DuckDB table with `lon` and `lat` (WGS 84), or an sf object of points.
-#' @param col The column the points are coloured by, a name or a string.
+#' @param col The column the points are coloured by, a name or a string; or several, `c(speed, behaviour)`, to
+#'   choose between in the page ("Colour by"), the first shown when it opens.
 #' @param path Whether to draw the track as a line under the points, one per vessel in time order.
 #' @param gap_h A silence of more than `gap_h` hours between a vessel's pings breaks its line; `Inf` for one line.
 #' @param by The vessel column, a name or a string: one line each. By default `vid` where the data have it, else one
 #'   line through all the pings.
 #' @param time The column that orders the pings: needed for `path`, and shown first in a point's popup.
 #' @param popup Further columns a click on a point shows.
-#' @param discrete Whether `col` takes a colour per value; by default when it is not numeric.
+#' @param discrete Whether a column of `col` takes a colour per value; by default each that is not numeric.
 #' @param radius,radius_max The point radius in metres, and its largest size in pixels.
 #' @param palette A palette of [grDevices::hcl.colors()] for a numeric column, light at its high end on the dark
 #'   base map.
@@ -889,6 +930,8 @@ rb_map_tiles_table <- function(
 #'   rb_read_example("dansk") |> rb_map_track(time = "time_stamp")
 #'   rb_read_example("dansk") |>
 #'     rb_map_track(behaviour, time = "time_stamp", path = TRUE, by = vessel_id)
+#'   # several columns: "Colour by" in the page switches between them
+#'   rb_read_example("dansk") |> rb_map_track(c(speed, course, behaviour), time = "time_stamp")
 #' }
 rb_map_track <- function(
   data,
@@ -908,7 +951,7 @@ rb_map_track <- function(
   serve = interactive(),
   port = 8790L
 ) {
-  col <- rlang::as_name(rlang::enquo(col))
+  col_q <- rlang::enquo(col)
   by_q <- rlang::enquo(by)
   if (inherits(data, "sf")) {
     xy <- sf::st_coordinates(data)
@@ -919,6 +962,7 @@ rb_map_track <- function(
   con <- .rb_con_for(data)
   x <- .rb_as_lazy(data, con)
   cols <- colnames(x)
+  col <- .rb_track_cols(col_q, cols)
   by <- if (rlang::quo_is_null(by_q)) {
     if ("vid" %in% cols) "vid"
   } else {
@@ -957,49 +1001,62 @@ rb_map_track <- function(
   if (st$n == 0) {
     stop("No ping has a position.", call. = FALSE)
   }
-  if (is.null(discrete)) {
-    discrete <- !is.numeric(dplyr::collect(utils::head(
-      dplyr::select(x, dplyr::all_of(col)),
-      1
-    ))[[1]])
-  }
-
-  # the colour, from the column's spread or its most frequent values
+  # each column's colours and legend, from its spread or its most frequent values
   grey <- "#808080"
-  if (discrete) {
-    vals <- DBI::dbGetQuery(
-      con,
-      sprintf(
-        "SELECT CAST(%1$s AS VARCHAR) AS v, count(*) AS n FROM (%2$s) WHERE %1$s IS NOT NULL GROUP BY 1 ORDER BY n DESC, v",
-        q(col),
-        src
-      )
-    )
-    k <- min(nrow(vals), 12L)
-    pal <- grDevices::hcl.colors(max(k, 2L), "Dynamic")[seq_len(k)]
-    colour <- c(
-      list("match", list("get", "rb_class")),
-      unlist(
-        lapply(seq_len(k), function(i) list(vals$v[i], pal[i])),
-        recursive = FALSE
-      ),
-      list(grey)
-    )
-    legend <- lapply(seq_len(k), function(i) {
-      list(swatch = list(dot = pal[i]), label = vals$v[i])
-    })
-    if (nrow(vals) > k) {
-      legend <- c(
-        legend,
-        list(list(swatch = list(dot = grey), label = "other"))
-      )
-    }
+  numeric <- vapply(
+    col,
+    function(cc) {
+      is.numeric(dplyr::collect(utils::head(
+        dplyr::select(x, dplyr::all_of(cc)),
+        1
+      ))[[1]])
+    },
+    logical(1)
+  )
+  is_discrete <- if (is.null(discrete)) {
+    !numeric
   } else {
+    rep(isTRUE(discrete), length(col))
+  }
+  colouring <- function(i) {
+    cc <- col[i]
+    if (is_discrete[i]) {
+      vals <- DBI::dbGetQuery(
+        con,
+        sprintf(
+          "SELECT CAST(%1$s AS VARCHAR) AS v, count(*) AS n FROM (%2$s) WHERE %1$s IS NOT NULL GROUP BY 1 ORDER BY n DESC, v",
+          q(cc),
+          src
+        )
+      )
+      k <- min(nrow(vals), 12L)
+      pal <- grDevices::hcl.colors(max(k, 2L), "Dynamic")[seq_len(k)]
+      legend <- lapply(seq_len(k), function(j) {
+        list(swatch = list(dot = pal[j]), label = vals$v[j])
+      })
+      if (nrow(vals) > k) {
+        legend <- c(
+          legend,
+          list(list(swatch = list(dot = grey), label = "other"))
+        )
+      }
+      return(list(
+        colour = c(
+          list("match", list("get", paste0("rb_class_", i))),
+          unlist(
+            lapply(seq_len(k), function(j) list(vals$v[j], pal[j])),
+            recursive = FALSE
+          ),
+          list(grey)
+        ),
+        legend = legend
+      ))
+    }
     qs <- DBI::dbGetQuery(
       con,
       sprintf(
         "SELECT quantile_cont(%1$s, 0.01) AS lo, quantile_cont(%1$s, 0.99) AS hi FROM (%2$s) WHERE %1$s IS NOT NULL",
-        q(col),
+        q(cc),
         src
       )
     )
@@ -1007,34 +1064,54 @@ rb_map_track <- function(
     lo <- qs$lo
     hi <- if (isTRUE(qs$hi > qs$lo)) qs$hi else lo + 1
     stops <- seq(lo, hi, length.out = 9)
-    colour <- list(
-      "case",
-      list("has", col),
-      c(
-        list("interpolate", list("linear"), list("get", col)),
-        unlist(
-          lapply(1:9, function(i) list(stops[i], pal[i])),
-          recursive = FALSE
-        )
-      ),
-      grey
-    )
     fmt <- function(v) format(signif(v, 3), big.mark = ",", trim = TRUE)
-    legend <- lapply(c(1, 3, 5, 7, 9), function(i) {
-      list(
-        swatch = list(dot = pal[i]),
-        label = paste0(
-          if (i == 1) {
-            paste0(intToUtf8(8804), " ") # less than or equal: an escape would be rewritten by the formatter
-          } else if (i == 9) {
-            paste0(intToUtf8(8805), " ")
-          } else {
-            ""
-          },
-          fmt(stops[i])
+    list(
+      colour = list(
+        "case",
+        list("has", cc),
+        c(
+          list("interpolate", list("linear"), list("get", cc)),
+          unlist(
+            lapply(1:9, function(j) list(stops[j], pal[j])),
+            recursive = FALSE
+          )
+        ),
+        grey
+      ),
+      legend = lapply(c(1, 3, 5, 7, 9), function(j) {
+        list(
+          swatch = list(dot = pal[j]),
+          # less than or equal, greater than or equal: an escape would be rewritten by the formatter
+          label = paste0(
+            if (j == 1) {
+              paste0(intToUtf8(8804), " ")
+            } else if (j == 9) {
+              paste0(intToUtf8(8805), " ")
+            } else {
+              ""
+            },
+            fmt(stops[j])
+          )
         )
-      )
-    })
+      })
+    )
+  }
+  colours <- lapply(seq_along(col), colouring)
+  # several columns: a choice in the page, each column's colours and legend a variant of the points' style
+  variants <- if (length(col) > 1) {
+    list(
+      label = "Colour by",
+      options = lapply(seq_along(col), function(i) {
+        list(
+          value = col[i],
+          label = col[i],
+          paint = list(
+            "pings-dot" = list("circle-color" = colours[[i]]$colour)
+          ),
+          legend = colours[[i]]$legend
+        )
+      })
+    )
   }
 
   # the radius in metres: pixels at zoom 0 at the data's middle latitude, doubling with each zoom, from 1 to radius_max
@@ -1063,15 +1140,16 @@ rb_map_track <- function(
     }
   }
 
+  classes <- vapply(
+    which(is_discrete),
+    function(i) sprintf(", CAST(%s AS VARCHAR) AS rb_class_%d", q(col[i]), i),
+    ""
+  )
   pts <- dplyr::tbl(
     con,
     dplyr::sql(sprintf(
       "SELECT *%s FROM (%s)",
-      if (discrete) {
-        sprintf(", CAST(%s AS VARCHAR) AS rb_class", q(col))
-      } else {
-        ""
-      },
+      paste(classes, collapse = ""),
       src
     ))
   )
@@ -1080,7 +1158,7 @@ rb_map_track <- function(
     if (has_time) time,
     popup,
     by,
-    if (discrete) "rb_class"
+    if (any(is_discrete)) paste0("rb_class_", which(is_discrete))
   ))
   point_tiles <- rb_map_tiles_table(
     pts,
@@ -1089,11 +1167,13 @@ rb_map_track <- function(
     properties = props
   )
   fields <- c(
-    list(list(
-      field = col,
-      label = col,
-      format = if (discrete) NULL else "value"
-    )),
+    lapply(seq_along(col), function(i) {
+      list(
+        field = col[i],
+        label = col[i],
+        format = if (is_discrete[i]) NULL else "value"
+      )
+    }),
     lapply(setdiff(unique(c(popup, by)), col), function(f) {
       list(field = f, label = f)
     })
@@ -1102,11 +1182,19 @@ rb_map_track <- function(
     "pings",
     "vector",
     label = "Pings",
-    info = sprintf(
-      "Each ping, coloured by %s%s.",
-      col,
-      if (discrete) "" else ", its 1st to 99th percentile across the palette"
-    ),
+    info = if (length(col) > 1) {
+      "Each ping, coloured by the column chosen below; a numeric one over its 1st to 99th percentile."
+    } else {
+      sprintf(
+        "Each ping, coloured by %s%s.",
+        col,
+        if (is_discrete[1]) {
+          ""
+        } else {
+          ", its 1st to 99th percentile across the palette"
+        }
+      )
+    },
     tiles = point_tiles,
     count = list(text = "{1} pings"),
     style = list(list(
@@ -1114,15 +1202,16 @@ rb_map_track <- function(
       type = "circle",
       "source-layer" = "features",
       paint = list(
-        "circle-color" = colour,
+        "circle-color" = colours[[1]]$colour,
         "circle-radius" = size,
         "circle-opacity" = 0.85
       )
     )),
-    legend = legend,
+    legend = colours[[1]]$legend,
+    variants = variants,
     popup = list(
       click = "pings-dot",
-      title = if (has_time) time else col,
+      title = if (has_time) time else col[1],
       fields = lapply(fields, function(f) Filter(Negate(is.null), f))
     )
   )
@@ -1212,6 +1301,38 @@ rb_map_track <- function(
     .rb_tiles$track[[key]] <- list(con = con, tables = tables)
   }
   invisible(m)
+}
+
+# The columns `col` names: a name, a string, c() of them, or a variable holding strings
+.rb_track_cols <- function(q, cols) {
+  e <- rlang::quo_get_expr(q)
+  if (rlang::is_call(e, "c")) {
+    return(vapply(
+      rlang::call_args(e),
+      function(a) if (is.character(a)) a else rlang::as_name(a),
+      ""
+    ))
+  }
+  if (is.character(e)) {
+    return(e)
+  }
+  if (rlang::is_symbol(e)) {
+    # a column, else a variable holding names, else the name as given, for the column check to report
+    nm <- rlang::as_name(e)
+    if (nm %in% cols) {
+      return(nm)
+    }
+    v <- tryCatch(rlang::eval_tidy(q), error = function(err) NULL)
+    return(if (is.character(v)) v else nm)
+  }
+  v <- rlang::eval_tidy(q)
+  if (is.character(v)) {
+    return(v)
+  }
+  stop(
+    "`col` is a column, by name or as a string, or c() of them.",
+    call. = FALSE
+  )
 }
 
 # The server -----------------------------------------------------------------------------------------------------------

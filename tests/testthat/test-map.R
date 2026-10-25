@@ -494,3 +494,121 @@ test_that("a track served again on its port drops the tables of the map it repla
   )))
   expect_equal(rb_map_stop(port), port)
 })
+
+test_that("a layer's variants: styles to choose between in the page, checked as they are made", {
+  skip_if_not_installed("jsonlite")
+  st <- list(list(id = "a-dot", type = "circle", "source-layer" = "features"))
+  a <- rb_map_layer(
+    "a",
+    "vector",
+    tiles = function(z, x, y) raw(0),
+    style = st,
+    variants = list(
+      label = "Colour by",
+      options = list(
+        list(
+          value = "x",
+          paint = list("a-dot" = list("circle-color" = "#000000"))
+        ),
+        list(
+          value = "y",
+          label = "Y",
+          paint = list("a-dot" = list("circle-color" = "#ffffff"))
+        )
+      )
+    )
+  )
+  expect_equal(
+    vapply(a$config$variants$options, `[[`, "", "label"),
+    c("x", "Y")
+  ) # a label defaults to the value
+  cfg <- jsonlite::fromJSON(
+    .rb_map_app(rb_map(rb_map_group("g", layers = list(a))))$call(
+      list(
+        REQUEST_METHOD = "GET",
+        PATH_INFO = "/config.json",
+        QUERY_STRING = ""
+      )
+    )$body,
+    simplifyVector = FALSE
+  )
+  expect_equal(
+    cfg$layers[[1]]$variants$options[[2]]$paint$`a-dot`$`circle-color`,
+    "#ffffff"
+  )
+  bad <- function(v) {
+    rb_map_layer(
+      "a",
+      "vector",
+      tiles = function(z, x, y) raw(0),
+      style = st,
+      variants = v
+    )
+  }
+  expect_error(
+    bad(list(options = list(list(value = "x", paint = list(nope = list()))))),
+    "style ids"
+  )
+  expect_error(bad(list(options = list())), "options")
+  expect_error(
+    bad(list(
+      options = list(
+        list(value = "x", paint = list("a-dot" = list())),
+        list(value = "x", paint = list("a-dot" = list()))
+      )
+    )),
+    "distinct"
+  )
+})
+
+test_that("a track coloured by several columns, chosen in the page", {
+  skip_if_no_spatial()
+  d <- rb_read_example("dansk")
+  m <- rb_map_track(
+    d,
+    c(speed, course, behaviour),
+    time = "time_stamp",
+    serve = FALSE
+  )
+  l <- m$config$layers[[1]]
+  expect_equal(
+    vapply(l$variants$options, `[[`, "", "value"),
+    c("speed", "course", "behaviour")
+  )
+  # the page opens on the first: the style's paint is the first option's
+  expect_identical(
+    l$style[[1]]$paint[["circle-color"]],
+    l$variants$options[[1]]$paint[["pings-dot"]][["circle-color"]]
+  )
+  expect_equal(
+    vapply(l$variants$options, function(o) length(o$legend), 1),
+    c(5, 5, 2)
+  )
+  expect_equal(
+    l$variants$options[[3]]$paint[["pings-dot"]][["circle-color"]][[2]][[2]],
+    "rb_class_3"
+  )
+  expect_equal(
+    vapply(l$popup$fields, `[[`, "", "field"),
+    c("speed", "course", "behaviour")
+  )
+  # a tile carries every column, so a choice fetches nothing
+  t <- m$layers$pings$tiles(11, 1095, 641)
+  text <- rawToChar(t[t >= as.raw(32) & t < as.raw(127)])
+  for (f in c("speed", "course", "rb_class_3")) {
+    expect_match(text, f, fixed = TRUE)
+  }
+  # a variable holding column names; one column, no choice
+  cols <- c("speed", "behaviour")
+  expect_length(
+    rb_map_track(d, cols, time = "time_stamp", serve = FALSE)$config$layers[[
+      1
+    ]]$variants$options,
+    2
+  )
+  expect_null(
+    rb_map_track(d, "speed", time = "time_stamp", serve = FALSE)$config$layers[[
+      1
+    ]]$variants
+  )
+})

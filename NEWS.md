@@ -9,6 +9,10 @@
   maintainer liked in the retired `rb_mapdeck()` (now `rb_plot_trail()`, on mapdeck): the pipe, the coloured points
   with an optional line, and a map at once.
 - `rb_map_tiles_table()`: its temporary table's name is its tile function's `table` attribute.
+- `rb_map_layer()`: `variants`, for a vector or geojson layer, are styles to choose between in the page (a "Colour
+  by" control under the layer): each option sets paint properties on the layer's styles and may bring its own legend.
+  The choice goes into the address as `<id>_by`, and nothing is fetched again. `rb_map_track()` uses it when `col`
+  names several columns, `c(speed, course, behaviour)`.
 
 # ramb 2026.10.25.1
 

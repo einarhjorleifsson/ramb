@@ -154,6 +154,7 @@ let histVals = [];   // the same, for the histogram, from the last time the map 
 
 // The sidebar ---------------------------------------------------------------------------------------------------------
 // A layer's row: its checkbox, label, count and ⓘ, its info, and under it when on the grid's controls or the legend
+const legendHtml = legend => legend.map(x => `<span>${swatch(x.swatch)}<span data-t="${x.label}"></span></span>`).join("");
 const swatch = w => w.dot
   ? `<i style="width:8px;height:8px;border-radius:50%;background:${w.dot};border:1px solid #fff;box-shadow:0 0 0 .5px ${w.stroke ?? w.dot}"></i>`
   : `<i style="background:${w.fill};border:1.2px solid ${w.stroke ?? w.fill}"></i>`;
@@ -183,8 +184,12 @@ function layerRow(l) {
     box.append($("grid-colour").content.cloneNode(true));
     row.append(box);
   }
-  if (l.legend) row.insertAdjacentHTML("beforeend", `<div class="when-on swatches">${l.legend.map(x =>
-    `<span>${swatch(x.swatch)}<span data-t="${x.label}"></span></span>`).join("")}</div>`);
+  // the styles to choose between (a vector or geojson layer's variants), and the legend, which a variant may replace
+  if (l.variants) row.insertAdjacentHTML("beforeend", `<div class="when-on"><div class="row">` +
+    `<label for="${l.id}-by" data-t="${esc(l.variants.label ?? "")}"></label><select id="${l.id}-by">` +
+    l.variants.options.map(o => `<option value="${esc(o.value)}" data-t="${esc(o.label)}"></option>`).join("") + "</select></div></div>");
+  if (l.legend || l.variants?.options.some(o => o.legend))
+    row.insertAdjacentHTML("beforeend", `<div class="when-on swatches" id="${l.id}-legend">${legendHtml(l.legend ?? [])}</div>`);
   return row;
 }
 for (const g of CONFIG.groups) {
@@ -401,6 +406,7 @@ Promise.all([fetch("/meta").then(r => r.json()), styleLoaded]).then(([meta]) => 
   for (const l of LAYERS) if (q.get(l.id) === (l.visible ? "0" : "1")) {
     $(l.id).checked = !l.visible; $("lyr-" + l.id).classList.toggle("off", !$(l.id).checked);
   }
+  for (const l of OTHER) if (l.variants && l.variants.options.some(o => o.value === q.get(l.id + "_by"))) $(l.id + "-by").value = q.get(l.id + "_by");
   FONT = map.getStyle().layers.find(l => l.type === "symbol" && l.layout?.["text-font"])?.layout["text-font"] ?? FONT;
   if (G) {
     const firstSymbol = map.getStyle().layers.find(l => l.type === "symbol")?.id;
@@ -440,6 +446,7 @@ function addressNow() {
     put("opacity", $("opacity").value, String(G.opacity ?? 85));
   }
   for (const l of LAYERS) if (!$(l.id).disabled && $(l.id).checked !== !!l.visible) q.set(l.id, $(l.id).checked ? "1" : "0");
+  for (const l of OTHER) if (l.variants) put(l.id + "_by", $(l.id + "-by").value, l.variants.options[0].value);
   put("base", document.querySelector("#bases input:checked")?.value, BASEMAPS[0].id);
   put("lang", LANG, LANGS.includes(CONFIG.language) ? CONFIG.language : LANGS.includes("en") ? "en" : LANGS[0]);
   const qs = q.toString().replace(/%2C/g, ",");
@@ -464,7 +471,7 @@ function addLayer(l, meta) {
       if (spec.type === "symbol" && spec.layout?.["text-field"] && !spec.layout["text-font"]) spec.layout = { ...spec.layout, "text-font": FONT };
       map.addLayer(spec);
     }
-    showLayer(l); countText(l);
+    applyVariant(l); showLayer(l); countText(l);
   };
   if (l.kind === "vector") {
     const n = meta.layers?.[l.id]?.count ?? 0;
@@ -496,6 +503,19 @@ function showLayer(l) {
   for (const st of l.style) if (map.getLayer(st.id)) map.setLayoutProperty(st.id, "visibility", $(l.id).checked ? "visible" : "none");
 }
 for (const l of OTHER) $(l.id).addEventListener("change", () => { popup?.remove(); showLayer(l); });
+// A layer's chosen variant: the paint it sets on the layer's styles, and its legend; nothing is fetched again
+function applyVariant(l) {
+  if (!l.variants) return;
+  const o = l.variants.options.find(x => x.value === $(l.id + "-by").value) ?? l.variants.options[0];
+  for (const [sid, props] of Object.entries(o.paint ?? {}))
+    if (map.getLayer(sid)) for (const [k, v] of Object.entries(props)) map.setPaintProperty(sid, k, v);
+  const box = $(l.id + "-legend");
+  if (box) {
+    box.innerHTML = legendHtml(o.legend ?? l.legend ?? []);
+    for (const el of box.querySelectorAll("[data-t]")) el.textContent = tr(el.dataset.t);
+  }
+}
+for (const l of OTHER) if (l.variants) $(l.id + "-by").addEventListener("change", () => { popup?.remove(); applyVariant(l); });
 
 // A click on a feature: its title and fields; a field's value goes through `values` into a text, or into its
 // `template`, and a text's {name} is filled from the feature. Registered top layer first, so the topmost feature

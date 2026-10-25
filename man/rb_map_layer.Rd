@@ -16,6 +16,7 @@ rb_map_layer(
   style = NULL,
   popup = NULL,
   legend = NULL,
+  variants = NULL,
   count = NULL,
   missing = NULL,
   filters = NULL,
@@ -55,6 +56,11 @@ hold \code{{field}} placeholders; \code{template}, a text with \code{{field}} pl
 is one; and \code{format}, \code{"value"} or \code{"count"}), \code{maxWidth}. For a grid, \code{fields} only, the first in bold.}
 
 \item{legend}{A list of swatches, each \code{swatch} (\code{fill} and \code{stroke}, or \code{dot}) and \code{label}.}
+
+\item{variants}{For a vector or geojson layer, styles to choose between in the page, such as the column the
+points are coloured by: \code{label} (the control's text) and \code{options}, each a \code{value}, a \code{label}, \code{paint} (by the
+layer's style ids, the paint properties it sets) and optionally \code{legend} (in place of the layer's). The first
+option is shown when the page opens; a choice goes into the address as \verb{<id>_by}, and nothing is fetched again.}
 
 \item{count}{The text beside its label: \code{text} (a key whose \code{{1}} is the count) and, for geojson, \code{where} (a field
 and the value of the features to count). A vector layer's count is its tile function's \code{count} attribute.}
