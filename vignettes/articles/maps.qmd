@@ -1,0 +1,403 @@
+---
+title: "Maps in RStudio"
+format: html
+execute:
+  message: false
+  warning: false
+  collapse: true
+  comment: "#>"
+---
+
+ramb's map functions put your data on an interactive map in RStudio's
+Viewer pane. You declare the map in R: its layers, how each is drawn,
+and what a click shows. [rb_map_serve()](../reference/rb_map_serve.html)
+then serves it from your R session, on your own computer only
+(`127.0.0.1`). The data stay in DuckDB. As you pan and zoom, the page
+asks for vector tiles, and DuckDB cuts each one from the table, so a
+table of millions of rows draws as quickly as a small one. The page
+([MapLibre GL JS](https://maplibre.org/)) does the colours, filters,
+legends and popups.
+
+You need the httpuv and jsonlite packages
+(`install.packages(c("httpuv", "jsonlite"))`) and DuckDB's spatial
+extension, which ramb loads, and installs the first time, when it first
+cuts a tile.
+
+The examples use data shipped with ramb, read with
+[rb_read_example()](../reference/rb_read_example.html): the Danish pings
+(`dansk`, from [WKSSFGEO](https://github.com/ices-eg/WKSSFGEO)) and the
+harbours they come and go from (`dansk_harbours`). Run the chunks in
+RStudio's console one by one. The chunks that build layers run as they
+are; the chunks that serve a map open it in the Viewer pane.
+
+## A first map
+
+A map is layers, in groups. Here is one layer, the harbours as polygons:
+
+```{r}
+library(ramb)
+
+harbour_tiles <- rb_map_tiles_table(
+  rb_read_example("dansk_harbours"),
+  properties = "SI_HARB"
+)
+
+harbours <- rb_map_layer(
+  "harbours", "vector",
+  label = "Harbours",
+  tiles = harbour_tiles,
+  style = list(list(
+    id = "harbours-fill", type = "fill", "source-layer" = "features",
+    paint = list("fill-color" = "#d9822b", "fill-opacity" = 0.6)
+  )),
+  popup = list(click = "harbours-fill", title = "SI_HARB")
+)
+
+m <- rb_map(
+  rb_map_group("ref", "Reference", list(harbours)),
+  title = "Danish harbours",
+  view = list(center = c(10.5, 56), zoom = 7)
+)
+```
+
+```{r}
+#| eval: false
+rb_map_serve(m)
+```
+
+The map opens in the Viewer pane. The sidebar lists the layers (tick a
+layer to show it), with the base maps and a button that copies a link
+to the view. Click a harbour for its id (`SI_HARB`). On a narrow pane the sidebar
+sits behind a menu button. The Viewer's *Show in new window* button opens
+the same page in your browser, where there is more room.
+
+What each part does:
+
+- [rb_map_tiles_table()](../reference/rb_map_tiles_table.html) copies the
+  table once into a temporary DuckDB table, in web mercator, and returns
+  the tile function the layer needs. Its features are in the tile layer
+  `"features"`, which `style` names as its `"source-layer"`.
+- `style` is a list of [MapLibre layer
+  specifications](https://maplibre.org/maplibre-style-spec/layers/),
+  written as R lists.
+- `popup` names the styles that answer a click (`click`) and the field
+  shown as the popup's title.
+
+A tile function can be called directly. That is a quick way to see that
+a layer has something to show before you serve it:
+
+```{r}
+attr(harbour_tiles, "count") # the number of features
+length(harbour_tiles(7, 68, 39)) # the bytes of one tile at zoom 7
+```
+
+## The map lives in your R session
+
+The server runs in the background of the R session that started it,
+which has some consequences:
+
+- **It answers while the console is idle.** While R runs something else,
+  the map waits: tiles stop arriving until the console is free.
+- **Serving again replaces it.** Change the map and run
+  `rb_map_serve(m)` again: the server on that port is stopped, a new one
+  started, and the Viewer reloads.
+- **Several maps need several ports.** For example,
+  `rb_map_serve(m2, port = 8791)`. The default is 8790. If another
+  program holds the port, you get an error that says so.
+- **`rb_map_stop()` stops them.** With no argument it stops every map
+  this session serves; `rb_map_stop(8791)` stops one. Restarting R stops
+  them too, after which the Viewer shows a page with nothing behind it.
+  Serve again.
+
+## Points coloured by a value
+
+The pings as points, coloured by the behaviour in the data. There are
+395,558 of them. Drawn at a zoomed-out view, nearly all would fall in a
+few tiles, each slow to cut and send. `minzoom = 10` keeps the points to
+zoom 10 and closer; the next section shows the pings as cells for the
+overview.
+
+```{r}
+pings <- rb_map_layer(
+  "pings", "vector",
+  label = "Pings",
+  info = "Each ping, coloured by the behaviour in the data.",
+  minzoom = 10,
+  tiles = rb_map_tiles_table(
+    rb_read_example("dansk"),
+    lon = "lon", lat = "lat",
+    properties = c("vessel_id", "time_stamp", "speed", "behaviour")
+  ),
+  count = list(text = "{1} pings"),
+  style = list(list(
+    id = "pings-dot", type = "circle", "source-layer" = "features",
+    paint = list(
+      "circle-color" = list(
+        "match", list("get", "behaviour"),
+        "Fishing", "#c0392b",
+        "#8a959e"
+      ),
+      "circle-radius" = list("interpolate", list("linear"), list("zoom"), 10, 2, 15, 5)
+    )
+  )),
+  legend = list(
+    list(swatch = list(dot = "#c0392b"), label = "fishing"),
+    list(swatch = list(dot = "#8a959e"), label = "other")
+  ),
+  popup = list(
+    click = "pings-dot", title = "vessel_id",
+    fields = list(
+      list(field = "time_stamp", label = "time"),
+      list(field = "speed", label = "speed (knots)", format = "value"),
+      list(field = "behaviour", label = "behaviour")
+    )
+  )
+)
+```
+
+Some things to note:
+
+- **MapLibre's expressions are lists**, so that a one-element array such
+  as `list("zoom")` stays an array when the map is sent to the page. Write
+  `list("get", "behaviour")`, not `c("get", "behaviour")`.
+- **A vector tile holds only text, numbers and logicals.** So
+  `rb_map_tiles_table()` carries a date-time such as `time_stamp` as text,
+  and a factor or a date too.
+- **`count` puts the number of features beside the layer's label.**
+
+## Cells: a grid with filters
+
+A grid layer is the main data layer of a map: cells coloured on a log
+scale. The page adds the controls: the palette, how the colours stretch
+over the values, a floor and a cap, the opacity, and a histogram of the
+cells in view. Its filters become controls too, whose values reach your
+tile function. You write that function, so you choose the cell and what
+is summed in it. Here the pings are counted by 0.01-degree cell, with a
+filter on behaviour:
+
+```{r}
+con <- duckdbfs::cached_connection() # the connection rb_read_example() uses
+dansk_sql <- dbplyr::sql_render(rb_read_example("dansk"))
+
+cell_tile <- function(z, x, y, params) {
+  where <- if (is.null(params$behaviour)) {
+    ""
+  } else {
+    sprintf("WHERE behaviour = %s", DBI::dbQuoteString(con, params$behaviour))
+  }
+  DBI::dbGetQuery(con, sprintf(
+    "WITH c AS (SELECT floor(lon * 100) AS cx, floor(lat * 100) AS cy, count(*) AS n
+                FROM (%s) %s GROUP BY ALL),
+          m AS (SELECT n, ST_Transform(ST_MakeEnvelope(cx / 100, cy / 100, (cx + 1) / 100, (cy + 1) / 100),
+                                       'EPSG:4326', 'EPSG:3857', always_xy := true) AS env FROM c)
+     SELECT ST_AsMVT({'geometry': ST_AsMVTGeom(env, ST_Extent(ST_TileEnvelope(%d, %d, %d)), 4096, 64, true),
+                      'n': n::INTEGER}, 'cells', 4096) AS tile FROM m",
+    dansk_sql, where, z, x, y
+  ))$tile[[1]]
+}
+
+cells <- rb_map_layer(
+  "cells", "grid",
+  label = "Pings by cell",
+  info = "The number of pings in each 0.01-degree cell.",
+  tiles = cell_tile,
+  meta = list(options = list(behaviour = data.frame(value = c("Fishing", "Other")))),
+  filters = list(
+    list(
+      id = "behaviour", label = "Behaviour",
+      options = list(list(value = "", label = "all")), meta = TRUE
+    ),
+    list(id = "metric", type = "metric", label = "Metric")
+  ),
+  metrics = list(list(field = "n", label = "pings")),
+  popup = list(fields = list(list(field = "n", label = "pings", format = "count")))
+)
+```
+
+How the parts fit together:
+
+- **`tiles`** is called with the tile's `z`, `x` and `y`, and `params`, the
+  filters' values. It returns a tile of cells in the tile layer
+  `"cells"`, made by DuckDB's `ST_AsMVT()`.
+- **The `behaviour` filter** offers "all" (no value) and the options in
+  `meta`.
+- **The server checks every value** against the filter's options before
+  the tile function sees it. So `params$behaviour` is either absent or
+  one of `"Fishing"` and `"Other"`, and it is safe to put into the SQL.
+- **`metrics` are the fields the cells can be coloured by.** The
+  `"metric"` filter chooses among them.
+- **A map has one grid at most.**
+
+A filter can also have fixed options with a default (a choice of cell
+size, say) or be a range of two values (the first and last year).
+[rb_map_layer()](../reference/rb_map_layer.html) describes them. The
+function above sums the whole table for every tile, which is fine for
+the example. For a large table, sum it once into a table of cells and
+cut the tiles from that.
+
+The tile function can be tried before serving, as above:
+
+```{r}
+length(cell_tile(7, 68, 39, list())) # every ping
+length(cell_tile(7, 68, 39, list(behaviour = "Fishing"))) # fishing only
+```
+
+## Lines: each vessel's day
+
+Any table of geometries becomes a vector layer. Here the lines are made
+in DuckDB, one per vessel and day, through the day's pings in time
+order:
+
+```{r}
+tracks <- dplyr::tbl(con, dplyr::sql(sprintf(
+  "SELECT vessel_id, CAST(time_stamp AS DATE) AS day, count(*) AS pings,
+          ST_MakeLine(list(ST_Point(lon, lat) ORDER BY time_stamp)) AS geometry
+   FROM (%s) GROUP BY ALL HAVING count(*) > 1",
+  dansk_sql
+)))
+
+days <- rb_map_layer(
+  "days", "vector",
+  label = "Daily tracks", visible = FALSE,
+  tiles = rb_map_tiles_table(tracks, properties = c("vessel_id", "day", "pings")),
+  count = list(text = "{1} vessel days"),
+  style = list(list(
+    id = "days-line", type = "line", "source-layer" = "features",
+    paint = list("line-color" = "#2c5d87", "line-width" = 1.5, "line-opacity" = 0.7)
+  )),
+  legend = list(list(swatch = list(fill = "#2c5d87"), label = "a vessel's day")),
+  popup = list(
+    click = "days-line", title = "vessel_id",
+    fields = list(
+      list(field = "day", label = "day"),
+      list(field = "pings", label = "pings", format = "count")
+    )
+  )
+)
+```
+
+## Features from R: a GeoJSON layer
+
+A small sf object can go to the page whole, as GeoJSON, with no tiles.
+Here it is a box around the Kattegat:
+
+```{r}
+kattegat <- sf::st_sf(
+  name = "Kattegat",
+  geometry = sf::st_as_sfc(sf::st_bbox(
+    c(xmin = 10.5, ymin = 56, xmax = 12.9, ymax = 57.8),
+    crs = 4326
+  ))
+)
+
+area <- rb_map_layer(
+  "area", "geojson",
+  label = "Kattegat",
+  data = kattegat,
+  style = list(list(
+    id = "area-line", type = "line",
+    paint = list("line-color" = "#333333", "line-width" = 2, "line-dasharray" = list(2, 2))
+  ))
+)
+```
+
+A GeoJSON layer's style has no `"source-layer"`: there are no tiles to
+pick a layer from.
+
+## All together, in two languages
+
+The layers go into groups, and the groups into the map. Within a group,
+a later layer is drawn over an earlier one. A group can start folded
+(`open = FALSE`). Each text in the map (a title, label or info) is
+looked up in `texts`, so it can be given in several languages. The page
+then shows a language button for each, and its own texts stay English
+unless you give them under the same keys.
+
+```{r}
+m <- rb_map(
+  rb_map_group("data", "Data", list(cells, days, pings)),
+  rb_map_group("ref", "Reference", list(harbours, area), open = FALSE),
+  title = "Danish pings",
+  view = list(center = c(10.5, 56.8), zoom = 6),
+  texts = list(
+    "Danish pings" = list(en = "Danish pings", da = "Danske positioner"),
+    "Data" = list(en = "Data", da = "Data"),
+    "Pings by cell" = list(en = "Pings by cell", da = "Positioner pr. celle"),
+    "Daily tracks" = list(en = "Daily tracks", da = "Daglige spor"),
+    "Pings" = list(en = "Pings", da = "Positioner"),
+    "Behaviour" = list(en = "Behaviour", da = "Adfærd"),
+    "Reference" = list(en = "Reference", da = "Reference"),
+    "Harbours" = list(en = "Harbours", da = "Havne")
+  ),
+  languages = c("en", "da")
+)
+```
+
+```{r}
+#| eval: false
+rb_map_serve(m)
+```
+
+The pings lie in a few patches: off Gothenburg, north of Jutland, in
+the Øresund and south of Zealand. Zoom in on one past 10 and the points
+appear over the cells. Tick *Daily tracks*
+to see the vessels' days, and switch *Behaviour* to *Fishing* to see only
+the cells of fishing pings.
+
+## The address is the view
+
+Every choice in the page goes into its address, and the position
+(zoom, latitude, longitude) after the `#`. The sidebar's link button
+copies it. Opened again while the map is served, the link gives the same
+view, so a view can be kept or sent to someone at the same computer.
+
+`query` sets the first view from R. Each layer is a key (`1` on, `0`
+off), as is each of the grid's filters, along with `metric`, `palette`,
+`stretch` (`"even"` or `"equal"`), `floor` and `cap`, `opacity`, `base`
+and `lang`:
+
+```{r}
+#| eval: false
+rb_map_serve(m, query = list(
+  lang = "da", behaviour = "Fishing", palette = "viridis",
+  base = "ocean", days = 1
+))
+```
+
+The palettes and base maps to choose from:
+
+```{r}
+vapply(rb_map_palettes(), `[[`, "", "id")
+vapply(rb_map_basemaps(), `[[`, "", "id")
+```
+
+## When a layer stays empty
+
+- **Call its tile function** at a tile you know has data, as in the
+  examples above. A tile of length zero has no features there.
+- **A tile function's error shows in the page**, in the status line at
+  the foot of the sidebar: the error's first line, for example a column
+  that does not exist. The page shows it there because the console does
+  not.
+- **A vector layer with `minzoom` draws nothing** until you zoom in that
+  far.
+
+## More examples
+
+Four whole maps on the example data come with ramb as scripts:
+
+- the pings by cell (`dansk_map.R`);
+- the same with a cell size, a sample and an interpolation to choose in
+  the page (`dansk_switches_map.R`);
+- the Italian tracks' voyages by two rules (`cnr_map.R`);
+- the vessel in iapesca's example data (`iapesca_map.R`, which needs the
+  iapesca package).
+
+Copy one into your project to open it in RStudio and change it:
+
+```{r}
+#| eval: false
+list.files(system.file("examples", "map", package = "ramb"))
+file.copy(system.file("examples", "map", "cnr_map.R", package = "ramb"), ".")
+file.edit("cnr_map.R")
+```
