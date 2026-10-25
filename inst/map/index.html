@@ -37,6 +37,8 @@
   .row { display: flex; align-items: center; gap: 6px; margin: 5px 0; }
   .choose { padding: 4px 12px 6px; border-bottom: 1px solid var(--line); }
   .choose .row button { padding: 1px 7px; }
+  .choose .chips { display: flex; flex-wrap: wrap; gap: 1px 10px; margin: -2px 0 4px 80px; }
+  .choose .chips label { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); }
   .row label { width: 74px; color: var(--muted); }
   .row select, .row input[type=range] { flex: 1; min-width: 0; }
   .years select { flex: 1; }
@@ -116,7 +118,7 @@ const ENGINE_TEXTS = {
   colours: "Colours", stretch: "Stretch", stretchTip: "How the colours are spread between floor and cap",
   sEven: "even on a log scale", sEqual: "equal shares of the cells in view", floor: "Floor", cap: "Cap",
   opacity: "Opacity", fit: "Fit to view", fitTip: "Floor and cap at the 2nd and 98th percentiles of the cells in view",
-  chooseAll: "all", chooseBack: "The previous one", chooseNext: "The next one",
+  chooseAll: "all", chooseAllTip: "Show every value", chooseBack: "The previous one", chooseNext: "The next one",
   legendTip: "The colour scale on a log axis, and below it the cells in view: values below the floor and above the cap in the end bars",
   yes: "yes", no: "no"
 };
@@ -202,16 +204,37 @@ for (const g of CONFIG.groups) {
   for (const id of g.layers) d.querySelector(".body").append(layerRow(LAYERS.find(l => l.id === id)));
   $("groups").insertBefore(d, $("g-base"));
 }
-// The map's choices (a field's values to show one of, from the data's groups), above the groups
+// The map's choices (a field's values to show, from the data's groups), above the groups: chips that tick on and off
+// for a field of few values (`multi`), a list to show one at a time for one of many; ‹ › step through either
 const CHOOSE = CONFIG.choose?.fields ?? [];
 if (CHOOSE.length) {
   const box = document.createElement("div");
   box.className = "choose";
-  box.innerHTML = CHOOSE.map((f, i) => `<div class="row"><label for="ch-${i}" data-t="${esc(f.label ?? f.field)}"></label>` +
-    `<button data-step="-1" data-ch="${i}" data-tt="chooseBack">‹</button><select id="ch-${i}"><option value="" data-t="chooseAll"></option>` +
-    f.options.map(o => `<option value="${esc(o.value)}">${esc(o.label ?? o.value)}</option>`).join("") +
-    `</select><button data-step="1" data-ch="${i}" data-tt="chooseNext">›</button></div>`).join("");
+  box.innerHTML = CHOOSE.map((f, i) => {
+    const head = `<div class="row"><label for="ch-${i}" data-t="${esc(f.label ?? f.field)}"></label>` +
+      `<button data-step="-1" data-ch="${i}" data-tt="chooseBack">‹</button>`;
+    const next = `<button data-step="1" data-ch="${i}" data-tt="chooseNext">›</button>`;
+    if (f.multi) {
+      return head + `<button data-all="${i}" data-t="chooseAll" data-tt="chooseAllTip"></button>` + next + "</div>" +
+        `<div class="chips" id="ch-${i}">` + f.options.map(o => `<label><input type="checkbox" value="${esc(o.value)}" checked>` +
+        `${esc(o.label ?? o.value)}</label>`).join("") + "</div>";
+    }
+    return head + `<select id="ch-${i}"><option value="" data-t="chooseAll"></option>` +
+      f.options.map(o => `<option value="${esc(o.value)}">${esc(o.label ?? o.value)}</option>`).join("") + "</select>" + next + "</div>";
+  }).join("");
   $("groups").prepend(box);
+}
+// the values chosen of a field, null where every value is shown
+function chosen(i) {
+  const f = CHOOSE[i], el = $("ch-" + i);
+  if (!f.multi) return el.value === "" ? null : [el.value];
+  const on = [...el.querySelectorAll("input")].filter(x => x.checked).map(x => x.value);
+  return on.length === f.options.length ? null : on;
+}
+function setChosen(i, vals) {
+  const f = CHOOSE[i], el = $("ch-" + i);
+  if (!f.multi) { el.value = vals?.[0] ?? ""; return; }
+  for (const x of el.querySelectorAll("input")) x.checked = vals === null || vals.includes(x.value);
 }
 for (const k of CONFIG.about ?? []) $("about").insertAdjacentHTML("beforeend", `<p data-t="${k}"></p>`);
 if (!(CONFIG.about ?? []).length) $("g-about").hidden = true;
@@ -421,7 +444,10 @@ Promise.all([fetch("/meta").then(r => r.json()), styleLoaded]).then(([meta]) => 
     $(l.id).checked = !l.visible; $("lyr-" + l.id).classList.toggle("off", !$(l.id).checked);
   }
   for (const l of OTHER) if (l.variants && l.variants.options.some(o => o.value === q.get(l.id + "_by"))) $(l.id + "-by").value = q.get(l.id + "_by");
-  CHOOSE.forEach((f, i) => { if (f.options.some(o => o.value === q.get(f.field))) $("ch-" + i).value = q.get(f.field); });
+  CHOOSE.forEach((f, i) => {
+    const vals = (q.get(f.field) ?? "").split(",").filter(v => f.options.some(o => o.value === v));
+    if (vals.length) setChosen(i, f.multi ? vals : vals.slice(0, 1));
+  });
   FONT = map.getStyle().layers.find(l => l.type === "symbol" && l.layout?.["text-font"])?.layout["text-font"] ?? FONT;
   if (G) {
     const firstSymbol = map.getStyle().layers.find(l => l.type === "symbol")?.id;
@@ -462,7 +488,7 @@ function addressNow() {
   }
   for (const l of LAYERS) if (!$(l.id).disabled && $(l.id).checked !== !!l.visible) q.set(l.id, $(l.id).checked ? "1" : "0");
   for (const l of OTHER) if (l.variants) put(l.id + "_by", $(l.id + "-by").value, l.variants.options[0].value);
-  CHOOSE.forEach((f, i) => put(f.field, $("ch-" + i).value, ""));
+  CHOOSE.forEach((f, i) => put(f.field, chosen(i)?.join(",") ?? "", ""));
   put("base", document.querySelector("#bases input:checked")?.value, BASEMAPS[0].id);
   put("lang", LANG, LANGS.includes(CONFIG.language) ? CONFIG.language : LANGS.includes("en") ? "en" : LANGS[0]);
   const qs = q.toString().replace(/%2C/g, ",");
@@ -537,10 +563,11 @@ for (const l of OTHER) if (l.variants) $(l.id + "-by").addEventListener("change"
 // left as it is. Nothing is fetched again: the tiles carry the fields
 function choiceFilter(l, st) {
   const conds = CHOOSE.flatMap((f, i) => {
-    const v = $("ch-" + i).value;
-    if (v === "" || !(f.layers ?? []).includes(l.id)) return [];
-    const o = f.options.find(x => x.value === v);
-    return [o.match === null ? ["!", ["has", f.field]] : ["==", ["get", f.field], o.match]];
+    const vals = chosen(i);
+    if (vals === null || !(f.layers ?? []).includes(l.id)) return [];
+    const os = f.options.filter(o => vals.includes(o.value));
+    const cond = ["in", ["get", f.field], ["literal", os.filter(o => o.match !== null).map(o => o.match)]];
+    return [os.some(o => o.match === null) ? ["any", ["!", ["has", f.field]], cond] : cond];
   });
   const parts = [st.filter, ...conds].filter(Boolean);
   return parts.length === 0 ? null : parts.length === 1 ? parts[0] : ["all", ...parts];
@@ -548,30 +575,40 @@ function choiceFilter(l, st) {
 function applyChoice(l) {
   for (const st of l.style) if (map.getLayer(st.id)) map.setFilter(st.id, choiceFilter(l, st));
 }
-// the view fitted to the choice: the combination's extent where every field is chosen, else the field just changed
+// the view fitted to the choice: the combination's extent where every field has one value chosen, else the extent of
+// the values chosen of the field just changed
 function zoomToChoice(i) {
-  const vals = CHOOSE.map((f, j) => $("ch-" + j).value);
-  if (vals.every(v => v === "")) return;
-  let box = vals.every(v => v !== "") && CHOOSE.length > 1
-    ? CONFIG.choose.extents?.find(e => e.key === vals.join("\u001f"))?.bbox : null;
+  const sets = CHOOSE.map((f, j) => chosen(j));
+  if (sets.every(v => v === null)) return;
+  let box = CHOOSE.length > 1 && sets.every(v => v !== null && v.length === 1)
+    ? CONFIG.choose.extents?.find(e => e.key === sets.map(v => v[0]).join("\u001f"))?.bbox : null;
   if (!box) {
-    const j = vals[i] !== "" ? i : vals.findIndex(v => v !== "");
-    box = CHOOSE[j].options.find(o => o.value === vals[j])?.bbox;
+    const j = sets[i] !== null ? i : sets.findIndex(v => v !== null);
+    const bs = CHOOSE[j].options.filter(o => sets[j].includes(o.value) && o.bbox).map(o => o.bbox);
+    if (bs.length) box = [Math.min(...bs.map(b => b[0])), Math.min(...bs.map(b => b[1])),
+                          Math.max(...bs.map(b => b[2])), Math.max(...bs.map(b => b[3]))];
   }
   if (box) map.fitBounds([[box[0], box[1]], [box[2], box[3]]], { padding: 40, maxZoom: 14 });
 }
-CHOOSE.forEach((f, i) => $("ch-" + i).addEventListener("change", () => {
+function onChoice(i) {
   popup?.remove();
   for (const l of OTHER) applyChoice(l);
   zoomToChoice(i);
-}));
-// ‹ and › step to the previous and next value, from all to the first or the last
+}
+CHOOSE.forEach((f, i) => $("ch-" + i).addEventListener("change", () => onChoice(i)));
+// ‹ and › show one value: the next or previous of the one shown, else the first or the last; all shows every value
 for (const b of document.querySelectorAll("[data-step]")) b.addEventListener("click", () => {
-  const sel = $("ch-" + b.dataset.ch), n = sel.options.length - 1;
+  const i = +b.dataset.ch, f = CHOOSE[i], n = f.options.length, cur = chosen(i);
   if (n < 1) return;
-  const k = sel.selectedIndex === 0 ? (+b.dataset.step > 0 ? 1 : n) : ((sel.selectedIndex - 1 + +b.dataset.step + n) % n) + 1;
-  sel.selectedIndex = k;
-  sel.dispatchEvent(new Event("change", { bubbles: true }));
+  const at = cur !== null && cur.length === 1 ? f.options.findIndex(o => o.value === cur[0]) : -1;
+  setChosen(i, [f.options[at < 0 ? (+b.dataset.step > 0 ? 0 : n - 1) : (at + +b.dataset.step + n) % n].value]);
+  onChoice(i);
+  writeAddress();
+});
+for (const b of document.querySelectorAll("[data-all]")) b.addEventListener("click", () => {
+  setChosen(+b.dataset.all, null);
+  onChoice(+b.dataset.all);
+  writeAddress();
 });
 
 // A click on a feature: its title and fields; a field's value goes through `values` into a text, or into its

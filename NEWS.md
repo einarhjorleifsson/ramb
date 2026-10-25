@@ -1,10 +1,12 @@
 # ramb 2026.10.25.5
 
 - `rb_map_pings()`, `rb_map_track()`: grouped pings, `group_by(trip)` or `group_by(trip, gear)`, or `choose =`, give
-  the page a control per group column above the layers: "all", then each value with its number of pings, and buttons
-  that step to the previous and next. A choice shows that group on every layer that has the column (a filter in the
-  browser, nothing fetched again), fits the view to it (to the combination where every column is chosen), and goes
-  into the address under the column's name. The groups cut the track too, so each group's line is its own. The
+  the page a control per group column above the layers, each value with its number of pings: for a column of 12
+  values or fewer, chips that tick on and off, so several show at once (setting and hauling together); for one of
+  more, a list to show one at a time; and buttons that step to the previous and next. A choice shows those groups on
+  every layer that has the column (a filter in the browser, nothing fetched again), fits the view to them (to the
+  combination where every column has one value chosen), and goes into the address under the column's name, several
+  values separated by commas. The groups cut the track too, so each group's line is its own. The
   choices are set by the call that starts the map.
 - `rb_map()`: `choose`, the map's choices, as the layer functions make them.
 

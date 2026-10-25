@@ -306,13 +306,15 @@ rb_map_group <- function(id, title = id, layers, open = TRUE) {
 #' @param locales A list by language of the locales its numbers are written in, the first a browser has
 #'   (`list(is = c("is-IS", "de-DE"))`, German standing in where a browser lacks Icelandic).
 #' @param about Keys of `texts` for the paragraphs of the About group (none, no group).
-#' @param choose Fields whose values the page offers to show one of, over every layer that has the field (each a
-#'   control above the groups, "all" first, with buttons that step through the values): a list with `fields`, each a
-#'   `field`, a `label`, its `options` (each a `value` for the control and the address, a `label`, `match`, the value
-#'   the layers' features carry, `NULL` for none, and optionally `bbox`, the extent the view is fitted to) and `layers`
+#' @param choose Fields whose values the page offers to show, over every layer that has the field (each a control
+#'   above the groups, with buttons that step through the values): a list with `fields`, each a `field`, a `label`,
+#'   `multi` (`TRUE`: each value a chip ticked on and off, so several show at once; else a list, "all" first, to show
+#'   one at a time), its `options` (each a `value` for the control and the address, a `label`, `match`, the value the
+#'   layers' features carry, `NULL` for none, and optionally `bbox`, the extent the view is fitted to) and `layers`
 #'   (the ids it filters); and optionally `extents`, each a `key` (the values of every field joined by the character 31)
-#'   and a `bbox`, for the view where every field is chosen. [rb_map_pings()] and [rb_map_track()] make it from the
-#'   data's groups. A choice goes into the address under the field's name, and nothing is fetched again.
+#'   and a `bbox`, for the view where every field has one value chosen. [rb_map_pings()] and [rb_map_track()] make it
+#'   from the data's groups. A choice goes into the address under the field's name, several values separated by
+#'   commas, and nothing is fetched again.
 #' @param palette The grid's palette when the page opens: an `id` of `palettes`.
 #' @param palettes,basemaps The palettes and base maps to choose from: [rb_map_palettes()], [rb_map_basemaps()].
 #' @return An `rb_map`: `config` (what the page is sent) and `layers`.
@@ -998,9 +1000,10 @@ rb_map_tiles_table <- function(
 #' each one turned on and off in the page: `pings |> rb_map_track(fishing_flow) |> rb_map_track(provider)`.
 #'
 #' Grouped pings, `group_by(trip)` or `group_by(trip, gear)`, give the page a control per group column above the
-#' layers: "all", then each value with its number of pings, and buttons that step to the previous and next. A choice
-#' shows that group's pings and lines on every layer that has the column, fits the view to it, and goes into the
-#' address. The groups cut the track too, so each group's line is its own.
+#' layers, each value with its number of pings: for a column of 12 values or fewer, chips that tick on and off, so
+#' several show at once (setting and hauling); for one of more, a list to show one at a time; and buttons that step to
+#' the previous and next. A choice shows those groups' pings and lines on every layer that has the column, fits the
+#' view to them, and goes into the address. The groups cut the track too, so each group's line is its own.
 #'
 #' The map opens on a dark base map. Each layer copies its pings into a temporary DuckDB table, as
 #' [rb_map_tiles_table()] does.
@@ -1022,7 +1025,7 @@ rb_map_tiles_table <- function(
 #'   The track needs the time; a point's popup shows it first.
 #' @param by The vessel column, a name or a string: one track each. By default the map's, else `vid` where the data
 #'   have it, else one track through all the pings.
-#' @param choose Columns whose values the page offers to show one of, a name, a string or `c()` of them: by default
+#' @param choose Columns whose values the page offers to show, a name, a string or `c()` of them: by default
 #'   the groups of the pings (`dplyr::group_by()`). Set by the call that starts the map.
 #' @param title,port The page's title, and where the map is served when printed: set by the call that starts it.
 #' @return An [rb_map()], with the layer added.
@@ -1585,6 +1588,7 @@ format.rb_map <- function(x, ...) {
       list(
         field = fields[i],
         label = fields[i],
+        multi = nrow(r) <= 12, # few values: chips that tick on and off, so several show at once
         options = lapply(seq_len(nrow(r)), function(j) {
           v <- r$v[j]
           list(

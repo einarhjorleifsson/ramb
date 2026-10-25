@@ -65,7 +65,7 @@ The track needs the time; a point's popup shows it first.}
 \item{by}{The vessel column, a name or a string: one track each. By default the map's, else \code{vid} where the data
 have it, else one track through all the pings.}
 
-\item{choose}{Columns whose values the page offers to show one of, a name, a string or \code{c()} of them: by default
+\item{choose}{Columns whose values the page offers to show, a name, a string or \code{c()} of them: by default
 the groups of the pings (\code{dplyr::group_by()}). Set by the call that starts the map.}
 
 \item{title, port}{The page's title, and where the map is served when printed: set by the call that starts it.}
@@ -97,9 +97,10 @@ ending at the next run's first fix, so the line stays joined. A second call adds
 each one turned on and off in the page: \code{pings |> rb_map_track(fishing_flow) |> rb_map_track(provider)}.
 
 Grouped pings, \code{group_by(trip)} or \code{group_by(trip, gear)}, give the page a control per group column above the
-layers: "all", then each value with its number of pings, and buttons that step to the previous and next. A choice
-shows that group's pings and lines on every layer that has the column, fits the view to it, and goes into the
-address. The groups cut the track too, so each group's line is its own.
+layers, each value with its number of pings: for a column of 12 values or fewer, chips that tick on and off, so
+several show at once (setting and hauling); for one of more, a list to show one at a time; and buttons that step to
+the previous and next. A choice shows those groups' pings and lines on every layer that has the column, fits the
+view to them, and goes into the address. The groups cut the track too, so each group's line is its own.
 
 The map opens on a dark base map. Each layer copies its pings into a temporary DuckDB table, as
 \code{\link[=rb_map_tiles_table]{rb_map_tiles_table()}} does.

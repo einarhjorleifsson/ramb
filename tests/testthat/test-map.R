@@ -689,6 +689,7 @@ test_that("grouped pings: a choice per group column, over every layer that has i
   expect_length(ch$fields[[1]]$options, 14)
   expect_equal(unlist(ch$fields[[1]]$layers), c("path", "pings"))
   expect_length(ch$fields[[1]]$options[[1]]$bbox, 4)
+  expect_false(ch$fields[[1]]$multi) # 14 values: a list, one at a time
   # every ping counted once among the options
   counts <- as.integer(gsub(
     ",",
@@ -714,6 +715,7 @@ test_that("grouped pings: a choice per group column, over every layer that has i
     vapply(m2$config$choose$fields, `[[`, "", "field"),
     c("vessel_id", "behaviour")
   )
+  expect_true(m2$config$choose$fields[[2]]$multi) # two values: chips, so both can show
   expect_gt(length(m2$config$choose$extents), 14)
   expect_match(m2$config$choose$extents[[1]]$key, intToUtf8(31), fixed = TRUE)
   # a number is matched as a number; other data without the field are left as they are
