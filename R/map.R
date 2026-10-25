@@ -931,16 +931,18 @@ rb_map_tiles_table <- function(
 #'
 #' Track: each vessel's pings in time order, broken where they are more than `gap_h` hours apart. With a column, such
 #' as `fishing_flow`, it breaks where the value changes too, each run coloured by its value (as the points are) and
-#' ending at the next run's first fix, so the line stays joined.
+#' ending at the next run's first fix, so the line stays joined. A second call adds a second track, by another column,
+#' each one turned on and off in the page: `pings |> rb_map_track(fishing_flow) |> rb_map_track(provider)`.
 #'
 #' The map opens on a dark base map. Each layer copies its pings into a temporary DuckDB table, as
 #' [rb_map_tiles_table()] does.
 #'
 #' @param x Pings: a data frame or lazy DuckDB table with `lon` and `lat` (WGS 84), or an sf object of points; or a
 #'   map made by either function.
-#' @param col For points, the column they are coloured by, a name or a string, or several, `c(speed, behaviour)`, to
-#'   choose between in the page. For the track, a column whose runs of equal value colour the line; `NULL` for one
-#'   colour.
+#' @param col For the points, the column they are coloured by, a name or a string, or several,
+#'   `c(fishing_flow, speed)`, to choose between in the page ("Colour by"), the first shown. For the track, one column,
+#'   whose runs of equal value cut and colour the line (a numeric one cuts it at every ping, each step coloured by its
+#'   first ping's value), or `NULL` for one colour; for another column, call `rb_map_track()` again.
 #' @param popup Further columns a click on a point shows.
 #' @param discrete Whether a column of `col` takes a colour per value; by default each that is not numeric.
 #' @param radius,radius_max The point radius in metres, and its largest size in pixels.
@@ -1093,7 +1095,7 @@ rb_map_pings <- function(
   layer <- rb_map_layer(
     id,
     "vector",
-    label = .rb_quick_label("Pings", id),
+    label = .rb_quick_label(s$state, "Pings"),
     info = if (length(col) > 1) {
       "Each ping, coloured by the column chosen below; a numeric one over its 1st to 99th percentile."
     } else {
@@ -1132,6 +1134,8 @@ rb_map_track <- function(
   x,
   col = NULL,
   gap_h = 1,
+  discrete = NULL,
+  palette = "Inferno",
   data = NULL,
   lon = NULL,
   lat = NULL,
@@ -1143,13 +1147,16 @@ rb_map_track <- function(
   s <- .rb_quick(x, data, lon, lat, time, rlang::enquo(by), title, port)
   ctx <- s$ctx_layer
   col_q <- rlang::enquo(col)
-  path_col <- if (rlang::quo_is_null(col_q)) {
+  col <- if (rlang::quo_is_null(col_q)) {
     NULL
   } else {
     .rb_track_cols(col_q, ctx$cols)
   }
-  if (length(path_col) > 1) {
-    stop("The track is coloured by one column.", call. = FALSE)
+  if (length(col) > 1) {
+    stop(
+      "The track is coloured by one column; for another, call rb_map_track() again: each call adds a track to turn on and off.",
+      call. = FALSE
+    )
   }
   if (is.null(ctx$time)) {
     stop(
@@ -1157,35 +1164,68 @@ rb_map_track <- function(
       call. = FALSE
     )
   }
-  .rb_quick_need(ctx, path_col)
+  .rb_quick_need(ctx, col)
   id <- .rb_quick_id(s$state, "path")
   con <- ctx$con
   q <- function(v) as.character(DBI::dbQuoteIdentifier(con, v))
   by <- ctx$by
+  k <- length(col)
+  numeric <- vapply(
+    col,
+    function(cc) {
+      is.numeric(dplyr::collect(utils::head(
+        dplyr::select(ctx$x, dplyr::all_of(cc)),
+        1
+      ))[[1]])
+    },
+    logical(1)
+  )
+  is_discrete <- if (is.null(discrete)) !numeric else rep(isTRUE(discrete), k)
+  # each column's value on the run, as rb_path_<i>: text for a colour per value, a number for a palette
+  vals <- vapply(
+    seq_len(k),
+    function(i) {
+      sprintf(
+        ", CAST(%s AS %s) AS v%d",
+        q(col[i]),
+        if (is_discrete[i]) "VARCHAR" else "DOUBLE",
+        i
+      )
+    },
+    ""
+  )
+  changed <- vapply(
+    seq_len(k),
+    function(i) sprintf(" OR v%1$d IS DISTINCT FROM lag(v%1$d) OVER o", i),
+    ""
+  )
+  kept <- vapply(
+    seq_len(k),
+    function(i) sprintf("any_value(v%1$d) AS rb_path_%1$d, ", i),
+    ""
+  )
   part <- if (is.null(by)) "" else paste("PARTITION BY", q(by))
   gap <- if (is.finite(gap_h)) {
     format(gap_h * 3600, scientific = FALSE)
   } else {
     "'infinity'::DOUBLE"
   }
-  # a line per vessel and stretch: a silence of more than gap_h hours starts a new one, and so does a change of
-  # path_col's value; a run ends at the next run's first fix, so the line stays joined across a change
+  # a line per vessel and stretch: a silence of more than gap_h hours starts a new one, and so does a change of any
+  # column's value, so each run carries one value of each; a run ends at the next run's first fix, so the line stays
+  # joined across a change
   lines <- dplyr::tbl(
     con,
     dplyr::sql(sprintf(
       "WITH s AS (
-         SELECT %1$s %2$s AS lon, %3$s AS lat, %4$s AS t, %8$s AS v FROM (%7$s)
+         SELECT %1$s %2$s AS lon, %3$s AS lat, %4$s AS t %8$s FROM (%7$s)
          WHERE %2$s IS NOT NULL AND %3$s IS NOT NULL AND %4$s IS NOT NULL),
        w AS (
-         SELECT *, epoch(t) - epoch(lag(t) OVER o) AS dt_prev, lag(v) OVER o AS v_prev,
+         SELECT *, CASE WHEN epoch(t) - epoch(lag(t) OVER o) > %6$s %9$s THEN 1 ELSE 0 END AS brk,
                 lead(lon) OVER o AS lon2, lead(lat) OVER o AS lat2, epoch(lead(t) OVER o) - epoch(t) AS dt_next
          FROM s WINDOW o AS (%5$s ORDER BY t)),
-       g AS (
-         SELECT *, sum(CASE WHEN dt_prev > %6$s OR v IS DISTINCT FROM v_prev THEN 1 ELSE 0 END)
-                     OVER (%5$s ORDER BY t ROWS UNBOUNDED PRECEDING) AS stretch
-         FROM w),
+       g AS (SELECT *, sum(brk) OVER (%5$s ORDER BY t ROWS UNBOUNDED PRECEDING) AS stretch FROM w),
        a AS (
-         SELECT %1$s any_value(v) AS rb_path, count(*) AS pings, strftime(min(t), '%%Y-%%m-%%d %%H:%%M') AS start,
+         SELECT %1$s %10$s count(*) AS pings, strftime(min(t), '%%Y-%%m-%%d %%H:%%M') AS start,
                 strftime(max(t), '%%Y-%%m-%%d %%H:%%M') AS stop, list(ST_Point(lon, lat) ORDER BY t) AS pts,
                 last(CASE WHEN dt_next <= %6$s THEN lon2 END ORDER BY t) AS lon2,
                 last(CASE WHEN dt_next <= %6$s THEN lat2 END ORDER BY t) AS lat2
@@ -1200,67 +1240,79 @@ rb_map_track <- function(
       part,
       gap,
       ctx$src,
-      if (is.null(path_col)) {
-        "NULL::VARCHAR"
-      } else {
-        sprintf("CAST(%s AS VARCHAR)", q(path_col))
-      }
+      paste(vals, collapse = ""),
+      paste(changed, collapse = ""),
+      paste(kept, collapse = "")
     ))
   )
-  tiles <- rb_map_tiles_table(
-    lines,
-    properties = c(
-      by,
-      if (!is.null(path_col)) "rb_path",
-      "pings",
-      "start",
-      "stop"
-    )
+  props <- c(
+    by,
+    if (k) paste0("rb_path_", seq_len(k)),
+    "pings",
+    "start",
+    "stop"
   )
-  by_value <- if (!is.null(path_col)) {
-    .rb_quick_colours(ctx, path_col, TRUE, "rb_path")
-  }
+  tiles <- rb_map_tiles_table(lines, properties = props)
   line <- paste0(id, "-line")
+  colours <- lapply(seq_len(k), function(i) {
+    p <- paste0("rb_path_", i)
+    v <- .rb_quick_colours(ctx, col[i], is_discrete[i], p, palette, get = p)
+    v$legend <- lapply(v$legend, function(x) {
+      list(swatch = list(fill = x$swatch$dot), label = x$label)
+    })
+    v
+  })
   layer <- rb_map_layer(
     id,
     "vector",
     label = .rb_quick_label(
-      if (is.null(path_col)) "Track" else paste("Track by", path_col),
-      id
+      s$state,
+      if (k == 1) paste("Track by", col) else "Track"
     ),
     info = sprintf(
       "%s pings joined in time order, broken where they are more than %s hours apart%s.",
       if (is.null(by)) "The" else sprintf("Each %s's", by),
       format(gap_h),
-      if (is.null(path_col)) "" else sprintf(", and coloured by %s", path_col)
+      if (k == 0) {
+        ""
+      } else {
+        sprintf(", and coloured by %s", col)
+      }
     ),
     tiles = tiles,
     style = list(list(
       id = line,
       type = "line",
       "source-layer" = "features",
-      paint = if (is.null(path_col)) {
+      paint = if (k == 0) {
         list("line-color" = "#00e5ff", "line-width" = 1.5, "line-opacity" = 0.5)
       } else {
         list(
-          "line-color" = by_value$colour,
+          "line-color" = colours[[1]]$colour,
           "line-width" = 3,
           "line-opacity" = 0.85
         )
       }
     )),
-    legend = if (is.null(path_col)) {
+    legend = if (k == 0) {
       list(list(swatch = list(fill = "#00e5ff"), label = "track"))
     } else {
-      lapply(by_value$legend, function(v) {
-        list(swatch = list(fill = v$swatch$dot), label = v$label)
-      })
+      colours[[1]]$legend
     },
     popup = list(
       click = line,
       title = .rb_or(by, "start"),
       fields = c(
-        if (!is.null(path_col)) list(list(field = "rb_path", label = path_col)),
+        lapply(seq_len(k), function(i) {
+          Filter(
+            Negate(is.null),
+            list(
+              field = paste0("rb_path_", i),
+              label = col[i],
+              format = if (is_discrete[i]) NULL else "value"
+            )
+          )
+        }),
         list(
           list(field = "start", label = "from"),
           list(field = "stop", label = "to"),
@@ -1437,14 +1489,29 @@ format.rb_map <- function(x, ...) {
   if (n == 0) kind else paste0(kind, "_", n + 1)
 }
 
-.rb_quick_label <- function(label, id) {
-  n <- sub("^[a-z]+_?", "", id)
-  if (nzchar(n)) paste(label, n) else label
+# A layer's name, numbered only where an earlier layer has the same
+.rb_quick_label <- function(state, label) {
+  taken <- vapply(state$layers, function(l) .rb_or(l$config$label, ""), "")
+  if (!label %in% taken) {
+    return(label)
+  }
+  n <- 2
+  while (paste(label, n) %in% taken) {
+    n <- n + 1
+  }
+  paste(label, n)
 }
 
 # A column's colours and legend: a colour per value (the 12 most frequent; the rest grey), matched on the text
-# property `prop`, or a continuous palette over its 1st to 99th percentile
-.rb_quick_colours <- function(ctx, cc, discrete, prop, palette = "Inferno") {
+# property `prop`, or a continuous palette over its 1st to 99th percentile, read from the property `get`
+.rb_quick_colours <- function(
+  ctx,
+  cc,
+  discrete,
+  prop,
+  palette = "Inferno",
+  get = cc
+) {
   grey <- "#808080"
   q <- function(v) as.character(DBI::dbQuoteIdentifier(ctx$con, v))
   if (discrete) {
@@ -1495,9 +1562,9 @@ format.rb_map <- function(x, ...) {
   list(
     colour = list(
       "case",
-      list("has", cc),
+      list("has", get),
       c(
-        list("interpolate", list("linear"), list("get", cc)),
+        list("interpolate", list("linear"), list("get", get)),
         unlist(
           lapply(1:9, function(j) list(stops[j], pal[j])),
           recursive = FALSE

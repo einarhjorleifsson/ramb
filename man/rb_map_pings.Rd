@@ -26,6 +26,8 @@ rb_map_track(
   x,
   col = NULL,
   gap_h = 1,
+  discrete = NULL,
+  palette = "Inferno",
   data = NULL,
   lon = NULL,
   lat = NULL,
@@ -39,9 +41,10 @@ rb_map_track(
 \item{x}{Pings: a data frame or lazy DuckDB table with \code{lon} and \code{lat} (WGS 84), or an sf object of points; or a
 map made by either function.}
 
-\item{col}{For points, the column they are coloured by, a name or a string, or several, \code{c(speed, behaviour)}, to
-choose between in the page. For the track, a column whose runs of equal value colour the line; \code{NULL} for one
-colour.}
+\item{col}{For the points, the column they are coloured by, a name or a string, or several,
+\code{c(fishing_flow, speed)}, to choose between in the page ("Colour by"), the first shown. For the track, one column,
+whose runs of equal value cut and colour the line (a numeric one cuts it at every ping, each step coloured by its
+first ping's value), or \code{NULL} for one colour; for another column, call \code{rb_map_track()} again.}
 
 \item{popup}{Further columns a click on a point shows.}
 
@@ -85,7 +88,8 @@ so it grows as the map zooms in, from 1 pixel to \code{radius_max} pixels.
 
 Track: each vessel's pings in time order, broken where they are more than \code{gap_h} hours apart. With a column, such
 as \code{fishing_flow}, it breaks where the value changes too, each run coloured by its value (as the points are) and
-ending at the next run's first fix, so the line stays joined.
+ending at the next run's first fix, so the line stays joined. A second call adds a second track, by another column,
+each one turned on and off in the page: \code{pings |> rb_map_track(fishing_flow) |> rb_map_track(provider)}.
 
 The map opens on a dark base map. Each layer copies its pings into a temporary DuckDB table, as
 \code{\link[=rb_map_tiles_table]{rb_map_tiles_table()}} does.

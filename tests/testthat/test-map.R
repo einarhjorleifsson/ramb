@@ -637,3 +637,42 @@ test_that("a map is served when printed at a console; a replaced map's tables ar
   expect_equal(rb_map_stop(port), port)
   expect_false(any(exists(m2)))
 })
+
+test_that("two tracks by different columns: each cut by its own runs, a layer of its own", {
+  skip_if_no_spatial()
+  d <- rb_read_example("dansk")
+  m <- d |>
+    rb_map_track(behaviour, time = "time_stamp", by = vessel_id) |>
+    rb_map_track(speed) |>
+    rb_map_pings()
+  expect_equal(
+    vapply(m$config$layers, `[[`, "", "id"),
+    c("path", "path_2", "pings")
+  )
+  expect_equal(
+    vapply(m$config$layers, `[[`, "", "label"),
+    c("Track by behaviour", "Track by speed", "Pings")
+  )
+  one <- rb_map_track(d, behaviour, time = "time_stamp", by = vessel_id)
+  expect_equal(
+    attr(m$layers$path$tiles, "count"),
+    attr(one$layers$path$tiles, "count")
+  ) # its own runs
+  expect_equal(
+    m$config$layers[[2]]$style[[1]]$paint[["line-color"]][[1]],
+    "case"
+  ) # speed: a palette
+  # a name two layers would share is numbered
+  two <- d |>
+    rb_map_track(time = "time_stamp", by = vessel_id) |>
+    rb_map_track()
+  expect_equal(
+    vapply(two$config$layers, `[[`, "", "label"),
+    c("Track", "Track 2")
+  )
+  expect_error(
+    rb_map_track(d, c(behaviour, speed), time = "time_stamp"),
+    "call rb_map_track() again",
+    fixed = TRUE
+  )
+})

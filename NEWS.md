@@ -4,7 +4,8 @@
   `pings |> rb_map_track() |> rb_map_pings()`. Given pings, each starts a map; given a map from either, it adds its
   layer over the earlier ones, from the map's pings and settings (`lon`, `lat`, `time`, `by`) unless `data` gives
   others. `rb_map_pings()` draws the points, coloured by one column or chosen among several ("Colour by");
-  `rb_map_track()` draws each vessel's line, one colour or coloured by runs of a column. `rb_map_track()`'s points and
+  `rb_map_track()` draws each vessel's line, one colour or coloured by runs of one column; a second call adds a second
+  track, by another column, each turned on and off in the page. `rb_map_track()`'s points and
   its `path`, `serve` arguments of 2026.10.25.2-.3 are gone: the points are `rb_map_pings()`'s, the line's column its
   `col`.
 - `print()` of an `rb_map` serves it at an interactive console (on the port its first layer function set, else 8790)
