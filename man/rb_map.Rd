@@ -13,6 +13,7 @@ rb_map(
   language = languages[1],
   locales = NULL,
   about = NULL,
+  choose = NULL,
   palette = NULL,
   palettes = rb_map_palettes(),
   basemaps = rb_map_basemaps()
@@ -37,6 +38,14 @@ English; give them in another language under the same keys, a base map's label u
 (\code{list(is = c("is-IS", "de-DE"))}, German standing in where a browser lacks Icelandic).}
 
 \item{about}{Keys of \code{texts} for the paragraphs of the About group (none, no group).}
+
+\item{choose}{Fields whose values the page offers to show one of, over every layer that has the field (each a
+control above the groups, "all" first, with buttons that step through the values): a list with \code{fields}, each a
+\code{field}, a \code{label}, its \code{options} (each a \code{value} for the control and the address, a \code{label}, \code{match}, the value
+the layers' features carry, \code{NULL} for none, and optionally \code{bbox}, the extent the view is fitted to) and \code{layers}
+(the ids it filters); and optionally \code{extents}, each a \code{key} (the values of every field joined by the character 31)
+and a \code{bbox}, for the view where every field is chosen. \code{\link[=rb_map_pings]{rb_map_pings()}} and \code{\link[=rb_map_track]{rb_map_track()}} make it from the
+data's groups. A choice goes into the address under the field's name, and nothing is fetched again.}
 
 \item{palette}{The grid's palette when the page opens: an \code{id} of \code{palettes}.}
 

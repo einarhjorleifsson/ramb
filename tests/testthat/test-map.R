@@ -676,3 +676,64 @@ test_that("two tracks by different columns: each cut by its own runs, a layer of
     fixed = TRUE
   )
 })
+
+test_that("grouped pings: a choice per group column, over every layer that has it", {
+  skip_if_no_spatial()
+  d <- rb_read_example("dansk")
+  m <- d |>
+    dplyr::group_by(vessel_id) |>
+    rb_map_track(time = "time_stamp") |>
+    rb_map_pings()
+  ch <- m$config$choose
+  expect_equal(vapply(ch$fields, `[[`, "", "field"), "vessel_id")
+  expect_length(ch$fields[[1]]$options, 14)
+  expect_equal(unlist(ch$fields[[1]]$layers), c("path", "pings"))
+  expect_length(ch$fields[[1]]$options[[1]]$bbox, 4)
+  # every ping counted once among the options
+  counts <- as.integer(gsub(
+    ",",
+    "",
+    sub(
+      "[)]$",
+      "",
+      sub("^.*[(]", "", vapply(ch$fields[[1]]$options, `[[`, "", "label"))
+    )
+  ))
+  expect_equal(sum(counts), 395558L)
+  # the groups cut the track: each vessel's line its own, as with `by`
+  expect_equal(
+    attr(m$layers$path$tiles, "count"),
+    attr(
+      rb_map_track(d, time = "time_stamp", by = vessel_id)$layers$path$tiles,
+      "count"
+    )
+  )
+  # `choose` without grouping; two fields, and the extents of their combinations
+  m2 <- rb_map_pings(d, choose = c(vessel_id, behaviour), time = "time_stamp")
+  expect_equal(
+    vapply(m2$config$choose$fields, `[[`, "", "field"),
+    c("vessel_id", "behaviour")
+  )
+  expect_gt(length(m2$config$choose$extents), 14)
+  expect_match(m2$config$choose$extents[[1]]$key, intToUtf8(31), fixed = TRUE)
+  # a number is matched as a number; other data without the field are left as they are
+  m3 <- d |>
+    dplyr::mutate(r = .rowid %% 3L) |>
+    dplyr::group_by(r) |>
+    rb_map_pings(time = "time_stamp") |>
+    rb_map_pings(name, data = data.frame(lon = 12.6, lat = 56, name = "here"))
+  expect_true(is.numeric(m3$config$choose$fields[[1]]$options[[1]]$match))
+  expect_equal(unlist(m3$config$choose$fields[[1]]$layers), "pings")
+  expect_null(rb_map_pings(d, time = "time_stamp")$config$choose)
+  expect_warning(
+    rb_map_pings(m, choose = behaviour),
+    "set by the call that starts it"
+  )
+  expect_error(
+    d |>
+      dplyr::rename(base = vessel_id) |>
+      dplyr::group_by(base) |>
+      rb_map_pings(time = "time_stamp"),
+    "named as the page's address"
+  )
+})

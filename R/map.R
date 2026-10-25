@@ -306,6 +306,13 @@ rb_map_group <- function(id, title = id, layers, open = TRUE) {
 #' @param locales A list by language of the locales its numbers are written in, the first a browser has
 #'   (`list(is = c("is-IS", "de-DE"))`, German standing in where a browser lacks Icelandic).
 #' @param about Keys of `texts` for the paragraphs of the About group (none, no group).
+#' @param choose Fields whose values the page offers to show one of, over every layer that has the field (each a
+#'   control above the groups, "all" first, with buttons that step through the values): a list with `fields`, each a
+#'   `field`, a `label`, its `options` (each a `value` for the control and the address, a `label`, `match`, the value
+#'   the layers' features carry, `NULL` for none, and optionally `bbox`, the extent the view is fitted to) and `layers`
+#'   (the ids it filters); and optionally `extents`, each a `key` (the values of every field joined by the character 31)
+#'   and a `bbox`, for the view where every field is chosen. [rb_map_pings()] and [rb_map_track()] make it from the
+#'   data's groups. A choice goes into the address under the field's name, and nothing is fetched again.
 #' @param palette The grid's palette when the page opens: an `id` of `palettes`.
 #' @param palettes,basemaps The palettes and base maps to choose from: [rb_map_palettes()], [rb_map_basemaps()].
 #' @return An `rb_map`: `config` (what the page is sent) and `layers`.
@@ -329,6 +336,7 @@ rb_map <- function(
   language = languages[1],
   locales = NULL,
   about = NULL,
+  choose = NULL,
   palette = NULL,
   palettes = rb_map_palettes(),
   basemaps = rb_map_basemaps()
@@ -359,6 +367,60 @@ rb_map <- function(
   if (!is.null(palette) && !palette %in% vapply(palettes, `[[`, "", "id")) {
     stop("`palette` is an id of `palettes`.", call. = FALSE)
   }
+  if (!is.null(choose)) {
+    one <- function(f) {
+      is.character(f$field) && length(f$field) == 1 && length(f$options) > 0
+    }
+    if (
+      !length(choose$fields) || !all(vapply(choose$fields, one, logical(1)))
+    ) {
+      stop(
+        "`choose` is a list of `fields`, each a `field`, its `options` (each a `value` and a `match`) and its `layers`.",
+        call. = FALSE
+      )
+    }
+    taken <- c(
+      ids,
+      paste0(ids, "_by"),
+      "metric",
+      "palette",
+      "stretch",
+      "floor",
+      "cap",
+      "opacity",
+      "base",
+      "lang",
+      "v",
+      unlist(lapply(layers, function(l) {
+        unlist(lapply(l$config$filters, function(f) c(f$id, unlist(f$params))))
+      }))
+    )
+    clash <- intersect(vapply(choose$fields, `[[`, "", "field"), taken)
+    if (length(clash)) {
+      stop(
+        sprintf(
+          "`choose` has a field, %s, named as the page's address names a layer or a control.",
+          paste(clash, collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
+    # one-element arrays stay arrays in the config's JSON
+    choose$fields <- lapply(choose$fields, function(f) {
+      f$layers <- as.list(f$layers)
+      f$options <- lapply(f$options, function(o) {
+        if (!is.null(o$bbox)) {
+          o$bbox <- as.list(o$bbox)
+        }
+        o
+      })
+      f
+    })
+    choose$extents <- lapply(choose$extents, function(e) {
+      e$bbox <- as.list(e$bbox)
+      e
+    })
+  }
   names(layers) <- ids
   config <- list(
     title = title,
@@ -367,6 +429,7 @@ rb_map <- function(
     language = language,
     locales = if (length(locales)) lapply(locales, as.list),
     about = if (length(about)) as.list(about),
+    choose = choose,
     palette = palette,
     groups = lapply(groups, function(g) {
       list(
@@ -934,6 +997,11 @@ rb_map_tiles_table <- function(
 #' ending at the next run's first fix, so the line stays joined. A second call adds a second track, by another column,
 #' each one turned on and off in the page: `pings |> rb_map_track(fishing_flow) |> rb_map_track(provider)`.
 #'
+#' Grouped pings, `group_by(trip)` or `group_by(trip, gear)`, give the page a control per group column above the
+#' layers: "all", then each value with its number of pings, and buttons that step to the previous and next. A choice
+#' shows that group's pings and lines on every layer that has the column, fits the view to it, and goes into the
+#' address. The groups cut the track too, so each group's line is its own.
+#'
 #' The map opens on a dark base map. Each layer copies its pings into a temporary DuckDB table, as
 #' [rb_map_tiles_table()] does.
 #'
@@ -954,6 +1022,8 @@ rb_map_tiles_table <- function(
 #'   The track needs the time; a point's popup shows it first.
 #' @param by The vessel column, a name or a string: one track each. By default the map's, else `vid` where the data
 #'   have it, else one track through all the pings.
+#' @param choose Columns whose values the page offers to show one of, a name, a string or `c()` of them: by default
+#'   the groups of the pings (`dplyr::group_by()`). Set by the call that starts the map.
 #' @param title,port The page's title, and where the map is served when printed: set by the call that starts it.
 #' @return An [rb_map()], with the layer added.
 #' @seealso [rb_map()] for a map of other layers, groups and languages.
@@ -985,10 +1055,21 @@ rb_map_pings <- function(
   lat = NULL,
   time = NULL,
   by = NULL,
+  choose = NULL,
   title = "Track",
   port = 8790L
 ) {
-  s <- .rb_quick(x, data, lon, lat, time, rlang::enquo(by), title, port)
+  s <- .rb_quick(
+    x,
+    data,
+    lon,
+    lat,
+    time,
+    rlang::enquo(by),
+    title,
+    port,
+    rlang::enquo(choose)
+  )
   ctx <- s$ctx_layer
   col <- .rb_track_cols(rlang::enquo(col), ctx$cols)
   .rb_quick_need(ctx, c(col, popup))
@@ -1069,6 +1150,7 @@ rb_map_pings <- function(
     ctx$time,
     popup,
     ctx$by,
+    intersect(.rb_or(s$state[["choose_fields"]], character()), ctx$cols),
     if (any(is_discrete)) paste0("rb_class_", which(is_discrete))
   ))
   tiles <- rb_map_tiles_table(
@@ -1141,10 +1223,21 @@ rb_map_track <- function(
   lat = NULL,
   time = NULL,
   by = NULL,
+  choose = NULL,
   title = "Track",
   port = 8790L
 ) {
-  s <- .rb_quick(x, data, lon, lat, time, rlang::enquo(by), title, port)
+  s <- .rb_quick(
+    x,
+    data,
+    lon,
+    lat,
+    time,
+    rlang::enquo(by),
+    title,
+    port,
+    rlang::enquo(choose)
+  )
   ctx <- s$ctx_layer
   col_q <- rlang::enquo(col)
   col <- if (rlang::quo_is_null(col_q)) {
@@ -1169,6 +1262,11 @@ rb_map_track <- function(
   con <- ctx$con
   q <- function(v) as.character(DBI::dbQuoteIdentifier(con, v))
   by <- ctx$by
+  # the line is cut by the fields to choose by as well as by the vessel, so a choice shows whole lines
+  keys <- unique(c(
+    by,
+    intersect(.rb_or(s$state[["choose_fields"]], character()), ctx$cols)
+  ))
   k <- length(col)
   numeric <- vapply(
     col,
@@ -1204,7 +1302,11 @@ rb_map_track <- function(
     function(i) sprintf("any_value(v%1$d) AS rb_path_%1$d, ", i),
     ""
   )
-  part <- if (is.null(by)) "" else paste("PARTITION BY", q(by))
+  part <- if (!length(keys)) {
+    ""
+  } else {
+    paste("PARTITION BY", paste(q(keys), collapse = ", "))
+  }
   gap <- if (is.finite(gap_h)) {
     format(gap_h * 3600, scientific = FALSE)
   } else {
@@ -1233,7 +1335,7 @@ rb_map_track <- function(
        l AS (SELECT * EXCLUDE (pts, lon2, lat2),
                     CASE WHEN lon2 IS NULL THEN pts ELSE list_append(pts, ST_Point(lon2, lat2)) END AS pts FROM a)
        SELECT * EXCLUDE (pts), ST_MakeLine(pts) AS geometry FROM l WHERE len(pts) > 1",
-      if (is.null(by)) "" else paste0(q(by), ","),
+      if (!length(keys)) "" else paste0(paste(q(keys), collapse = ", "), ","),
       q(ctx$lon),
       q(ctx$lat),
       q(ctx$time),
@@ -1246,7 +1348,7 @@ rb_map_track <- function(
     ))
   )
   props <- c(
-    by,
+    keys,
     if (k) paste0("rb_path_", seq_len(k)),
     "pings",
     "start",
@@ -1360,7 +1462,17 @@ format.rb_map <- function(x, ...) {
 .rb_or <- function(a, b) if (is.null(a)) b else a
 
 # The map piped in, if any, and the pings and settings of the layer being added
-.rb_quick <- function(x, data, lon, lat, time, by_q, title, port) {
+.rb_quick <- function(
+  x,
+  data,
+  lon,
+  lat,
+  time,
+  by_q,
+  title,
+  port,
+  choose_q = rlang::quo(NULL)
+) {
   state <- if (inherits(x, "rb_map")) attr(x, "quick")
   if (inherits(x, "rb_map") && is.null(state)) {
     stop(
@@ -1400,7 +1512,128 @@ format.rb_map <- function(x, ...) {
       port = as.integer(port)
     )
   }
+  # the map's choices: the groups of the pings that start it, and the columns `choose` names
+  wanted <- unique(c(
+    ctx$groups,
+    if (!rlang::quo_is_null(choose_q)) .rb_track_cols(choose_q, ctx$cols)
+  ))
+  if (length(state$layers) == 0) {
+    .rb_quick_need(ctx, wanted)
+    state[["choose_fields"]] <- wanted
+    state[["choose"]] <- .rb_quick_choose(ctx, wanted)
+  } else if (length(setdiff(wanted, state[["choose_fields"]]))) {
+    warning(
+      "The map's choices are set by the call that starts it; ",
+      paste(setdiff(wanted, state[["choose_fields"]]), collapse = ", "),
+      " is not added.",
+      call. = FALSE
+    )
+  }
   list(state = state, ctx_layer = ctx)
+}
+
+# The values of each field to choose by, with the pings' count and extent of each, and the extent of each combination
+# that occurs where there are several fields. A number or a logical is matched as it is, any other type as the text
+# the tiles carry it as
+.rb_quick_choose <- function(ctx, fields) {
+  if (!length(fields)) {
+    return(NULL)
+  }
+  q <- function(v) as.character(DBI::dbQuoteIdentifier(ctx$con, v))
+  as_is <- vapply(
+    fields,
+    function(f) {
+      v <- dplyr::collect(utils::head(
+        dplyr::select(ctx$x, dplyr::all_of(f)),
+        1
+      ))[[1]]
+      is.numeric(v) || is.logical(v)
+    },
+    logical(1)
+  )
+  value_sql <- function(i) {
+    if (as_is[i]) q(fields[i]) else sprintf("CAST(%s AS VARCHAR)", q(fields[i]))
+  }
+  box_sql <- sprintf(
+    "count(*) AS n, min(%1$s) AS lon0, min(%2$s) AS lat0, max(%1$s) AS lon1, max(%2$s) AS lat1",
+    q(ctx$lon),
+    q(ctx$lat)
+  )
+  where <- sprintf("%s IS NOT NULL AND %s IS NOT NULL", q(ctx$lon), q(ctx$lat))
+  key <- function(v, i) {
+    if (is.na(v)) {
+      "<NA>"
+    } else if (is.numeric(v)) {
+      format(v, scientific = FALSE, trim = TRUE, digits = 15)
+    } else {
+      as.character(v)
+    }
+  }
+  box <- function(r, j) c(r$lon0[j], r$lat0[j], r$lon1[j], r$lat1[j])
+  out <- list(
+    fields = lapply(seq_along(fields), function(i) {
+      r <- DBI::dbGetQuery(
+        ctx$con,
+        sprintf(
+          "SELECT %s AS v, %s FROM (%s) WHERE %s GROUP BY 1 ORDER BY v NULLS LAST",
+          value_sql(i),
+          box_sql,
+          ctx$src,
+          where
+        )
+      )
+      list(
+        field = fields[i],
+        label = fields[i],
+        options = lapply(seq_len(nrow(r)), function(j) {
+          v <- r$v[j]
+          list(
+            value = key(v, i),
+            label = sprintf(
+              "%s (%s)",
+              if (is.na(v)) "none" else key(v, i),
+              format(r$n[j], big.mark = ",", trim = TRUE)
+            ),
+            match = if (is.na(v)) NULL else v,
+            bbox = box(r, j)
+          )
+        })
+      )
+    })
+  )
+  if (length(fields) > 1) {
+    r <- DBI::dbGetQuery(
+      ctx$con,
+      sprintf(
+        "SELECT %s, %s FROM (%s) WHERE %s GROUP BY ALL",
+        paste(
+          vapply(
+            seq_along(fields),
+            function(i) sprintf("%s AS v%d", value_sql(i), i),
+            ""
+          ),
+          collapse = ", "
+        ),
+        box_sql,
+        ctx$src,
+        where
+      )
+    )
+    out$extents <- lapply(seq_len(nrow(r)), function(j) {
+      list(
+        key = paste(
+          vapply(
+            seq_along(fields),
+            function(i) key(r[[paste0("v", i)]][j], i),
+            ""
+          ),
+          collapse = intToUtf8(31)
+        ),
+        bbox = box(r, j)
+      )
+    })
+  }
+  out
 }
 
 # Pings read for a layer: the lazy table, its columns, the settings (from the arguments, else the map's, else the
@@ -1412,8 +1645,9 @@ format.rb_map <- function(x, ...) {
     pings[[.rb_or(lon, "lon")]] <- xy[, 1]
     pings[[.rb_or(lat, "lat")]] <- xy[, 2]
   }
+  groups <- dplyr::group_vars(pings)
   con <- .rb_con_for(pings)
-  x <- .rb_as_lazy(pings, con)
+  x <- dplyr::ungroup(.rb_as_lazy(pings, con))
   cols <- colnames(x)
   pick <- function(given, from_map, usual) {
     if (!is.null(given)) {
@@ -1442,6 +1676,7 @@ format.rb_map <- function(x, ...) {
   ctx <- list(
     x = x,
     con = con,
+    groups = groups,
     src = .rb_sql(x),
     cols = cols,
     lon = lon,
@@ -1594,6 +1829,10 @@ format.rb_map <- function(x, ...) {
 # The map with the layer added over the others: the first view covers every layer's pings, on a dark base map
 .rb_quick_map <- function(s, layer, table) {
   state <- s$state
+  state$layer_fields[[layer$config$id]] <- intersect(
+    .rb_or(state[["choose_fields"]], character()),
+    s$ctx_layer$cols
+  )
   state$layers <- c(state$layers, list(layer))
   state$tables <- c(state$tables, list(table))
   state$boxes <- c(state$boxes, list(s$ctx_layer$box))
@@ -1611,6 +1850,17 @@ format.rb_map <- function(x, ...) {
       center = c((lon0 + lon1) / 2, (lat0 + lat1) / 2),
       zoom = if (span > 0) max(1, min(15, floor(log2(360 / span)) - 1)) else 12
     ),
+    choose = if (!is.null(state[["choose"]])) {
+      cfg <- state[["choose"]]
+      cfg$fields <- lapply(cfg$fields, function(f) {
+        f$layers <- names(Filter(
+          function(fl) f$field %in% fl,
+          state$layer_fields
+        ))
+        f
+      })
+      cfg
+    },
     basemaps = bases[c(which(ids == "dark"), which(ids != "dark"))]
   )
   attr(m, "quick") <- state

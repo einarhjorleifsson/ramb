@@ -51,6 +51,9 @@ rb_read_example("dansk") |>
 
 The second map's line is cut into runs of `behaviour` and coloured by it,
 and its points can be coloured by either column, chosen under *Colour by*.
+Grouped pings, `group_by(vessel_id)`, give the page a list of the groups
+above the layers, to show one at a time, with buttons that step through
+them.
 A map printed replaces the one before it. The rest of this article builds
 maps layer by layer, for when the quick look is not enough.
 

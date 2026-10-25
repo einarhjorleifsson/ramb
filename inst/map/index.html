@@ -35,6 +35,8 @@
   .layer.off .when-on { display: none; }
   .sub { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; margin: 10px 0 2px; }
   .row { display: flex; align-items: center; gap: 6px; margin: 5px 0; }
+  .choose { padding: 4px 12px 6px; border-bottom: 1px solid var(--line); }
+  .choose .row button { padding: 1px 7px; }
   .row label { width: 74px; color: var(--muted); }
   .row select, .row input[type=range] { flex: 1; min-width: 0; }
   .years select { flex: 1; }
@@ -114,6 +116,7 @@ const ENGINE_TEXTS = {
   colours: "Colours", stretch: "Stretch", stretchTip: "How the colours are spread between floor and cap",
   sEven: "even on a log scale", sEqual: "equal shares of the cells in view", floor: "Floor", cap: "Cap",
   opacity: "Opacity", fit: "Fit to view", fitTip: "Floor and cap at the 2nd and 98th percentiles of the cells in view",
+  chooseAll: "all", chooseBack: "The previous one", chooseNext: "The next one",
   legendTip: "The colour scale on a log axis, and below it the cells in view: values below the floor and above the cap in the end bars",
   yes: "yes", no: "no"
 };
@@ -198,6 +201,17 @@ for (const g of CONFIG.groups) {
   d.innerHTML = `<summary data-t="${g.title}"></summary><div class="body"></div>`;
   for (const id of g.layers) d.querySelector(".body").append(layerRow(LAYERS.find(l => l.id === id)));
   $("groups").insertBefore(d, $("g-base"));
+}
+// The map's choices (a field's values to show one of, from the data's groups), above the groups
+const CHOOSE = CONFIG.choose?.fields ?? [];
+if (CHOOSE.length) {
+  const box = document.createElement("div");
+  box.className = "choose";
+  box.innerHTML = CHOOSE.map((f, i) => `<div class="row"><label for="ch-${i}" data-t="${esc(f.label ?? f.field)}"></label>` +
+    `<button data-step="-1" data-ch="${i}" data-tt="chooseBack">‹</button><select id="ch-${i}"><option value="" data-t="chooseAll"></option>` +
+    f.options.map(o => `<option value="${esc(o.value)}">${esc(o.label ?? o.value)}</option>`).join("") +
+    `</select><button data-step="1" data-ch="${i}" data-tt="chooseNext">›</button></div>`).join("");
+  $("groups").prepend(box);
 }
 for (const k of CONFIG.about ?? []) $("about").insertAdjacentHTML("beforeend", `<p data-t="${k}"></p>`);
 if (!(CONFIG.about ?? []).length) $("g-about").hidden = true;
@@ -407,6 +421,7 @@ Promise.all([fetch("/meta").then(r => r.json()), styleLoaded]).then(([meta]) => 
     $(l.id).checked = !l.visible; $("lyr-" + l.id).classList.toggle("off", !$(l.id).checked);
   }
   for (const l of OTHER) if (l.variants && l.variants.options.some(o => o.value === q.get(l.id + "_by"))) $(l.id + "-by").value = q.get(l.id + "_by");
+  CHOOSE.forEach((f, i) => { if (f.options.some(o => o.value === q.get(f.field))) $("ch-" + i).value = q.get(f.field); });
   FONT = map.getStyle().layers.find(l => l.type === "symbol" && l.layout?.["text-font"])?.layout["text-font"] ?? FONT;
   if (G) {
     const firstSymbol = map.getStyle().layers.find(l => l.type === "symbol")?.id;
@@ -447,6 +462,7 @@ function addressNow() {
   }
   for (const l of LAYERS) if (!$(l.id).disabled && $(l.id).checked !== !!l.visible) q.set(l.id, $(l.id).checked ? "1" : "0");
   for (const l of OTHER) if (l.variants) put(l.id + "_by", $(l.id + "-by").value, l.variants.options[0].value);
+  CHOOSE.forEach((f, i) => put(f.field, $("ch-" + i).value, ""));
   put("base", document.querySelector("#bases input:checked")?.value, BASEMAPS[0].id);
   put("lang", LANG, LANGS.includes(CONFIG.language) ? CONFIG.language : LANGS.includes("en") ? "en" : LANGS[0]);
   const qs = q.toString().replace(/%2C/g, ",");
@@ -471,7 +487,7 @@ function addLayer(l, meta) {
       if (spec.type === "symbol" && spec.layout?.["text-field"] && !spec.layout["text-font"]) spec.layout = { ...spec.layout, "text-font": FONT };
       map.addLayer(spec);
     }
-    applyVariant(l); showLayer(l); countText(l);
+    applyVariant(l); applyChoice(l); showLayer(l); countText(l);
   };
   if (l.kind === "vector") {
     const n = meta.layers?.[l.id]?.count ?? 0;
@@ -516,6 +532,47 @@ function applyVariant(l) {
   }
 }
 for (const l of OTHER) if (l.variants) $(l.id + "-by").addEventListener("change", () => { popup?.remove(); applyVariant(l); });
+
+// A layer's styles filtered to the values chosen, on top of each style's own filter; a layer without the field is
+// left as it is. Nothing is fetched again: the tiles carry the fields
+function choiceFilter(l, st) {
+  const conds = CHOOSE.flatMap((f, i) => {
+    const v = $("ch-" + i).value;
+    if (v === "" || !(f.layers ?? []).includes(l.id)) return [];
+    const o = f.options.find(x => x.value === v);
+    return [o.match === null ? ["!", ["has", f.field]] : ["==", ["get", f.field], o.match]];
+  });
+  const parts = [st.filter, ...conds].filter(Boolean);
+  return parts.length === 0 ? null : parts.length === 1 ? parts[0] : ["all", ...parts];
+}
+function applyChoice(l) {
+  for (const st of l.style) if (map.getLayer(st.id)) map.setFilter(st.id, choiceFilter(l, st));
+}
+// the view fitted to the choice: the combination's extent where every field is chosen, else the field just changed
+function zoomToChoice(i) {
+  const vals = CHOOSE.map((f, j) => $("ch-" + j).value);
+  if (vals.every(v => v === "")) return;
+  let box = vals.every(v => v !== "") && CHOOSE.length > 1
+    ? CONFIG.choose.extents?.find(e => e.key === vals.join("\u001f"))?.bbox : null;
+  if (!box) {
+    const j = vals[i] !== "" ? i : vals.findIndex(v => v !== "");
+    box = CHOOSE[j].options.find(o => o.value === vals[j])?.bbox;
+  }
+  if (box) map.fitBounds([[box[0], box[1]], [box[2], box[3]]], { padding: 40, maxZoom: 14 });
+}
+CHOOSE.forEach((f, i) => $("ch-" + i).addEventListener("change", () => {
+  popup?.remove();
+  for (const l of OTHER) applyChoice(l);
+  zoomToChoice(i);
+}));
+// ‹ and › step to the previous and next value, from all to the first or the last
+for (const b of document.querySelectorAll("[data-step]")) b.addEventListener("click", () => {
+  const sel = $("ch-" + b.dataset.ch), n = sel.options.length - 1;
+  if (n < 1) return;
+  const k = sel.selectedIndex === 0 ? (+b.dataset.step > 0 ? 1 : n) : ((sel.selectedIndex - 1 + +b.dataset.step + n) % n) + 1;
+  sel.selectedIndex = k;
+  sel.dispatchEvent(new Event("change", { bubbles: true }));
+});
 
 // A click on a feature: its title and fields; a field's value goes through `values` into a text, or into its
 // `template`, and a text's {name} is filled from the feature. Registered top layer first, so the topmost feature
