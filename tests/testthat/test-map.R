@@ -312,6 +312,24 @@ test_that("a table's properties of any type reach its tiles, cast to what a tile
   )
 })
 
+test_that("tables cut into tiles never share a name, after set.seed() or a reload", {
+  skip_if_no_spatial()
+  h <- rb_read_example("dansk_harbours")
+  set.seed(1)
+  x <- stats::runif(1)
+  set.seed(1)
+  a <- rb_map_tiles_table(h, properties = "SI_HARB")
+  expect_equal(stats::runif(1), x) # the user's random numbers are as they were
+  set.seed(1)
+  b <- rb_map_tiles_table(h, properties = "SI_HARB")
+  .rb_tiles$n <- 0L # as after the package is loaded again, the connection's tables still there
+  d <- rb_map_tiles_table(h, properties = "SI_HARB")
+  expect_equal(
+    c(attr(a, "count"), attr(b, "count"), attr(d, "count")),
+    rep(942L, 3)
+  )
+})
+
 test_that("a tile function that fails replies with its reason", {
   skip_if_not_installed("jsonlite")
   boom <- rb_map_layer(

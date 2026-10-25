@@ -45,7 +45,8 @@ if (interactive()) {
   m <- rb_map(rb_map_group("ref", "Reference", list(harbours)),
               title = "Danish harbours", view = list(center = c(10.5, 56), zoom = 7))
   rb_map_serve(m)
-  # rb_map_serve(m, query = list(base = "ocean")) # again, opening on the ocean base map; it replaces the first
-  # rb_map_stop()                                 # when done
+  # again, opening on the ocean base map (it replaces the first):
+  # rb_map_serve(m, query = list(base = "ocean"))
+  # rb_map_stop() # when done
 }
 }

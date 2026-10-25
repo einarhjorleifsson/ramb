@@ -107,14 +107,16 @@ harbours <- rb_map_layer(
 )
 }
 
-# A grid: its tile function is given the filters' values in `params`. This one returns an empty tile; a real one
-# returns DuckDB's ST_AsMVT() of the cells (see the "Maps in RStudio" article).
+# A grid: its tile function is given the filters' values in `params`. This one returns an
+# empty tile; a real one returns DuckDB's ST_AsMVT() of the cells (see the "Maps in RStudio"
+# article).
 cells <- rb_map_layer(
   "cells", "grid", label = "Pings by cell",
   tiles = function(z, x, y, params) raw(0),
   filters = list(
     list(id = "behaviour", label = "Behaviour",
-         options = list(list(value = "", label = "all"), list(value = "Fishing", label = "fishing"))),
+         options = list(list(value = "", label = "all"),
+                        list(value = "Fishing", label = "fishing"))),
     list(id = "metric", type = "metric", label = "Metric")
   ),
   metrics = list(list(field = "n", label = "pings"))

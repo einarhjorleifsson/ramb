@@ -1,3 +1,11 @@
+# ramb 2026.10.25.1
+
+- `rb_map_tiles_table()`: its temporary DuckDB tables are numbered. They were named from R's random numbers, which
+  repeat after `set.seed()`, so a second table could take the first one's name and fail (found by R CMD check, which
+  ran two examples from the same seed); drawing them also moved the user's random numbers.
+- `rb_map_layer()`, `rb_map_group()`, `rb_map_serve()`: examples. `rb_map_serve()`'s makes a whole map and runs by
+  hand only, so `example(rb_map_serve)` opens it in RStudio's Viewer.
+
 # ramb 2026.10.24.3
 
 - `rb_map_tiles_table()`: a property of a type a vector tile cannot hold is cast to one it can (a factor, date or time

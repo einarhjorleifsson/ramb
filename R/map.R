@@ -13,6 +13,8 @@
 
 .rb_map_engine <- 1L # the page's ENGINE: changed together
 .rb_maps <- new.env(parent = emptyenv()) # the servers rb_map_serve() started, by port
+.rb_tiles <- new.env(parent = emptyenv()) # the number of rb_map_tiles_table()'s last temporary table
+.rb_tiles$n <- 0L
 
 #' A layer of a map
 #'
@@ -76,14 +78,16 @@
 #' )
 #' }
 #'
-#' # A grid: its tile function is given the filters' values in `params`. This one returns an empty tile; a real one
-#' # returns DuckDB's ST_AsMVT() of the cells (see the "Maps in RStudio" article).
+#' # A grid: its tile function is given the filters' values in `params`. This one returns an
+#' # empty tile; a real one returns DuckDB's ST_AsMVT() of the cells (see the "Maps in RStudio"
+#' # article).
 #' cells <- rb_map_layer(
 #'   "cells", "grid", label = "Pings by cell",
 #'   tiles = function(z, x, y, params) raw(0),
 #'   filters = list(
 #'     list(id = "behaviour", label = "Behaviour",
-#'          options = list(list(value = "", label = "all"), list(value = "Fishing", label = "fishing"))),
+#'          options = list(list(value = "", label = "all"),
+#'                         list(value = "Fishing", label = "fishing"))),
 #'     list(id = "metric", type = "metric", label = "Metric")
 #'   ),
 #'   metrics = list(list(field = "n", label = "pings"))
@@ -612,8 +616,9 @@ rb_map_basemaps <- function() {
 #'   m <- rb_map(rb_map_group("ref", "Reference", list(harbours)),
 #'               title = "Danish harbours", view = list(center = c(10.5, 56), zoom = 7))
 #'   rb_map_serve(m)
-#'   # rb_map_serve(m, query = list(base = "ocean")) # again, opening on the ocean base map; it replaces the first
-#'   # rb_map_stop()                                 # when done
+#'   # again, opening on the ocean base map (it replaces the first):
+#'   # rb_map_serve(m, query = list(base = "ocean"))
+#'   # rb_map_stop() # when done
 #' }
 rb_map_serve <- function(
   map,
@@ -739,10 +744,13 @@ rb_map_tiles_table <- function(
     }
   }
   props <- vapply(properties, function(p) as.character(q(p)), "")
-  nm <- paste0(
-    "rb_tiles_",
-    paste(sample(c(letters, 0:9), 10, TRUE), collapse = "")
-  )
+  # numbered, not named from R's random numbers: those repeat after set.seed(), and drawing them moves the user's
+  # stream; a name a table already has (after the package is loaded again) is skipped
+  repeat {
+    .rb_tiles$n <- .rb_tiles$n + 1L
+    nm <- paste0("rb_tiles_", .rb_tiles$n)
+    if (!DBI::dbExistsTable(con, nm)) break
+  }
   DBI::dbExecute(
     con,
     sprintf(
