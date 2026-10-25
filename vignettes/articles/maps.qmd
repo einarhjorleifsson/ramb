@@ -30,6 +30,27 @@ harbours they come and go from (`dansk_harbours`). Run the chunks in
 RStudio's console one by one. The chunks that build layers run as they
 are; the chunks that serve a map open it in the Viewer pane.
 
+## The quick look
+
+To see pings at once, pipe them into
+[rb_map_track()](../reference/rb_map_track.html). It draws them as points
+coloured by a column (speed by default), on a dark base map, with each
+vessel's track as a line under them if asked, and opens the map in the
+Viewer as soon as it is made:
+
+```{r}
+#| eval: false
+rb_read_example("dansk") |>
+  rb_map_track(time = "time_stamp")
+rb_read_example("dansk") |>
+  rb_map_track(behaviour, time = "time_stamp", path = TRUE, by = vessel_id)
+```
+
+Given several columns, `c(speed, course, behaviour)`, the page offers
+them under *Colour by*, and a choice recolours the points at once. A call
+replaces the map before it. The rest of this article builds maps layer by
+layer, for when the quick look is not enough.
+
 ## A first map
 
 A map is layers, in groups. Here is one layer, the harbours as polygons:

@@ -29,12 +29,29 @@ labels on static gear: one Italian pot vessel (ICES WKSSFGEO2) and two
 Portuguese pot vessels (ICES WKSSFGEO), and four drive-in gillnet fishers in
 Madagascar (Behivoke et al., IRD). The pings are a minute apart or closer.
 
+Where Ifremer's iapesca package is installed, its own example vessel is added
+(`iapesca::positions`, GPL): a passive-gear vessel on 8 trips, a ping every 15
+minutes, each labelled setting, hauling or not fishing by iapesca's authors.
+It is the one track here at a VMS-like rate. Without the package, the tables
+below have no iapesca rows.
+
 ```{r}
 rd <- function(nm) collect(rb_read_example(nm))
+ia <- if (requireNamespace("iapesca", quietly = TRUE)) {
+  with(iapesca::positions, tibble(
+    vid = as.character(VESSEL_FK),
+    time = as.POSIXct(DATE_TIME, tz = "UTC"),
+    lon = LONGITUDE,
+    lat = LATITUDE,
+    op = c(Setting = "set", Hauling = "haul", NotFishing = "other")[as.character(FishingOperation)],
+    ds = "iapesca"
+  ))
+}
 p0 <- bind_rows(
   rd("wkssfgeo2_it_pots") |> mutate(ds = "pots"),
   rd("wkssfgeo_pt_gps") |> filter(gear == "pots") |> mutate(ds = "pots"),
-  rd("ird_mg_gillnet") |> mutate(ds = "gillnet")
+  rd("ird_mg_gillnet") |> mutate(ds = "gillnet"),
+  ia
 ) |>
   mutate(vid = as.integer(factor(paste(ds, vid))), op = coalesce(op, "other")) |>
   arrange(vid, time, lon, lat) |>
@@ -102,7 +119,7 @@ hauls |>
 
 The two gears differ the way static gear does: the pots soak for days, the
 gillnets for an hour or two, with the fish driven into the net between the set
-and the haul.
+and the haul. iapesca's vessel leaves its gear for days too.
 
 ## The variants, at five ping rates
 
@@ -174,7 +191,198 @@ bind_rows(res) |>
   declared start and end, where the logbook has them, give the line back:
   `method = c("pings", "record")` uses the pings where the haul has any and
   never does worse than `"pings"`.
+- **iapesca's own vessel: a line beats a few pings.** At 15 minutes a haul
+  holds a few pings, and the latest pass along them, iapesca's own rule,
+  finds about half its labelled sets. The haul's line, from its first to its
+  last ping, or its declared positions find about two thirds. Thinning to
+  2, 5 or 10 minutes changes nothing on a track that is already sparser.
 
 The best choice differs by gear and by ping rate, so the defaults stay as
 iapesca has them. Each variant is an argument, and `set_method` says which
 line each haul was measured against.
+
+## The result on a map
+
+The table counts; a map shows each haul with its labelled set and the set each
+variant found. Here are the defaults and the variant that skips the run in, at
+the tracks' own ping rate, scored as above:
+
+```{r}
+p_own <- select(p0, vid, time, lon, lat)
+outcome <- function(found) {
+  hauls |>
+    select(id) |>
+    left_join(found, by = "id") |>
+    left_join(truth, by = "id") |>
+    transmute(
+      id, set_start, set_end,
+      outcome = case_when(
+        is.na(t_s) ~ "no labelled set",
+        is.na(set_start) ~ "missed",
+        set_start < t_e & t_s <= set_end ~ "right",
+        TRUE ~ "wrong"
+      )
+    )
+}
+by_default <- outcome(rb_link_record_sets(h_in, p_own, key = "id"))
+by_skip <- outcome(rb_link_record_sets(
+  h_in, p_own, key = "id", skip_approach = TRUE, max_pass_pings = Inf
+))
+count(by_default, outcome)
+count(by_skip, outcome)
+```
+
+Each haul, labelled set and found set becomes a line through its pings, in
+time order. The vessels lie far apart (Portugal, Madagascar, the Atlantic for
+iapesca's vessel, and the Italian vessel's anonymised positions, which fall
+inland), so a map shows one vessel, made by a function of the vessel:
+
+```{r}
+# a line through the pings of each interval (vid, from, to), with its other columns
+lines_of <- function(iv, d) {
+  g <- lapply(seq_len(nrow(iv)), function(i) {
+    x <- d[d$vid == iv$vid[i] & d$time >= iv$from[i] & d$time <= iv$to[i], ]
+    # a pass of one ping (sparse tracks) is a point
+    if (nrow(x) == 0) NULL else if (nrow(x) == 1) sf::st_point(c(x$lon, x$lat)) else sf::st_linestring(cbind(x$lon, x$lat))
+  })
+  keep <- !vapply(g, is.null, logical(1))
+  cols <- setdiff(names(iv), c("vid", "from", "to"))
+  sf::st_sf(
+    as.data.frame(iv)[keep, cols, drop = FALSE],
+    geometry = sf::st_sfc(g[keep], crs = 4326)
+  )
+}
+
+line_layer <- function(id, label, data, colour, visible = TRUE, dash = FALSE, info = NULL) {
+  rb_map_layer(
+    id, "geojson",
+    label = label, info = info, visible = visible, data = data,
+    style = list(
+      list(
+        id = paste0(id, "-line"), type = "line",
+        filter = list("==", list("geometry-type"), "LineString"),
+        paint = c(
+          list("line-color" = colour, "line-width" = 3, "line-opacity" = 0.8),
+          if (dash) list("line-dasharray" = list(1, 1))
+        )
+      ),
+      list(
+        id = paste0(id, "-dot"), type = "circle",
+        filter = list("==", list("geometry-type"), "Point"),
+        paint = list("circle-color" = colour, "circle-radius" = 5, "circle-opacity" = 0.8)
+      )
+    ),
+    popup = list(
+      click = paste0(id, c("-line", "-dot")), title = "haul",
+      fields = list(list(field = "outcome", label = "outcome"))
+    )
+  )
+}
+
+outcome_colour <- list("match", list("get", "outcome"), "right", "#2c5d87", "#d9822b")
+
+sets_map <- function(vessel) {
+  d <- filter(p0, vid == .env$vessel)
+  h <- filter(hauls, vid == .env$vessel) |>
+    left_join(truth, by = "id") |>
+    left_join(select(by_default, id, defaults = outcome), by = "id") |>
+    left_join(select(by_skip, id, skip = outcome), by = "id")
+  found <- function(x) {
+    h |>
+      select(id, vid) |>
+      inner_join(filter(x, !is.na(set_start)), by = "id") |>
+      transmute(vid, from = set_start, to = set_end, haul = id, outcome)
+  }
+  pings <- rb_map_layer(
+    "pings", "vector",
+    label = "Pings, as labelled",
+    tiles = rb_map_tiles_table(
+      transmute(d, vid, time, lon, lat, op),
+      lon = "lon", lat = "lat", properties = c("vid", "time", "op")
+    ),
+    count = list(text = "{1} pings"),
+    style = list(list(
+      id = "pings-dot", type = "circle", "source-layer" = "features",
+      paint = list(
+        "circle-color" = list("match", list("get", "op"), "set", "#2e8b57", "haul", "#c0392b", "#8a959e"),
+        "circle-radius" = list("interpolate", list("linear"), list("zoom"), 10, 1.5, 16, 4)
+      )
+    )),
+    legend = list(
+      list(swatch = list(dot = "#2e8b57"), label = "setting"),
+      list(swatch = list(dot = "#c0392b"), label = "hauling"),
+      list(swatch = list(dot = "#8a959e"), label = "other")
+    ),
+    popup = list(
+      click = "pings-dot", title = "time",
+      fields = list(list(field = "vid", label = "vessel"), list(field = "op", label = "label"))
+    )
+  )
+  hauls_layer <- rb_map_layer(
+    "hauls", "geojson",
+    label = "Hauls",
+    data = lines_of(transmute(h, vid, from = start, to = end, haul = id, defaults, skip), d),
+    style = list(list(
+      id = "hauls-line", type = "line",
+      paint = list("line-color" = "#c0392b", "line-width" = 6, "line-opacity" = 0.4)
+    )),
+    popup = list(
+      click = "hauls-line", title = "haul",
+      fields = list(
+        list(field = "defaults", label = "set found by the defaults"),
+        list(field = "skip", label = "set found when the run in is skipped")
+      )
+    )
+  )
+  labelled <- filter(h, !is.na(t_s)) |>
+    transmute(vid, from = t_s, to = t_e, haul = id, outcome = "labelled")
+  span <- max(diff(range(d$lon)), 2 * diff(range(d$lat))) # a degree of latitude draws taller
+  rb_map(
+    rb_map_group("track", "Track", list(
+      pings,
+      hauls_layer,
+      line_layer("truth", "Labelled sets", lines_of(labelled, d), "#2e8b57",
+                 dash = TRUE, info = "The labelled set run nearest each haul, the truth above.")
+    )),
+    rb_map_group("found", "Sets found", list(
+      line_layer("defaults", "By the defaults", lines_of(found(by_default), d), outcome_colour,
+                 info = "Blue: the found set overlaps the labelled one; orange: it does not."),
+      line_layer("skip", "Skipping the run in", lines_of(found(by_skip), d), outcome_colour,
+                 visible = FALSE, info = "skip_approach = TRUE, max_pass_pings = Inf.")
+    )),
+    title = paste("Sets of", d$ds[1], "vessel", vessel),
+    view = list(
+      center = c(mean(range(d$lon)), mean(range(d$lat))),
+      zoom = max(3, min(15, floor(log2(360 / span)) - 1))
+    )
+  )
+}
+# the pot vessel and the gillnet fisher with the most hauls
+top <- hauls |>
+  count(ds, vid) |>
+  group_by(ds) |>
+  slice_max(n, n = 1, with_ties = FALSE)
+top
+pots_map <- sets_map(top$vid[top$ds == "pots"])
+gillnet_map <- sets_map(top$vid[top$ds == "gillnet"])
+iapesca_map <- if (any(top$ds == "iapesca")) sets_map(top$vid[top$ds == "iapesca"])
+```
+
+The pot vessel is the Italian one, whose positions are anonymised, so its map
+opens with no base map:
+
+```{r}
+#| eval: false
+rb_map_serve(pots_map, query = list(base = "none"))
+rb_map_serve(gillnet_map, port = 8791) # beside it, on a port of its own
+rb_map_serve(iapesca_map, port = 8792) # where iapesca is installed
+# rb_map_stop() when done
+```
+
+On the pots map, tick one variant at a time. The sets the defaults find lie
+mostly in orange on the hauls' own lines, the run in to the buoy; those found
+when the run in is skipped lie in blue on the green labelled sets. On the
+gillnet map the defaults are blue, and skipping the run in drops the set. On
+iapesca's map the hauls are a few pings each, and the defaults' sets are
+orange about as often as blue; most of the wrong ones are a pass of a single
+ping, drawn as a dot. A click on a haul gives both outcomes.
