@@ -1,3 +1,10 @@
+# ramb 2026.10.25.3
+
+- `rb_map_track()`: `path` may name a column, such as `fishing_flow`: the line is cut into runs of equal value as well
+  as at silences, each run coloured by its value (the points' colours when they are coloured by the same column) and
+  ending at the next run's first fix, so the line stays joined. On a trawler's year in the Icelandic trail, 3,507 runs,
+  every end joined but at the five silences of over an hour and the year's end.
+
 # ramb 2026.10.25.2
 
 - `rb_map_track()` (new): the quick look at pings, on the map viewer's engine. The pings are piped in (a data frame, a

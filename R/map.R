@@ -902,7 +902,8 @@ rb_map_tiles_table <- function(
 #' @param data Pings: a data frame or lazy DuckDB table with `lon` and `lat` (WGS 84), or an sf object of points.
 #' @param col The column the points are coloured by, a name or a string; or several, `c(speed, behaviour)`, to
 #'   choose between in the page ("Colour by"), the first shown when it opens.
-#' @param path Whether to draw the track as a line under the points, one per vessel in time order.
+#' @param path Whether to draw the track as a line under the points, one per vessel in time order; or a column, a
+#'   name or a string such as `fishing_flow`, whose runs of equal value the line is cut into and coloured by.
 #' @param gap_h A silence of more than `gap_h` hours between a vessel's pings breaks its line; `Inf` for one line.
 #' @param by The vessel column, a name or a string: one line each. By default `vid` where the data have it, else one
 #'   line through all the pings.
@@ -953,6 +954,7 @@ rb_map_track <- function(
 ) {
   col_q <- rlang::enquo(col)
   by_q <- rlang::enquo(by)
+  path_q <- rlang::enquo(path)
   if (inherits(data, "sf")) {
     xy <- sf::st_coordinates(data)
     data <- sf::st_drop_geometry(data)
@@ -968,6 +970,9 @@ rb_map_track <- function(
   } else {
     rlang::as_name(by_q)
   }
+  path <- .rb_track_path(path_q, cols)
+  path_col <- path$col
+  path <- path$on
   has_time <- time %in% cols
   if (path && !has_time) {
     stop(
@@ -975,7 +980,7 @@ rb_map_track <- function(
       call. = FALSE
     )
   }
-  missing <- setdiff(unique(c(lon, lat, col, by, popup)), cols)
+  missing <- setdiff(unique(c(lon, lat, col, by, popup, path_col)), cols)
   if (length(missing)) {
     stop(
       sprintf(
@@ -1018,39 +1023,43 @@ rb_map_track <- function(
   } else {
     rep(isTRUE(discrete), length(col))
   }
+  # a colour per value, the 12 most frequent (the rest grey), matched on the text property `prop`
+  discrete_colours <- function(cc, prop) {
+    vals <- DBI::dbGetQuery(
+      con,
+      sprintf(
+        "SELECT CAST(%1$s AS VARCHAR) AS v, count(*) AS n FROM (%2$s) WHERE %1$s IS NOT NULL GROUP BY 1 ORDER BY n DESC, v",
+        q(cc),
+        src
+      )
+    )
+    k <- min(nrow(vals), 12L)
+    pal <- grDevices::hcl.colors(max(k, 2L), "Dynamic")[seq_len(k)]
+    legend <- lapply(seq_len(k), function(j) {
+      list(swatch = list(dot = pal[j]), label = vals$v[j])
+    })
+    if (nrow(vals) > k) {
+      legend <- c(
+        legend,
+        list(list(swatch = list(dot = grey), label = "other"))
+      )
+    }
+    list(
+      colour = c(
+        list("match", list("get", prop)),
+        unlist(
+          lapply(seq_len(k), function(j) list(vals$v[j], pal[j])),
+          recursive = FALSE
+        ),
+        list(grey)
+      ),
+      legend = legend
+    )
+  }
   colouring <- function(i) {
     cc <- col[i]
     if (is_discrete[i]) {
-      vals <- DBI::dbGetQuery(
-        con,
-        sprintf(
-          "SELECT CAST(%1$s AS VARCHAR) AS v, count(*) AS n FROM (%2$s) WHERE %1$s IS NOT NULL GROUP BY 1 ORDER BY n DESC, v",
-          q(cc),
-          src
-        )
-      )
-      k <- min(nrow(vals), 12L)
-      pal <- grDevices::hcl.colors(max(k, 2L), "Dynamic")[seq_len(k)]
-      legend <- lapply(seq_len(k), function(j) {
-        list(swatch = list(dot = pal[j]), label = vals$v[j])
-      })
-      if (nrow(vals) > k) {
-        legend <- c(
-          legend,
-          list(list(swatch = list(dot = grey), label = "other"))
-        )
-      }
-      return(list(
-        colour = c(
-          list("match", list("get", paste0("rb_class_", i))),
-          unlist(
-            lapply(seq_len(k), function(j) list(vals$v[j], pal[j])),
-            recursive = FALSE
-          ),
-          list(grey)
-        ),
-        legend = legend
-      ))
+      return(discrete_colours(cc, paste0("rb_class_", i)))
     }
     qs <- DBI::dbGetQuery(
       con,
@@ -1218,66 +1227,111 @@ rb_map_track <- function(
   layers <- list(pings)
   tables <- attr(point_tiles, "table")
   if (path) {
-    # a line per vessel and stretch: a silence of more than gap_h hours starts a new one
+    # a line per vessel and stretch: a silence of more than gap_h hours starts a new one, and so does a change of
+    # path_col's value; a run ends at the next run's first fix, so the line stays joined across a change
     part <- if (is.null(by)) "" else paste("PARTITION BY", q(by))
+    gap <- if (is.finite(gap_h)) {
+      format(gap_h * 3600, scientific = FALSE)
+    } else {
+      "'infinity'::DOUBLE"
+    }
     lines <- dplyr::tbl(
       con,
       dplyr::sql(sprintf(
         "WITH s AS (
-           SELECT %1$s %2$s AS lon, %3$s AS lat, %4$s AS t,
-                  CASE WHEN epoch(%4$s) - epoch(lag(%4$s) OVER (%5$s ORDER BY %4$s)) > %6$s THEN 1 ELSE 0 END AS brk
-           FROM (%7$s) WHERE %2$s IS NOT NULL AND %3$s IS NOT NULL AND %4$s IS NOT NULL),
-         g AS (SELECT *, sum(brk) OVER (%5$s ORDER BY t ROWS UNBOUNDED PRECEDING) AS stretch FROM s),
-         a AS (SELECT %1$s count(*) AS pings, strftime(min(t), '%%Y-%%m-%%d %%H:%%M') AS start,
-                      strftime(max(t), '%%Y-%%m-%%d %%H:%%M') AS stop, list(ST_Point(lon, lat) ORDER BY t) AS pts
-               FROM g GROUP BY %1$s stretch)
-         SELECT * EXCLUDE (pts), ST_MakeLine(pts) AS geometry FROM a WHERE pings > 1",
+           SELECT %1$s %2$s AS lon, %3$s AS lat, %4$s AS t, %8$s AS v FROM (%7$s)
+           WHERE %2$s IS NOT NULL AND %3$s IS NOT NULL AND %4$s IS NOT NULL),
+         w AS (
+           SELECT *, epoch(t) - epoch(lag(t) OVER o) AS dt_prev, lag(v) OVER o AS v_prev,
+                  lead(lon) OVER o AS lon2, lead(lat) OVER o AS lat2, epoch(lead(t) OVER o) - epoch(t) AS dt_next
+           FROM s WINDOW o AS (%5$s ORDER BY t)),
+         g AS (
+           SELECT *, sum(CASE WHEN dt_prev > %6$s OR v IS DISTINCT FROM v_prev THEN 1 ELSE 0 END)
+                       OVER (%5$s ORDER BY t ROWS UNBOUNDED PRECEDING) AS stretch
+           FROM w),
+         a AS (
+           SELECT %1$s any_value(v) AS rb_path, count(*) AS pings, strftime(min(t), '%%Y-%%m-%%d %%H:%%M') AS start,
+                  strftime(max(t), '%%Y-%%m-%%d %%H:%%M') AS stop, list(ST_Point(lon, lat) ORDER BY t) AS pts,
+                  last(CASE WHEN dt_next <= %6$s THEN lon2 END ORDER BY t) AS lon2,
+                  last(CASE WHEN dt_next <= %6$s THEN lat2 END ORDER BY t) AS lat2
+           FROM g GROUP BY %1$s stretch),
+         l AS (SELECT * EXCLUDE (pts, lon2, lat2),
+                      CASE WHEN lon2 IS NULL THEN pts ELSE list_append(pts, ST_Point(lon2, lat2)) END AS pts FROM a)
+         SELECT * EXCLUDE (pts), ST_MakeLine(pts) AS geometry FROM l WHERE len(pts) > 1",
         if (is.null(by)) "" else paste0(q(by), ","),
         q(lon),
         q(lat),
         q(time),
         part,
-        if (is.finite(gap_h)) {
-          format(gap_h * 3600, scientific = FALSE)
+        gap,
+        src,
+        if (is.null(path_col)) {
+          "NULL::VARCHAR"
         } else {
-          "'infinity'::DOUBLE"
-        },
-        src
+          sprintf("CAST(%s AS VARCHAR)", q(path_col))
+        }
       ))
     )
     line_tiles <- rb_map_tiles_table(
       lines,
-      properties = c(by, "pings", "start", "stop")
+      properties = c(
+        by,
+        if (!is.null(path_col)) "rb_path",
+        "pings",
+        "start",
+        "stop"
+      )
     )
     tables <- c(tables, attr(line_tiles, "table"))
+    by_value <- if (!is.null(path_col)) discrete_colours(path_col, "rb_path")
     track <- rb_map_layer(
       "path",
       "vector",
-      label = "Track",
+      label = if (is.null(path_col)) "Track" else paste("Track by", path_col),
       info = sprintf(
-        "%s pings joined in time order, broken where they are more than %s hours apart.",
+        "%s pings joined in time order, broken where they are more than %s hours apart%s.",
         if (is.null(by)) "The" else sprintf("Each %s's", by),
-        format(gap_h)
+        format(gap_h),
+        if (is.null(path_col)) "" else sprintf(", and coloured by %s", path_col)
       ),
       tiles = line_tiles,
       style = list(list(
         id = "path-line",
         type = "line",
         "source-layer" = "features",
-        paint = list(
-          "line-color" = "#00e5ff",
-          "line-width" = 1.5,
-          "line-opacity" = 0.5
-        )
+        paint = if (is.null(path_col)) {
+          list(
+            "line-color" = "#00e5ff",
+            "line-width" = 1.5,
+            "line-opacity" = 0.5
+          )
+        } else {
+          list(
+            "line-color" = by_value$colour,
+            "line-width" = 3,
+            "line-opacity" = 0.85
+          )
+        }
       )),
-      legend = list(list(swatch = list(fill = "#00e5ff"), label = "track")),
+      legend = if (is.null(path_col)) {
+        list(list(swatch = list(fill = "#00e5ff"), label = "track"))
+      } else {
+        lapply(by_value$legend, function(x) {
+          list(swatch = list(fill = x$swatch$dot), label = x$label)
+        })
+      },
       popup = list(
         click = "path-line",
         title = if (is.null(by)) "start" else by,
-        fields = list(
-          list(field = "start", label = "from"),
-          list(field = "stop", label = "to"),
-          list(field = "pings", label = "pings", format = "count")
+        fields = c(
+          if (!is.null(path_col)) {
+            list(list(field = "rb_path", label = path_col))
+          },
+          list(
+            list(field = "start", label = "from"),
+            list(field = "stop", label = "to"),
+            list(field = "pings", label = "pings", format = "count")
+          )
         )
       )
     )
@@ -1331,6 +1385,37 @@ rb_map_track <- function(
   }
   stop(
     "`col` is a column, by name or as a string, or c() of them.",
+    call. = FALSE
+  )
+}
+
+# `path`: TRUE or FALSE, or a column whose runs of equal value cut and colour the line
+.rb_track_path <- function(q, cols) {
+  e <- rlang::quo_get_expr(q)
+  if (is.logical(e) && length(e) == 1) {
+    return(list(on = isTRUE(e), col = NULL))
+  }
+  if (is.character(e) && length(e) == 1) {
+    return(list(on = TRUE, col = e))
+  }
+  if (rlang::is_symbol(e)) {
+    nm <- rlang::as_name(e)
+    if (nm %in% cols) {
+      return(list(on = TRUE, col = nm))
+    }
+    # a variable holding TRUE, FALSE or a name; else the name as given, for the column check to report
+    v <- tryCatch(rlang::eval_tidy(q), error = function(err) nm)
+  } else {
+    v <- rlang::eval_tidy(q)
+  }
+  if (is.logical(v) && length(v) == 1) {
+    return(list(on = isTRUE(v), col = NULL))
+  }
+  if (is.character(v) && length(v) == 1) {
+    return(list(on = TRUE, col = v))
+  }
+  stop(
+    "`path` is TRUE, FALSE, or a column to colour the line by.",
     call. = FALSE
   )
 }

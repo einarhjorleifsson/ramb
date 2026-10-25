@@ -29,7 +29,8 @@ rb_map_track(
 \item{col}{The column the points are coloured by, a name or a string; or several, \code{c(speed, behaviour)}, to
 choose between in the page ("Colour by"), the first shown when it opens.}
 
-\item{path}{Whether to draw the track as a line under the points, one per vessel in time order.}
+\item{path}{Whether to draw the track as a line under the points, one per vessel in time order; or a column, a
+name or a string such as \code{fishing_flow}, whose runs of equal value the line is cut into and coloured by.}
 
 \item{gap_h}{A silence of more than \code{gap_h} hours between a vessel's pings breaks its line; \code{Inf} for one line.}
 

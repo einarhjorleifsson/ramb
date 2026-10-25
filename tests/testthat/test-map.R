@@ -612,3 +612,49 @@ test_that("a track coloured by several columns, chosen in the page", {
     ]]$variants
   )
 })
+
+test_that("a track's line coloured by a column: runs of equal value, joined across a change", {
+  skip_if_no_spatial()
+  d <- rb_read_example("dansk")
+  m <- rb_map_track(
+    d,
+    behaviour,
+    time = "time_stamp",
+    path = behaviour,
+    by = vessel_id,
+    serve = FALSE
+  )
+  p <- m$config$layers[[1]]
+  expect_equal(p$label, "Track by behaviour")
+  expect_setequal(vapply(p$legend, `[[`, "", "label"), c("Fishing", "Other"))
+  # the line's colours are the points' for the same column
+  expect_identical(
+    p$style[[1]]$paint[["line-color"]][-2],
+    m$config$layers[[2]]$style[[1]]$paint[["circle-color"]][-2]
+  )
+  # a run ends where the next begins, except at a silence: as many unjoined ends as the plain line has stretches
+  plain <- rb_map_track(
+    d,
+    time = "time_stamp",
+    path = TRUE,
+    by = vessel_id,
+    serve = FALSE
+  )
+  ends <- DBI::dbGetQuery(
+    duckdbfs::cached_connection(),
+    sprintf(
+      "WITH r AS (SELECT ST_AsText(ST_StartPoint(g3857)) AS s, ST_AsText(ST_EndPoint(g3857)) AS e FROM %s)
+       SELECT count(*) FILTER (WHERE e NOT IN (SELECT s FROM r)) AS n FROM r",
+      attr(m$layers$path$tiles, "table")
+    )
+  )$n
+  expect_equal(ends, attr(plain$layers$path$tiles, "count"))
+  expect_gt(
+    attr(m$layers$path$tiles, "count"),
+    attr(plain$layers$path$tiles, "count")
+  )
+  expect_error(
+    rb_map_track(d, time = "time_stamp", path = nope, serve = FALSE),
+    "No column nope"
+  )
+})
