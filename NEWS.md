@@ -1,3 +1,15 @@
+# ramb 2026.10.25.2
+
+- `rb_map_track()` (new): the quick look at pings, on the map viewer's engine. The pings are piped in (a data frame, a
+  lazy DuckDB table or sf points) and drawn as points coloured by a column: a numeric one on a continuous palette
+  (`grDevices::hcl.colors()`, inferno by default) over its 1st to 99th percentile, any other a colour per value. A
+  point's radius is in metres, so it grows with the zoom. The track can go under the points as a line per vessel,
+  broken at silences of over `gap_h` hours. The map opens at once, on a dark base map, in RStudio's Viewer when the
+  session is interactive, and a call on the same port replaces the last map and drops its tables. It keeps what the
+  maintainer liked in the retired `rb_mapdeck()` (now `rb_plot_trail()`, on mapdeck): the pipe, the coloured points
+  with an optional line, and a map at once.
+- `rb_map_tiles_table()`: its temporary table's name is its tile function's `table` attribute.
+
 # ramb 2026.10.25.1
 
 - `rb_map_tiles_table()`: its temporary DuckDB tables are numbered. They were named from R's random numbers, which

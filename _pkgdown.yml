@@ -101,6 +101,7 @@ reference:
   - rb_plot_trip
 - title: "Tools: maps"
   contents:
+  - rb_map_track
   - rb_map
   - rb_map_group
   - rb_map_layer

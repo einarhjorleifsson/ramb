@@ -408,3 +408,89 @@ test_that("a server starts in the background and stops", {
   expect_equal(rb_map_stop(port), port)
   expect_equal(rb_map_stop(port), integer(0))
 })
+
+test_that("a track on a map: points coloured by a column, a path broken at silences", {
+  skip_if_no_spatial()
+  d <- rb_read_example("dansk")
+  m <- rb_map_track(d, time = "time_stamp", serve = FALSE)
+  expect_s3_class(m, "rb_map")
+  expect_equal(vapply(m$config$layers, `[[`, "", "id"), "pings")
+  expect_equal(m$config$basemaps[[1]]$id, "dark")
+  # a numeric column: a continuous palette, grey where it is missing; five steps in the legend
+  expect_equal(
+    m$config$layers[[1]]$style[[1]]$paint[["circle-color"]][[1]],
+    "case"
+  )
+  expect_length(m$config$layers[[1]]$legend, 5)
+  expect_equal(attr(m$layers$pings$tiles, "count"), 395558L)
+  # a column by name, a colour per value; the path one line per vessel, or broken at silences of over an hour
+  m2 <- rb_map_track(
+    d,
+    behaviour,
+    time = "time_stamp",
+    path = TRUE,
+    by = vessel_id,
+    serve = FALSE
+  )
+  expect_equal(vapply(m2$config$layers, `[[`, "", "id"), c("path", "pings"))
+  expect_equal(
+    m2$config$layers[[2]]$style[[1]]$paint[["circle-color"]][[1]],
+    "match"
+  )
+  expect_setequal(
+    vapply(m2$config$layers[[2]]$legend, `[[`, "", "label"),
+    c("Fishing", "Other")
+  )
+  one <- rb_map_track(
+    d,
+    time = "time_stamp",
+    path = TRUE,
+    by = vessel_id,
+    gap_h = Inf,
+    serve = FALSE
+  )
+  expect_equal(attr(one$layers$path$tiles, "count"), 14L)
+  expect_gt(attr(m2$layers$path$tiles, "count"), 14L)
+  # a data frame and sf points give the same pings
+  df <- dplyr::collect(utils::head(d, 500))
+  expect_equal(
+    attr(
+      rb_map_track(df, time = "time_stamp", serve = FALSE)$layers$pings$tiles,
+      "count"
+    ),
+    500L
+  )
+  s <- sf::st_as_sf(df, coords = c("lon", "lat"), crs = 4326)
+  expect_equal(
+    attr(
+      rb_map_track(s, time = "time_stamp", serve = FALSE)$layers$pings$tiles,
+      "count"
+    ),
+    500L
+  )
+  expect_error(rb_map_track(d, nope, serve = FALSE), "No column nope")
+  expect_error(rb_map_track(d, path = TRUE, serve = FALSE), "time order")
+})
+
+test_that("a track served again on its port drops the tables of the map it replaces", {
+  skip_if_not_installed("httpuv")
+  skip_if_not_installed("jsonlite")
+  skip_if_no_spatial()
+  df <- dplyr::collect(utils::head(rb_read_example("dansk"), 500))
+  port <- httpuv::randomPort()
+  rb_map_track(df, time = "time_stamp", path = TRUE, serve = TRUE, port = port)
+  first <- .rb_tiles$track[[as.character(port)]]
+  expect_length(first$tables, 2)
+  expect_true(all(vapply(
+    first$tables,
+    function(t) DBI::dbExistsTable(first$con, t),
+    logical(1)
+  )))
+  rb_map_track(df, time = "time_stamp", serve = TRUE, port = port)
+  expect_false(any(vapply(
+    first$tables,
+    function(t) DBI::dbExistsTable(first$con, t),
+    logical(1)
+  )))
+  expect_equal(rb_map_stop(port), port)
+})

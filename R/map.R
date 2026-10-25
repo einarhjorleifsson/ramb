@@ -15,6 +15,7 @@
 .rb_maps <- new.env(parent = emptyenv()) # the servers rb_map_serve() started, by port
 .rb_tiles <- new.env(parent = emptyenv()) # the number of rb_map_tiles_table()'s last temporary table
 .rb_tiles$n <- 0L
+.rb_tiles$track <- list() # by port, the connection and temporary tables of the map rb_map_track() serves there
 
 #' A layer of a map
 #'
@@ -705,7 +706,7 @@ rb_map_stop <- function(port = NULL) {
 #' @param points The tile layer of a point on every feature (`ST_PointOnSurface()`), for the zooms where an area is
 #'   too small to see; `NULL` for none.
 #' @return A function of `z`, `x`, `y` returning a tile (raw bytes), with the number of features as its `count`
-#'   attribute.
+#'   attribute and the temporary table's name as its `table` attribute.
 #' @export
 #' @examples
 #' \donttest{
@@ -821,6 +822,7 @@ rb_map_tiles_table <- function(
     if (is.null(out)) raw(0) else out
   }
   attr(tile, "count") <- n
+  attr(tile, "table") <- nm
   tile
 }
 
@@ -841,6 +843,375 @@ rb_map_tiles_table <- function(
     )
   )
   ifelse(is.na(to), expr, sprintf("CAST(%s AS %s)", expr, to))
+}
+
+#' A track on a map, at once
+#'
+#' The quick look at pings: piped in, drawn as points coloured by a column, with the track as a line under them if
+#' asked, and opened at once in RStudio's Viewer (or a browser). It is an [rb_map()] like any other, of
+#' [rb_map_layer()]s served by [rb_map_serve()], and it is returned, so it can be served again or taken apart.
+#'
+#' A numeric column is coloured on a continuous palette spread over its 1st to 99th percentile; any other column,
+#' or a numeric one with `discrete = TRUE`, takes a colour per value (the 12 most frequent; the rest grey). A point's
+#' radius is in metres, so it grows as the map zooms in, from 1 pixel to `radius_max` pixels. The map opens on a dark
+#' base map, where the palette's light end stands out.
+#'
+#' Each call copies the pings into a temporary DuckDB table, as [rb_map_tiles_table()] does; a call served on the
+#' same port drops the tables of the map it replaces.
+#'
+#' @param data Pings: a data frame or lazy DuckDB table with `lon` and `lat` (WGS 84), or an sf object of points.
+#' @param col The column the points are coloured by, a name or a string.
+#' @param path Whether to draw the track as a line under the points, one per vessel in time order.
+#' @param gap_h A silence of more than `gap_h` hours between a vessel's pings breaks its line; `Inf` for one line.
+#' @param by The vessel column, a name or a string: one line each. By default `vid` where the data have it, else one
+#'   line through all the pings.
+#' @param time The column that orders the pings: needed for `path`, and shown first in a point's popup.
+#' @param popup Further columns a click on a point shows.
+#' @param discrete Whether `col` takes a colour per value; by default when it is not numeric.
+#' @param radius,radius_max The point radius in metres, and its largest size in pixels.
+#' @param palette A palette of [grDevices::hcl.colors()] for a numeric column, light at its high end on the dark
+#'   base map.
+#' @param lon,lat The position columns.
+#' @param title The page's title.
+#' @param serve Whether to serve the map at once, by default in an interactive session.
+#' @param port Where it is served: a map served on the same port replaces the last.
+#' @return The [rb_map()], invisibly.
+#' @seealso [rb_map()] for a map of several layers, groups and languages.
+#' @export
+#' @examples
+#' \donttest{
+#' m <- rb_read_example("dansk") |>
+#'   rb_map_track(time = "time_stamp", path = TRUE, by = vessel_id, serve = FALSE)
+#' vapply(m$config$layers, `[[`, "", "id")
+#' }
+#' # In RStudio the map opens in the Viewer as soon as it is made:
+#' if (interactive()) {
+#'   rb_read_example("dansk") |> rb_map_track(time = "time_stamp")
+#'   rb_read_example("dansk") |>
+#'     rb_map_track(behaviour, time = "time_stamp", path = TRUE, by = vessel_id)
+#' }
+rb_map_track <- function(
+  data,
+  col = "speed",
+  path = FALSE,
+  gap_h = 1,
+  by = NULL,
+  time = "time",
+  popup = NULL,
+  discrete = NULL,
+  radius = 200,
+  radius_max = 8,
+  palette = "Inferno",
+  lon = "lon",
+  lat = "lat",
+  title = "Track",
+  serve = interactive(),
+  port = 8790L
+) {
+  col <- rlang::as_name(rlang::enquo(col))
+  by_q <- rlang::enquo(by)
+  if (inherits(data, "sf")) {
+    xy <- sf::st_coordinates(data)
+    data <- sf::st_drop_geometry(data)
+    data[[lon]] <- xy[, 1]
+    data[[lat]] <- xy[, 2]
+  }
+  con <- .rb_con_for(data)
+  x <- .rb_as_lazy(data, con)
+  cols <- colnames(x)
+  by <- if (rlang::quo_is_null(by_q)) {
+    if ("vid" %in% cols) "vid"
+  } else {
+    rlang::as_name(by_q)
+  }
+  has_time <- time %in% cols
+  if (path && !has_time) {
+    stop(
+      "`path` draws the pings in time order: name their time column in `time`.",
+      call. = FALSE
+    )
+  }
+  missing <- setdiff(unique(c(lon, lat, col, by, popup)), cols)
+  if (length(missing)) {
+    stop(
+      sprintf(
+        "No column %s in the data; it has %s.",
+        paste(missing, collapse = ", "),
+        paste(cols, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  q <- function(s) as.character(DBI::dbQuoteIdentifier(con, s))
+  src <- .rb_sql(x)
+  st <- DBI::dbGetQuery(
+    con,
+    sprintf(
+      "SELECT count(*) AS n, min(%1$s) AS lon0, max(%1$s) AS lon1, min(%2$s) AS lat0, max(%2$s) AS lat1
+       FROM (%3$s) WHERE %1$s IS NOT NULL AND %2$s IS NOT NULL",
+      q(lon),
+      q(lat),
+      src
+    )
+  )
+  if (st$n == 0) {
+    stop("No ping has a position.", call. = FALSE)
+  }
+  if (is.null(discrete)) {
+    discrete <- !is.numeric(dplyr::collect(utils::head(
+      dplyr::select(x, dplyr::all_of(col)),
+      1
+    ))[[1]])
+  }
+
+  # the colour, from the column's spread or its most frequent values
+  grey <- "#808080"
+  if (discrete) {
+    vals <- DBI::dbGetQuery(
+      con,
+      sprintf(
+        "SELECT CAST(%1$s AS VARCHAR) AS v, count(*) AS n FROM (%2$s) WHERE %1$s IS NOT NULL GROUP BY 1 ORDER BY n DESC, v",
+        q(col),
+        src
+      )
+    )
+    k <- min(nrow(vals), 12L)
+    pal <- grDevices::hcl.colors(max(k, 2L), "Dynamic")[seq_len(k)]
+    colour <- c(
+      list("match", list("get", "rb_class")),
+      unlist(
+        lapply(seq_len(k), function(i) list(vals$v[i], pal[i])),
+        recursive = FALSE
+      ),
+      list(grey)
+    )
+    legend <- lapply(seq_len(k), function(i) {
+      list(swatch = list(dot = pal[i]), label = vals$v[i])
+    })
+    if (nrow(vals) > k) {
+      legend <- c(
+        legend,
+        list(list(swatch = list(dot = grey), label = "other"))
+      )
+    }
+  } else {
+    qs <- DBI::dbGetQuery(
+      con,
+      sprintf(
+        "SELECT quantile_cont(%1$s, 0.01) AS lo, quantile_cont(%1$s, 0.99) AS hi FROM (%2$s) WHERE %1$s IS NOT NULL",
+        q(col),
+        src
+      )
+    )
+    pal <- grDevices::hcl.colors(9, palette)
+    lo <- qs$lo
+    hi <- if (isTRUE(qs$hi > qs$lo)) qs$hi else lo + 1
+    stops <- seq(lo, hi, length.out = 9)
+    colour <- list(
+      "case",
+      list("has", col),
+      c(
+        list("interpolate", list("linear"), list("get", col)),
+        unlist(
+          lapply(1:9, function(i) list(stops[i], pal[i])),
+          recursive = FALSE
+        )
+      ),
+      grey
+    )
+    fmt <- function(v) format(signif(v, 3), big.mark = ",", trim = TRUE)
+    legend <- lapply(c(1, 3, 5, 7, 9), function(i) {
+      list(
+        swatch = list(dot = pal[i]),
+        label = paste0(
+          if (i == 1) {
+            paste0(intToUtf8(8804), " ") # less than or equal: an escape would be rewritten by the formatter
+          } else if (i == 9) {
+            paste0(intToUtf8(8805), " ")
+          } else {
+            ""
+          },
+          fmt(stops[i])
+        )
+      )
+    })
+  }
+
+  # the radius in metres: pixels at zoom 0 at the data's middle latitude, doubling with each zoom, from 1 to radius_max
+  r0 <- radius / (156543.03392 * cos((st$lat0 + st$lat1) / 2 * pi / 180))
+  za <- min(max(log2(1 / r0), 0), 23)
+  zb <- min(max(log2(radius_max / r0), za + 0.01), 24)
+  size <- list(
+    "interpolate",
+    list("exponential", 2),
+    list("zoom"),
+    za,
+    max(1, r0 * 2^za),
+    zb,
+    min(radius_max, r0 * 2^zb)
+  )
+
+  # a call served on the same port replaces the map there: drop its tables first
+  key <- as.character(as.integer(port))
+  if (isTRUE(serve) && !is.null(.rb_tiles$track[[key]])) {
+    old <- .rb_tiles$track[[key]]
+    for (t in old$tables) {
+      try(
+        DBI::dbExecute(old$con, sprintf("DROP TABLE IF EXISTS %s", t)),
+        silent = TRUE
+      )
+    }
+  }
+
+  pts <- dplyr::tbl(
+    con,
+    dplyr::sql(sprintf(
+      "SELECT *%s FROM (%s)",
+      if (discrete) {
+        sprintf(", CAST(%s AS VARCHAR) AS rb_class", q(col))
+      } else {
+        ""
+      },
+      src
+    ))
+  )
+  props <- unique(c(
+    col,
+    if (has_time) time,
+    popup,
+    by,
+    if (discrete) "rb_class"
+  ))
+  point_tiles <- rb_map_tiles_table(
+    pts,
+    lon = lon,
+    lat = lat,
+    properties = props
+  )
+  fields <- c(
+    list(list(
+      field = col,
+      label = col,
+      format = if (discrete) NULL else "value"
+    )),
+    lapply(setdiff(unique(c(popup, by)), col), function(f) {
+      list(field = f, label = f)
+    })
+  )
+  pings <- rb_map_layer(
+    "pings",
+    "vector",
+    label = "Pings",
+    info = sprintf(
+      "Each ping, coloured by %s%s.",
+      col,
+      if (discrete) "" else ", its 1st to 99th percentile across the palette"
+    ),
+    tiles = point_tiles,
+    count = list(text = "{1} pings"),
+    style = list(list(
+      id = "pings-dot",
+      type = "circle",
+      "source-layer" = "features",
+      paint = list(
+        "circle-color" = colour,
+        "circle-radius" = size,
+        "circle-opacity" = 0.85
+      )
+    )),
+    legend = legend,
+    popup = list(
+      click = "pings-dot",
+      title = if (has_time) time else col,
+      fields = lapply(fields, function(f) Filter(Negate(is.null), f))
+    )
+  )
+  layers <- list(pings)
+  tables <- attr(point_tiles, "table")
+  if (path) {
+    # a line per vessel and stretch: a silence of more than gap_h hours starts a new one
+    part <- if (is.null(by)) "" else paste("PARTITION BY", q(by))
+    lines <- dplyr::tbl(
+      con,
+      dplyr::sql(sprintf(
+        "WITH s AS (
+           SELECT %1$s %2$s AS lon, %3$s AS lat, %4$s AS t,
+                  CASE WHEN epoch(%4$s) - epoch(lag(%4$s) OVER (%5$s ORDER BY %4$s)) > %6$s THEN 1 ELSE 0 END AS brk
+           FROM (%7$s) WHERE %2$s IS NOT NULL AND %3$s IS NOT NULL AND %4$s IS NOT NULL),
+         g AS (SELECT *, sum(brk) OVER (%5$s ORDER BY t ROWS UNBOUNDED PRECEDING) AS stretch FROM s),
+         a AS (SELECT %1$s count(*) AS pings, strftime(min(t), '%%Y-%%m-%%d %%H:%%M') AS start,
+                      strftime(max(t), '%%Y-%%m-%%d %%H:%%M') AS stop, list(ST_Point(lon, lat) ORDER BY t) AS pts
+               FROM g GROUP BY %1$s stretch)
+         SELECT * EXCLUDE (pts), ST_MakeLine(pts) AS geometry FROM a WHERE pings > 1",
+        if (is.null(by)) "" else paste0(q(by), ","),
+        q(lon),
+        q(lat),
+        q(time),
+        part,
+        if (is.finite(gap_h)) {
+          format(gap_h * 3600, scientific = FALSE)
+        } else {
+          "'infinity'::DOUBLE"
+        },
+        src
+      ))
+    )
+    line_tiles <- rb_map_tiles_table(
+      lines,
+      properties = c(by, "pings", "start", "stop")
+    )
+    tables <- c(tables, attr(line_tiles, "table"))
+    track <- rb_map_layer(
+      "path",
+      "vector",
+      label = "Track",
+      info = sprintf(
+        "%s pings joined in time order, broken where they are more than %s hours apart.",
+        if (is.null(by)) "The" else sprintf("Each %s's", by),
+        format(gap_h)
+      ),
+      tiles = line_tiles,
+      style = list(list(
+        id = "path-line",
+        type = "line",
+        "source-layer" = "features",
+        paint = list(
+          "line-color" = "#00e5ff",
+          "line-width" = 1.5,
+          "line-opacity" = 0.5
+        )
+      )),
+      legend = list(list(swatch = list(fill = "#00e5ff"), label = "track")),
+      popup = list(
+        click = "path-line",
+        title = if (is.null(by)) "start" else by,
+        fields = list(
+          list(field = "start", label = "from"),
+          list(field = "stop", label = "to"),
+          list(field = "pings", label = "pings", format = "count")
+        )
+      )
+    )
+    layers <- c(list(track), layers)
+  }
+
+  span <- max(st$lon1 - st$lon0, 2 * (st$lat1 - st$lat0)) # a degree of latitude draws taller
+  bases <- rb_map_basemaps()
+  ids <- vapply(bases, `[[`, "", "id")
+  m <- rb_map(
+    rb_map_group("track", "Track", layers),
+    title = title,
+    view = list(
+      center = c((st$lon0 + st$lon1) / 2, (st$lat0 + st$lat1) / 2),
+      zoom = if (span > 0) max(1, min(15, floor(log2(360 / span)) - 1)) else 12
+    ),
+    basemaps = bases[c(which(ids == "dark"), which(ids != "dark"))]
+  )
+  if (isTRUE(serve)) {
+    rb_map_serve(m, port = port)
+    .rb_tiles$track[[key]] <- list(con = con, tables = tables)
+  }
+  invisible(m)
 }
 
 # The server -----------------------------------------------------------------------------------------------------------
