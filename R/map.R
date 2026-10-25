@@ -64,6 +64,39 @@
 #' @return An `rb_map_layer`, for [rb_map_group()].
 #' @seealso [rb_map()], [rb_map_tiles_table()]
 #' @export
+#' @examples
+#' # A vector layer: the harbours as areas, a click shows the harbour's id
+#' \donttest{
+#' harbours <- rb_map_layer(
+#'   "harbours", "vector", label = "Harbours",
+#'   tiles = rb_map_tiles_table(rb_read_example("dansk_harbours"), properties = "SI_HARB"),
+#'   style = list(list(id = "harbours-fill", type = "fill", "source-layer" = "features",
+#'                     paint = list("fill-color" = "#d9822b"))),
+#'   popup = list(click = "harbours-fill", title = "SI_HARB")
+#' )
+#' }
+#'
+#' # A grid: its tile function is given the filters' values in `params`. This one returns an empty tile; a real one
+#' # returns DuckDB's ST_AsMVT() of the cells (see the "Maps in RStudio" article).
+#' cells <- rb_map_layer(
+#'   "cells", "grid", label = "Pings by cell",
+#'   tiles = function(z, x, y, params) raw(0),
+#'   filters = list(
+#'     list(id = "behaviour", label = "Behaviour",
+#'          options = list(list(value = "", label = "all"), list(value = "Fishing", label = "fishing"))),
+#'     list(id = "metric", type = "metric", label = "Metric")
+#'   ),
+#'   metrics = list(list(field = "n", label = "pings"))
+#' )
+#'
+#' # A geojson layer: features sent whole, here one point
+#' point <- rb_map_layer(
+#'   "point", "geojson", label = "A point",
+#'   data = '{"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {},
+#'            "geometry": {"type": "Point", "coordinates": [12.6, 56.0]}}]}',
+#'   style = list(list(id = "point-dot", type = "circle", paint = list("circle-color" = "#c0392b")))
+#' )
+#' names(cells$config)
 rb_map_layer <- function(
   id,
   kind = c("grid", "vector", "geojson"),
@@ -185,6 +218,14 @@ rb_map_layer <- function(
 #' @param open Whether the group is unfolded when the page opens.
 #' @return An `rb_map_group`, for [rb_map()].
 #' @export
+#' @examples
+#' point <- rb_map_layer(
+#'   "point", "geojson", label = "A point",
+#'   data = '{"type": "Point", "coordinates": [12.6, 56.0]}',
+#'   style = list(list(id = "point-dot", type = "circle"))
+#' )
+#' ref <- rb_map_group("ref", "Reference", list(point), open = FALSE)
+#' ref$title
 rb_map_group <- function(id, title = id, layers, open = TRUE) {
   if (inherits(layers, "rb_map_layer")) {
     layers <- list(layers)
@@ -559,9 +600,20 @@ rb_map_basemaps <- function() {
 #' @return The page's address, invisibly.
 #' @export
 #' @examples
-#' \dontrun{
-#' rb_map_serve(m)
-#' rb_map_stop()
+#' # Opens a map in RStudio's Viewer (or a browser) when run by hand, e.g. by example(rb_map_serve)
+#' if (interactive()) {
+#'   harbours <- rb_map_layer(
+#'     "harbours", "vector", label = "Harbours",
+#'     tiles = rb_map_tiles_table(rb_read_example("dansk_harbours"), properties = "SI_HARB"),
+#'     style = list(list(id = "harbours-fill", type = "fill", "source-layer" = "features",
+#'                       paint = list("fill-color" = "#d9822b"))),
+#'     popup = list(click = "harbours-fill", title = "SI_HARB")
+#'   )
+#'   m <- rb_map(rb_map_group("ref", "Reference", list(harbours)),
+#'               title = "Danish harbours", view = list(center = c(10.5, 56), zoom = 7))
+#'   rb_map_serve(m)
+#'   # rb_map_serve(m, query = list(base = "ocean")) # again, opening on the ocean base map; it replaces the first
+#'   # rb_map_stop()                                 # when done
 #' }
 rb_map_serve <- function(
   map,

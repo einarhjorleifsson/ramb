@@ -21,3 +21,12 @@ An \code{rb_map_group}, for \code{\link[=rb_map]{rb_map()}}.
 \description{
 A group of layers in a map's sidebar
 }
+\examples{
+point <- rb_map_layer(
+  "point", "geojson", label = "A point",
+  data = '{"type": "Point", "coordinates": [12.6, 56.0]}',
+  style = list(list(id = "point-dot", type = "circle"))
+)
+ref <- rb_map_group("ref", "Reference", list(point), open = FALSE)
+ref$title
+}

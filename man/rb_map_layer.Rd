@@ -95,6 +95,40 @@ Texts (\code{label}, \code{info}, a filter's \code{label}, a legend's \code{labe
 the text itself where no key matches. MapLibre styles and expressions are lists, so that a one-element array stays
 an array in JSON: \code{list("get", "kind")}, \code{list("zoom")}; read from JSON with \code{jsonlite::fromJSON(simplifyVector = FALSE)} they already are.
 }
+\examples{
+# A vector layer: the harbours as areas, a click shows the harbour's id
+\donttest{
+harbours <- rb_map_layer(
+  "harbours", "vector", label = "Harbours",
+  tiles = rb_map_tiles_table(rb_read_example("dansk_harbours"), properties = "SI_HARB"),
+  style = list(list(id = "harbours-fill", type = "fill", "source-layer" = "features",
+                    paint = list("fill-color" = "#d9822b"))),
+  popup = list(click = "harbours-fill", title = "SI_HARB")
+)
+}
+
+# A grid: its tile function is given the filters' values in `params`. This one returns an empty tile; a real one
+# returns DuckDB's ST_AsMVT() of the cells (see the "Maps in RStudio" article).
+cells <- rb_map_layer(
+  "cells", "grid", label = "Pings by cell",
+  tiles = function(z, x, y, params) raw(0),
+  filters = list(
+    list(id = "behaviour", label = "Behaviour",
+         options = list(list(value = "", label = "all"), list(value = "Fishing", label = "fishing"))),
+    list(id = "metric", type = "metric", label = "Metric")
+  ),
+  metrics = list(list(field = "n", label = "pings"))
+)
+
+# A geojson layer: features sent whole, here one point
+point <- rb_map_layer(
+  "point", "geojson", label = "A point",
+  data = '{"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {},
+           "geometry": {"type": "Point", "coordinates": [12.6, 56.0]}}]}',
+  style = list(list(id = "point-dot", type = "circle", paint = list("circle-color" = "#c0392b")))
+)
+names(cells$config)
+}
 \seealso{
 \code{\link[=rb_map]{rb_map()}}, \code{\link[=rb_map_tiles_table]{rb_map_tiles_table()}}
 }

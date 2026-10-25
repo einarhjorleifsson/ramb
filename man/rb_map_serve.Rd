@@ -33,8 +33,19 @@ and opens the page. It answers while the console is idle: a map waits while R ru
 \code{rb_map_stop()} stops it. A grid's \code{meta} and a geojson layer's \code{data} are read once, when the server starts.
 }
 \examples{
-\dontrun{
-rb_map_serve(m)
-rb_map_stop()
+# Opens a map in RStudio's Viewer (or a browser) when run by hand, e.g. by example(rb_map_serve)
+if (interactive()) {
+  harbours <- rb_map_layer(
+    "harbours", "vector", label = "Harbours",
+    tiles = rb_map_tiles_table(rb_read_example("dansk_harbours"), properties = "SI_HARB"),
+    style = list(list(id = "harbours-fill", type = "fill", "source-layer" = "features",
+                      paint = list("fill-color" = "#d9822b"))),
+    popup = list(click = "harbours-fill", title = "SI_HARB")
+  )
+  m <- rb_map(rb_map_group("ref", "Reference", list(harbours)),
+              title = "Danish harbours", view = list(center = c(10.5, 56), zoom = 7))
+  rb_map_serve(m)
+  # rb_map_serve(m, query = list(base = "ocean")) # again, opening on the ocean base map; it replaces the first
+  # rb_map_stop()                                 # when done
 }
 }
