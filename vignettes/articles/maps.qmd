@@ -33,23 +33,26 @@ are; the chunks that serve a map open it in the Viewer pane.
 ## The quick look
 
 To see pings at once, pipe them into
-[rb_map_track()](../reference/rb_map_track.html). It draws them as points
-coloured by a column (speed by default), on a dark base map, with each
-vessel's track as a line under them if asked, and opens the map in the
-Viewer as soon as it is made:
+[rb_map_pings()](../reference/rb_map_pings.html), which draws them as
+points coloured by a column (speed by default) on a dark base map, and
+[rb_map_track()](../reference/rb_map_pings.html), which joins them into
+each vessel's track. Each adds its layer to the map piped into it, and
+the map opens in the Viewer when printed, so a chain shows once, at its
+end:
 
 ```{r}
 #| eval: false
 rb_read_example("dansk") |>
-  rb_map_track(time = "time_stamp")
+  rb_map_pings(time = "time_stamp")
 rb_read_example("dansk") |>
-  rb_map_track(behaviour, time = "time_stamp", path = TRUE, by = vessel_id)
+  rb_map_track(behaviour, time = "time_stamp", by = vessel_id) |>
+  rb_map_pings(c(behaviour, speed))
 ```
 
-Given several columns, `c(speed, course, behaviour)`, the page offers
-them under *Colour by*, and a choice recolours the points at once. A call
-replaces the map before it. The rest of this article builds maps layer by
-layer, for when the quick look is not enough.
+The second map's line is cut into runs of `behaviour` and coloured by it,
+and its points can be coloured by either column, chosen under *Colour by*.
+A map printed replaces the one before it. The rest of this article builds
+maps layer by layer, for when the quick look is not enough.
 
 ## A first map
 

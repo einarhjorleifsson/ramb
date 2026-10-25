@@ -1,3 +1,18 @@
+# ramb 2026.10.25.4
+
+- `rb_map_pings()` (new) and `rb_map_track()` (changed): the quick look as layers that compose,
+  `pings |> rb_map_track() |> rb_map_pings()`. Given pings, each starts a map; given a map from either, it adds its
+  layer over the earlier ones, from the map's pings and settings (`lon`, `lat`, `time`, `by`) unless `data` gives
+  others. `rb_map_pings()` draws the points, coloured by one column or chosen among several ("Colour by");
+  `rb_map_track()` draws each vessel's line, one colour or coloured by runs of a column. `rb_map_track()`'s points and
+  its `path`, `serve` arguments of 2026.10.25.2-.3 are gone: the points are `rb_map_pings()`'s, the line's column its
+  `col`.
+- `print()` of an `rb_map` serves it at an interactive console (on the port its first layer function set, else 8790)
+  and prints its title and layers elsewhere; a chain is shown once, at its end.
+- `rb_map_serve()` and `rb_map_stop()` drop the temporary tables of the map they replace or stop, unless a map on
+  another port uses them; `rb_map_tiles_table()`'s tile function makes its table again if it was dropped, so a map
+  shown again still draws.
+
 # ramb 2026.10.25.3
 
 - `rb_map_track()`: `path` may name a column, such as `fishing_flow`: the line is cut into runs of equal value as well

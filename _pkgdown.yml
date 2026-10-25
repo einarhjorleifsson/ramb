@@ -101,13 +101,14 @@ reference:
   - rb_plot_trip
 - title: "Tools: maps"
   contents:
-  - rb_map_track
+  - rb_map_pings
   - rb_map
   - rb_map_group
   - rb_map_layer
   - rb_map_tiles_table
   - rb_map_serve
   - rb_map_palettes
+  - print.rb_map
 - title: "MFRI-only readers"
   contents:
   - rb_read_logbook_mfri

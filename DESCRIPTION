@@ -1,7 +1,7 @@
 Package: ramb
 Type: Package
 Title: Vessel Track Tools and the ICES Fishing-Activity Flow
-Version: 2026.10.25.3
+Version: 2026.10.25.4
 Authors@R: c(
   person("Einar", "Hjörleifsson", role = c("aut", "cre"), email = "einar.hjorleifsson@gmail.com"),
   person("Charles", "Karney", role = "ctb", comment = "GeographicLib-C geodesic.c/h, vendored unchanged in src/ (MIT/X11); see inst/COPYRIGHTS")
