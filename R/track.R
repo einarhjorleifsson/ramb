@@ -467,13 +467,14 @@ rb_number_runs <- function(x) {
 #' @param d A (grouped) data frame with `time`, `speed`, `dist`, `dura` and,
 #'   for the counts, `voyage_id` (from [rb_add_voyages()]) and `port_id`.
 #'
-#' @return A tibble with one row per group: `pings`, `t_min`, `t_max`,
+#' @return One row per group: `pings`, `t_min`, `t_max`,
 #'   `s_min`, `s_med`, `s_max`, `di_min`, `di_med`, `di_max`, `du_min`,
-#'   `du_med`, `du_max`, `n_voyages` and `n_ports`.
+#'   `du_med`, `du_max`, `n_voyages` and `n_ports`. In the construct of `d`;
+#'   a grouped `d` comes back as [dplyr::summarise()] gives it.
 #' @export
 #'
 rb_summarise_track <- function(d) {
-  d |>
+  out <- d |>
     dplyr::summarise(
       pings = dplyr::n(),
       t_min = min(time),
@@ -490,6 +491,8 @@ rb_summarise_track <- function(d) {
       n_voyages = dplyr::n_distinct(voyage_id, na.rm = TRUE),
       n_ports = dplyr::n_distinct(port_id, na.rm = TRUE)
     )
+  # a grouped table comes back as summarise() gives it, one grouping fewer
+  if (dplyr::is_grouped_df(d)) out else .rb_as_given(out, d)
 }
 
 #' Convert speed between knots and metres per second

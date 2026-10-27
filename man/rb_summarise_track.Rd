@@ -11,9 +11,10 @@ rb_summarise_track(d)
 for the counts, \code{voyage_id} (from \code{\link[=rb_add_voyages]{rb_add_voyages()}}) and \code{port_id}.}
 }
 \value{
-A tibble with one row per group: \code{pings}, \code{t_min}, \code{t_max},
+One row per group: \code{pings}, \code{t_min}, \code{t_max},
 \code{s_min}, \code{s_med}, \code{s_max}, \code{di_min}, \code{di_med}, \code{di_max}, \code{du_min},
-\code{du_med}, \code{du_max}, \code{n_voyages} and \code{n_ports}.
+\code{du_med}, \code{du_max}, \code{n_voyages} and \code{n_ports}. In the construct of \code{d};
+a grouped \code{d} comes back as \code{\link[dplyr:summarise]{dplyr::summarise()}} gives it.
 }
 \description{
 A one-row summary per group of a track table: the number of pings, the

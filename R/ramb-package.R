@@ -25,5 +25,14 @@
 #'
 #' A method is never part of a name; it is the \code{method} argument. A grouping is never part of
 #' a method; it is the \code{by} argument.
+#'
+#' @section What comes back:
+#' A function that takes a table returns the construct it was given: a data frame, a tibble, a data.table, an sf
+#' object or a lazy DuckDB table, with the rows in the order they came in (a method that needs time order sorts
+#' inside and puts them back). A table of its own (port calls, voyages, links, a summary) comes in the same
+#' construct, in an order of its own that does not depend on the input's; made from sf pings, it has no point
+#' geometry and comes as the sf object's data frame or tibble. No function changes the session: options,
+#' \code{sf::sf_use_s2()}, the random seed, the working directory and the global environment are left as they
+#' were, on error too (the maintainer, 2026-10-27).
 #' @keywords internal
 "_PACKAGE"

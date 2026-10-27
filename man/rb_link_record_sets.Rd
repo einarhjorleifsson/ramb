@@ -52,7 +52,10 @@ data frame for data frame input, a lazy table for lazy input.
 \description{
 A step-2 builder for static gear (nets, pots, longlines), where the logbook often records only the haul. The
 haul traces the gear's line; the set is the vessel's latest earlier pass along that line. Recoded from the
-method of Ifremer's iapesca (\code{Retrieve_SettingOperations}; fishycode decision 078), not copied:
+method of Ifremer's iapesca (\code{Retrieve_SettingOperations}; fishycode decision 078), not copied, as version 0.1
+of 2022 had it (\url{https://github.com/JulRodrigu/r-packages_iapesca}, since deprecated). The package lives at
+\url{https://gitlab.ifremer.fr/iapesca/r-packages_iapesca}, and its version 1.3 looks back 1 to 240 hours over up to
+11 trips and scores a pass by its length along the line, capped at the net's length (fishycode decision 232):
 }
 \details{
 \itemize{

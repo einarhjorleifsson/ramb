@@ -65,6 +65,11 @@ rb_add_catch_units <- function(
   )
   lazy_in <- inherits(events, "tbl_lazy")
   con <- .rb_con_for(events)
+  .rb_scope()
+  given <- events
+  if (!lazy_in) {
+    events <- .rb_with_rid(events)
+  }
   q <- function(x) if (length(x) == 0) character(0) else .rb_q(con, x)
   e_sql <- .rb_in_sql(events, con)
   part <- paste(c(q(vid), q("level"), q(match_by)), collapse = ", ")
@@ -124,7 +129,14 @@ rb_add_catch_units <- function(
   SELECT u.* EXCLUDE (rb_island, rb_u), dense_rank() OVER (ORDER BY u.rb_u) AS unit_id, n.n_events
   FROM u JOIN n ON n.rb_u = u.rb_u"
   )
-  .rb_out(con, sql, lazy_in, by = c("unit_id", start))
+  .rb_out(
+    con,
+    sql,
+    lazy_in,
+    by = c("unit_id", start),
+    given = given,
+    rid = ".rb_rid"
+  )
 }
 
 # Connected components of an undirected edge list (i, j): each node gets the smallest node of its component.
@@ -218,7 +230,8 @@ rb_share_catch <- function(
 ) {
   method <- match.arg(method)
   if (method == "eflalo") {
-    return(.rb_share_catch_eflalo(pings, units, ...))
+    out <- .rb_share_catch_eflalo(.rb_with_rid(pings), units, ...)
+    return(.rb_as_given(out, pings, ".rb_rid"))
   }
   .rb_check_input(
     pings,
@@ -252,6 +265,7 @@ rb_share_catch <- function(
   .rb_need_cols(catch, "catch", c(key, species, kg, value))
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
+  .rb_scope()
   q <- function(x) if (length(x) == 0) character(0) else .rb_q(con, x)
   p_sql <- .rb_in_sql(pings, con)
   u_sql <- .rb_in_sql(units, con)
@@ -435,7 +449,13 @@ rb_share_catch <- function(
          al.catch_basis, '{fishing}' AS approach
   FROM al LEFT JOIN uu o ON o.unit_id = al.origin LEFT JOIN uu t ON t.unit_id = al.tgt"
   )
-  .rb_out(con, sql, lazy_in, by = c(vid, time, "unit_id"))
+  .rb_out(
+    con,
+    sql,
+    lazy_in,
+    by = c(vid, time, "unit_id", species),
+    given = pings
+  )
 }
 
 # Stop with a clear message when a table other than a step's main input lacks columns.

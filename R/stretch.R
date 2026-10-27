@@ -85,6 +85,7 @@ rb_create_record_stretches <- function(
   }
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
+  .rb_scope()
   p <- .rb_as_lazy(dplyr::select(pings, dplyr::all_of(need)), con)
   q <- function(x) .rb_q(con, x)
   port <- if (is.null(port_call)) {
@@ -178,9 +179,9 @@ SELECT vid, time, rb_s, rb_w, rb_lo, rb_hi FROM w WHERE NOT rb_port",
   rownames(out) <- NULL
   if (!lazy_in) {
     .rb_unregister(con)
-    return(tibble::as_tibble(out))
+    return(.rb_as_given(out, pings))
   }
-  dplyr::tbl(con, .rb_register(con, out, "rb_str_"))
+  .rb_hold(dplyr::tbl(con, .rb_register(con, out, "rb_str_")))
 }
 
 # One vessel's stretches, times as seconds. tt, s, w, lo, hi: the vessel's pings at sea with a speed, in time
@@ -351,6 +352,7 @@ rb_link_record_stretches <- function(
   stopifnot(is.numeric(slack_s), length(slack_s) == 1, slack_s >= 0)
   lazy_in <- inherits(records, "tbl_lazy")
   con <- .rb_con_for(records)
+  .rb_scope()
   r <- as.data.frame(dplyr::collect(dplyr::select(
     records,
     dplyr::all_of(unique(c(key, "vid", start, end)))
@@ -430,13 +432,14 @@ rb_link_record_stretches <- function(
   out$dt_end_s <- sb[pair] - rb
   out$n_candidates <- ncand
   out$stretch_lost <- is.na(pair) & ncand > 0
-  out <- out[order(out$vid, ra), ]
+  # the key breaks a tie in start, so the order never follows the input's
+  out <- out[do.call(order, c(list(out$vid, ra), unname(as.list(out[key])))), ]
   rownames(out) <- NULL
   if (!lazy_in) {
     .rb_unregister(con)
-    return(tibble::as_tibble(out))
+    return(.rb_as_given(out, records))
   }
-  dplyr::tbl(con, .rb_register(con, out, "rb_pair_"))
+  .rb_hold(dplyr::tbl(con, .rb_register(con, out, "rb_pair_")))
 }
 
 # The pairing in order with the most total score: a monotone alignment of rows (tows) with columns (stretches),

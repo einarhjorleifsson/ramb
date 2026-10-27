@@ -80,7 +80,9 @@ test_that("units: overlapping events of a level merge, a shared key joins window
     key = "id",
     match_by = "rect"
   ))
-  l <- l[order(l$unit_id, l$start), names(u)]
+  # the data frame comes back in the events' order, the lazy table in none: both by event
+  l <- l[order(l$id, l$start), names(u)]
+  u <- u[order(u$id, u$start), ]
   expect_equal(as.data.frame(l), as.data.frame(u), ignore_attr = TRUE)
 })
 

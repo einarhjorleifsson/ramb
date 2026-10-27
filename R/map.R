@@ -13,8 +13,7 @@
 
 .rb_map_engine <- 1L # the page's ENGINE: changed together
 .rb_maps <- new.env(parent = emptyenv()) # the servers rb_map_serve() started, by port
-.rb_tiles <- new.env(parent = emptyenv()) # the number of rb_map_tiles_table()'s last temporary table
-.rb_tiles$n <- 0L
+.rb_tiles <- new.env(parent = emptyenv())
 .rb_tiles$served <- list() # by port, the temporary tables (connection and name) of the map served there
 
 #' A layer of a map
@@ -850,6 +849,8 @@ rb_map_tiles_table <- function(
   points = NULL
 ) {
   con <- .rb_con_for(x)
+  # a data frame registered here is the tile function's for the session (it remakes its table from it)
+  .rb_scope()
   tryCatch(DBI::dbExecute(con, "LOAD spatial"), error = function(e) {
     DBI::dbExecute(con, "INSTALL spatial; LOAD spatial")
   })
@@ -870,13 +871,7 @@ rb_map_tiles_table <- function(
     }
   }
   props <- vapply(properties, function(p) as.character(q(p)), "")
-  # numbered, not named from R's random numbers: those repeat after set.seed(), and drawing them moves the user's
-  # stream; a name a table already has (after the package is loaded again) is skipped
-  repeat {
-    .rb_tiles$n <- .rb_tiles$n + 1L
-    nm <- paste0("rb_tiles_", .rb_tiles$n)
-    if (!DBI::dbExistsTable(con, nm)) break
-  }
+  nm <- .rb_name(con, "rb_tiles_")
   make <- function() {
     DBI::dbExecute(con, create)
   }
@@ -956,7 +951,7 @@ rb_map_tiles_table <- function(
   }
   attr(tile, "count") <- n
   attr(tile, "table") <- nm
-  tile
+  .rb_hold(tile)
 }
 
 # ST_AsMVT() takes VARCHAR, FLOAT, DOUBLE, INTEGER, BIGINT and BOOLEAN properties and refuses every other type: an R
@@ -1062,6 +1057,8 @@ rb_map_pings <- function(
   title = "Track",
   port = 8790L
 ) {
+  # a data frame registered for the map stays with the map; one registered by a call that fails is released
+  .rb_scope()
   s <- .rb_quick(
     x,
     data,
@@ -1210,7 +1207,11 @@ rb_map_pings <- function(
     variants = variants,
     popup = list(click = dot, title = .rb_or(ctx$time, col[1]), fields = fields)
   )
-  .rb_quick_map(s, layer, list(con = con, name = attr(tiles, "table")))
+  .rb_hold(.rb_quick_map(
+    s,
+    layer,
+    list(con = con, name = attr(tiles, "table"))
+  ))
 }
 
 #' @rdname rb_map_pings
@@ -1230,6 +1231,8 @@ rb_map_track <- function(
   title = "Track",
   port = 8790L
 ) {
+  # as rb_map_pings(): the frames of a call that fails are released
+  .rb_scope()
   s <- .rb_quick(
     x,
     data,
@@ -1426,7 +1429,11 @@ rb_map_track <- function(
       )
     )
   )
-  .rb_quick_map(s, layer, list(con = con, name = attr(tiles, "table")))
+  .rb_hold(.rb_quick_map(
+    s,
+    layer,
+    list(con = con, name = attr(tiles, "table"))
+  ))
 }
 
 #' Show a map

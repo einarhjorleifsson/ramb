@@ -38,7 +38,8 @@ landing date may be) and \code{port} (whether the ports must agree), in the orde
 }
 \value{
 One row per link: the trip key, the landing key, \code{vid}, \code{match_type}, \code{dt_days} (the landing date minus
-the trip's end date), \code{n_trips} (trips on the landing) and \code{n_landings} (landings on the trip). A data frame.
+the trip's end date), \code{n_trips} (trips on the landing) and \code{n_landings} (landings on the trip). In the
+construct of \code{trips}; a lazy table for lazy \code{trips}.
 }
 \description{
 A step-1 builder: which landing (a sales note, a landing declaration) belongs to which trip. The trips can be

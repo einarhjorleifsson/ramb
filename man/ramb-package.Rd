@@ -6,7 +6,7 @@
 \alias{ramb-package}
 \title{ramb: Vessel Track Tools and the ICES Fishing-Activity Flow}
 \description{
-Tools for vessel-track (AIS/VMS) data and the steps of the ICES fishing-activity flow (WGSFD): flagging pings, creating port calls and voyages, building record windows, and gear, effort and catch handling. Everything returns tibbles for downstream tidyverse processing, and data frames and lazy DuckDB tables give the same result.
+Tools for vessel-track (AIS/VMS) data and the steps of the ICES fishing-activity flow (WGSFD): flagging pings, creating port calls and voyages, building record windows, and gear, effort and catch handling. A function returns the construct it is given (a data frame, tibble, data.table, sf object or lazy DuckDB table) with the rows in the order they came in, and data frames and lazy DuckDB tables give the same result.
 }
 \section{Naming}{
 
@@ -29,6 +29,17 @@ these pair up: \code{detect} returns a logical vector, \code{check} inspects a t
 
 A method is never part of a name; it is the \code{method} argument. A grouping is never part of
 a method; it is the \code{by} argument.
+}
+
+\section{What comes back}{
+
+A function that takes a table returns the construct it was given: a data frame, a tibble, a data.table, an sf
+object or a lazy DuckDB table, with the rows in the order they came in (a method that needs time order sorts
+inside and puts them back). A table of its own (port calls, voyages, links, a summary) comes in the same
+construct, in an order of its own that does not depend on the input's; made from sf pings, it has no point
+geometry and comes as the sf object's data frame or tibble. No function changes the session: options,
+\code{sf::sf_use_s2()}, the random seed, the working directory and the global environment are left as they
+were, on error too (the maintainer, 2026-10-27).
 }
 
 \seealso{

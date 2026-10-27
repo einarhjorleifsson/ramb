@@ -431,9 +431,14 @@ rb_flag_ping_port <- function(pings, ports, keep = NULL, lon = lon, lat = lat) {
   map <- .rb_cols(lon = {{ lon }}, lat = {{ lat }})
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
+  .rb_scope()
   tryCatch(DBI::dbExecute(con, "LOAD spatial"), error = function(e) {
     DBI::dbExecute(con, "INSTALL spatial; LOAD spatial")
   })
+  given <- pings
+  if (!lazy_in) {
+    pings <- .rb_with_rid(pings)
+  }
   p <- .rb_as_lazy(.rb_std_in(pings, map), con)
   hb <- sf::st_transform(ports, 4326)
   # WKB keeps the coordinates bit for bit; area (in degrees) only ranks two polygons that hold one ping
@@ -461,9 +466,9 @@ SELECT * EXCLUDE (rb_rid) FROM j",
   )
   out <- .rb_std_out(dplyr::tbl(con, dplyr::sql(sql)), map)
   if (lazy_in) {
-    return(out)
+    return(.rb_hold(out))
   }
-  out <- as.data.frame(dplyr::collect(out))
+  out <- dplyr::collect(out)
   .rb_unregister(con)
-  out
+  .rb_as_given(out, given, ".rb_rid")
 }

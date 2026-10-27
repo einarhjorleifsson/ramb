@@ -1,3 +1,52 @@
+# ramb 2026.10.27
+
+The maintainer's two rules for every function (2026-10-27), now in `AGENTS.md` and the package help ("What comes
+back"): a function that takes a table returns the construct it was given, rows in the order they came in; and it
+leaves the caller's session as it found it, on error too. `tests/testthat/test-etiquette.R` checks both over every
+exported function that takes a table (data.frame, tibble and data.table input with its rows shuffled, sf and lazy
+tables where taken), and the session alone over the vector tools, `rb_read_example()` and the map viewer.
+
+Breaking, for code that relied on the old class or order:
+
+- Functions that add columns now give the rows back in the order they came in and in the input's class (a
+  data.frame stays a data.frame, a tibble a tibble, a data.table a data.table, sf sf): `rb_flag_ping_port()`,
+  `rb_add_voyages()`, `rb_add_trip_time()`, `rb_add_record()`, `rb_add_fishing()`, `rb_add_effort()`,
+  `rb_add_catch_units()`, `rb_share_catch(method = "eflalo")` and `rb_cap_effort()`. Before, they sorted the rows by
+  vessel and time (or vessel and `t1`), and returned a tibble for a data.frame or a data.frame for a tibble. The
+  rows are numbered on the way in and put back by that number, in place of the sort by vessel and time: on 4.0
+  million Danish pings, `rb_add_fishing()` took 0.24 s (0.21 s before) and `rb_add_effort()` 0.42 s (as before),
+  and `rb_flag_ping_port()` on 0.4 million pings and 942 harbours 0.14 s (0.12 s). A lazy table is not reordered.
+- Functions that make a table of their own return it in the input's construct: `rb_create_port_calls()`,
+  `rb_create_voyages()` (before, a tibble from `"dwell"` and `"runs"`, a data.frame from `"jepol"`, `"cnr"` and
+  `"iapesca"`, whatever came in), `rb_link_trip_voyages()`, `rb_link_trip_landings()`, `rb_create_record_windows()`,
+  `rb_link_record_pings()`, `rb_link_record_events()`, `rb_create_record_pings()`, `rb_link_record_sets()`,
+  `rb_create_record_stretches()`, `rb_link_record_stretches()`, `rb_link_vessel_tracks()`, `rb_share_catch()` and
+  `rb_summarise_track()` (a data.table gave a data.frame). Made from sf pings, such a table has no point geometry and
+  comes as the sf object's data frame or tibble.
+- A table of its own no longer depends on the input's row order: `rb_link_trip_voyages()` sorts by vessel and trip
+  key (it came in an order that followed the input), `rb_link_record_stretches()` breaks a tie in start by the key,
+  and `rb_share_catch()` sorts the species within a ping and unit.
+- `rb_link_trip_landings()` gives a lazy table for lazy `trips` (it collected). `rb_add_trip_time()` follows
+  `trips` alone: trips in memory with lazy witnesses give a collected result (it was lazy).
+
+The session:
+
+- Tables on the DuckDB connection are named by number, not from `sample()`: a call on data frames moved the
+  caller's random stream, and in a fresh session created `.Random.seed` in the global environment.
+  `rb_limit_record_duration()` on a lazy table registers its limits instead of `copy_to()`, which drew too.
+- `rb_read_example()` reads its parquet with a query, not through `duckdbfs::open_dataset()`, which named a view
+  from R's random numbers and left it on the connection.
+- Data frames registered for a call, and its temporary tables, belong to that call: released when it returns or
+  fails, unless its lazy result reads them, which then keeps them. Before, a call on data frames released every
+  registered frame, so a lazy result made earlier that reads a table given in memory (`rb_flag_ping_port()`'s
+  ports, `rb_add_voyages()`'s voyages, `rb_add_record()`'s matches) could no longer be read after any later call; and a call that failed left its frames behind.
+  `rb_map_pings()`, `rb_map_track()` and `rb_map_tiles_table()` release theirs when they fail.
+
+Documentation: `rb_create_voyages(method = "iapesca")` and `rb_link_record_sets()` say that they follow iapesca 0.1
+(2022), the GitHub copy since deprecated, and that the package lives at
+<https://gitlab.ifremer.fr/iapesca/r-packages_iapesca> (version 1.3), with how its trip and set finders now differ.
+DESCRIPTION: data.table and withr in Suggests, for the tests.
+
 # ramb 2026.10.25.5
 
 - `rb_map_pings()`, `rb_map_track()`: grouped pings, `group_by(trip)` or `group_by(trip, gear)`, or `choose =`, give

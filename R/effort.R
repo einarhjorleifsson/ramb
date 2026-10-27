@@ -91,6 +91,11 @@ rb_add_effort <- function(
   )
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
+  .rb_scope()
+  given <- pings
+  if (!lazy_in) {
+    pings <- .rb_with_rid(pings)
+  }
   q <- function(x) .rb_q(con, x)
   p_sql <- .rb_in_sql(pings, con)
 
@@ -192,5 +197,5 @@ rb_add_effort <- function(
          CASE WHEN d.hours IS NULL THEN 'none' ELSE 'derived' END AS effort_basis
   FROM d"
   )
-  .rb_out(con, sql, lazy_in, by = c(vid, time))
+  .rb_out(con, sql, lazy_in, by = c(vid, time), given = given, rid = ".rb_rid")
 }

@@ -8,21 +8,27 @@
 
 .rb_q <- function(con, x) as.character(DBI::dbQuoteIdentifier(con, x))
 .rb_in_sql <- function(x, con) .rb_sql(.rb_as_lazy(x, con))
-.rb_out <- function(con, sql, lazy_in, by = NULL) {
+# The result of a call's query: lazy for lazy input, holding what the call registered; else collected, sorted by
+# `by`, and given back as `given` came in (.rb_as_given(); in its row order where `rid` numbers its rows).
+.rb_out <- function(con, sql, lazy_in, by = NULL, given = NULL, rid = NULL) {
   # wrapped, so the lazy result composes: dbplyr puts a query as it is after UNION ALL, where a bare WITH fails
   out <- dplyr::tbl(
     con,
     dplyr::sql(sprintf("SELECT * FROM (%s) AS rb_out", sql))
   )
   if (lazy_in) {
-    return(out)
+    return(.rb_hold(out))
   }
   out <- dplyr::collect(out)
   .rb_unregister(con)
-  if (!is.null(by)) {
+  # a row id puts the rows back in the input's order: the sort by `by` would be undone
+  if (!is.null(by) && is.null(rid)) {
     out <- out[do.call(base::order, unname(as.list(out[by]))), ]
   }
-  tibble::as_tibble(out)
+  if (is.null(given)) {
+    return(tibble::as_tibble(out))
+  }
+  .rb_as_given(out, given, rid)
 }
 
 #' Judge logbook durations against a limit per gear
@@ -55,15 +61,13 @@ rb_limit_record_duration <- function(
     .keep_all = TRUE
   )
   if (inherits(records, "tbl_lazy")) {
-    lim <- dplyr::copy_to(
-      dbplyr::remote_con(records),
-      lim,
-      name = paste0("rb_lim_", sample(1e9, 1)),
-      overwrite = TRUE
-    )
+    # registered, not copy_to(), which draws from R's random numbers; held for the lazy result
+    .rb_scope()
+    con <- dbplyr::remote_con(records)
+    lim <- dplyr::tbl(con, .rb_register(con, lim, "rb_lim_"))
   }
   raw <- paste0(d, "_raw")
-  records |>
+  out <- records |>
     dplyr::left_join(lim, by = g) |>
     dplyr::mutate(
       !!raw := .data[[d]],
@@ -79,6 +83,7 @@ rb_limit_record_duration <- function(
       )
     ) |>
     dplyr::select(-dur_max_min)
+  if (inherits(records, "tbl_lazy")) .rb_hold(out) else out
 }
 
 #' Create the time windows in which a vessel is busy with each logbook record
@@ -139,6 +144,7 @@ rb_create_record_windows <- function(
   }
   lazy_in <- inherits(records, "tbl_lazy")
   con <- .rb_con_for(records)
+  .rb_scope()
   in_sql <- .rb_in_sql(records, con)
   k <- .rb_q(con, key)
   k_desc <- paste(k, "DESC", collapse = ", ")
@@ -231,7 +237,7 @@ rb_create_record_windows <- function(
               CASE WHEN r.t3 IS NOT NULL THEN 't3' END, CASE WHEN r.t4 IS NOT NULL THEN 't4' END) AS events
   FROM win r"
   )
-  .rb_out(con, sql, lazy_in, by = c("vid", "w_start"))
+  .rb_out(con, sql, lazy_in, by = c("vid", "w_start"), given = records)
 }
 
 #' Link pings to every logbook record window that holds them
@@ -279,6 +285,7 @@ rb_link_record_pings <- function(
   )
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
+  .rb_scope()
   p_sql <- .rb_in_sql(
     dplyr::select(pings, dplyr::all_of(c("vid", "time", speed))),
     con
@@ -323,7 +330,7 @@ rb_link_record_pings <- function(
          (phase NOT IN ({lst(not_fishing)}) AND rb_speed BETWEEN {q(speed_min)} AND {q(speed_max)}) AS fishing
   FROM m"
   )
-  .rb_out(con, sql, lazy_in, by = c("vid", "time"))
+  .rb_out(con, sql, lazy_in, by = c("vid", "time"), given = pings)
 }
 
 #' Link each recorded event time to the ping that bounds its phase
@@ -387,6 +394,7 @@ rb_link_record_events <- function(
   stopifnot(is.numeric(max_dt_s), length(max_dt_s) == 1, max_dt_s >= 0)
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
+  .rb_scope()
   p_sql <- .rb_in_sql(
     dplyr::select(pings, dplyr::all_of(c("vid", "time"))),
     con
@@ -451,7 +459,13 @@ rb_link_record_events <- function(
          (e.rb_fix IS NOT NULL AND k.vid IS NULL) AS ping_lost
   FROM e LEFT JOIN k ON {k_eq} AND k.vid = e.vid AND k.rb_phase = e.rb_phase AND k.rb_fix = e.rb_fix"
   )
-  .rb_out(con, sql, lazy_in, by = c("vid", "event_time", "event"))
+  .rb_out(
+    con,
+    sql,
+    lazy_in,
+    by = c("vid", "event_time", "event"),
+    given = pings
+  )
 }
 
 #' Add the logbook record to each ping
@@ -474,6 +488,11 @@ rb_add_record <- function(
   .rb_check_input(pings, "rb_add_record", types = c(time = "time"))
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
+  .rb_scope()
+  given <- pings
+  if (!lazy_in) {
+    pings <- .rb_with_rid(pings)
+  }
   p_sql <- .rb_in_sql(pings, con)
   m_sql <- .rb_in_sql(matches, con)
   q <- function(x) .rb_q(con, x)
@@ -493,7 +512,14 @@ rb_add_record <- function(
          {one}
   FROM ({p_sql}) p LEFT JOIN a ON a.vid = p.vid AND a.time = p.time"
   )
-  .rb_out(con, sql, lazy_in, by = c("vid", "time"))
+  .rb_out(
+    con,
+    sql,
+    lazy_in,
+    by = c("vid", "time"),
+    given = given,
+    rid = ".rb_rid"
+  )
 }
 
 #' Decide whether each ping is fishing
@@ -571,6 +597,11 @@ rb_add_fishing <- function(
   }
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
+  .rb_scope()
+  given <- pings
+  if (!lazy_in) {
+    pings <- .rb_with_rid(pings)
+  }
   p_sql <- .rb_in_sql(pings, con)
   q <- function(x) .rb_q(con, x)
   sp <- q(speed)
@@ -663,7 +694,14 @@ rb_add_fishing <- function(
     ps_sql,
     a_sql
   )
-  .rb_out(con, sql, lazy_in, by = c("vid", "time"))
+  .rb_out(
+    con,
+    sql,
+    lazy_in,
+    by = c("vid", "time"),
+    given = given,
+    rid = ".rb_rid"
+  )
 }
 
 #' Create positions for records that have no pings
@@ -721,6 +759,7 @@ rb_create_record_pings <- function(
   }
   lazy_in <- inherits(records, "tbl_lazy")
   con <- .rb_con_for(records)
+  .rb_scope()
   q <- function(x) .rb_q(con, x)
   r_sql <- .rb_in_sql(records, con)
   has_end <- all(c(lon2, lat2) %in% have)
@@ -749,7 +788,7 @@ rb_create_record_pings <- function(
          'synthesised' AS pos_basis
   FROM f"
   )
-  .rb_out(con, sql, lazy_in, by = c(vid, "time"))
+  .rb_out(con, sql, lazy_in, by = c(vid, "time"), given = records)
 }
 
 # The haversine distance (metres) as DuckDB SQL, on the sphere of rb_calc_distance(method = "haversine"): one more
@@ -776,7 +815,10 @@ rb_create_record_pings <- function(
 #'
 #' A step-2 builder for static gear (nets, pots, longlines), where the logbook often records only the haul. The
 #' haul traces the gear's line; the set is the vessel's latest earlier pass along that line. Recoded from the
-#' method of Ifremer's iapesca (`Retrieve_SettingOperations`; fishycode decision 078), not copied:
+#' method of Ifremer's iapesca (`Retrieve_SettingOperations`; fishycode decision 078), not copied, as version 0.1
+#' of 2022 had it (<https://github.com/JulRodrigu/r-packages_iapesca>, since deprecated). The package lives at
+#' <https://gitlab.ifremer.fr/iapesca/r-packages_iapesca>, and its version 1.3 looks back 1 to 240 hours over up to
+#' 11 trips and scores a pass by its length along the line, capped at the net's length (fishycode decision 232):
 #'
 #' * the haul's line comes from `method`: the haul's own pings as points (`"pings"`), the haul's pings joined into
 #'   a line (`"line"`, two pings or more), or the haul's declared start and end positions joined into a line
@@ -872,6 +914,7 @@ rb_link_record_sets <- function(
   .rb_need_cols(pings, "pings", c("vid", "time", "lon", "lat"))
   lazy_in <- inherits(hauls, "tbl_lazy")
   con <- .rb_con_for(hauls, pings)
+  .rb_scope()
   q <- function(x) .rb_q(con, x)
   h_sql <- .rb_in_sql(hauls, con)
   p_sql <- .rb_in_sql(pings, con)
@@ -987,5 +1030,5 @@ rb_link_record_sets <- function(
          CASE WHEN best.s0 IS NULL THEN 'none' ELSE 'reconstructed' END AS set_basis, h.set_method
   FROM hm h LEFT JOIN best ON {on_k('best', 'h')}"
   )
-  .rb_out(con, sql, lazy_in, by = c("vid", key))
+  .rb_out(con, sql, lazy_in, by = c("vid", key), given = hauls)
 }

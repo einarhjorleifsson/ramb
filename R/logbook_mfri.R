@@ -81,6 +81,9 @@ rb_read_logbook_mfri <- function(con, vids, years) {
 #' @return `lb` with `effort` and `t2` adjusted; the same rows.
 #' @export
 rb_cap_effort <- function(lb) {
+  # sorted by vessel and t1 for the overlaps, then put back in the order the records came in
+  given <- lb
+  lb <- .rb_with_rid(lb)
   median.effort <-
     lb |>
     dplyr::group_by(gid) |>
@@ -125,7 +128,7 @@ rb_cap_effort <- function(lb) {
     dplyr::ungroup() |>
     dplyr::select(-t22)
 
-  return(lb)
+  .rb_as_given(lb, given, ".rb_rid")
 }
 
 #' Standardise logbook mesh sizes

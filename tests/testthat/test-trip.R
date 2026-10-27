@@ -590,6 +590,10 @@ test_that("trips to landings: a cascade of unambiguous steps, then many trips to
     port_landing = "port",
     since_previous_days = 3
   )
+  # lazy trips give a lazy result, in no order
+  expect_s3_class(l, "tbl_lazy")
+  l <- dplyr::collect(l)
+  l <- l[order(l$vid, l$tid), ]
   expect_equal(as.data.frame(l), as.data.frame(s), ignore_attr = TRUE)
 })
 

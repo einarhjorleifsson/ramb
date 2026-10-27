@@ -10,8 +10,10 @@
 {ramb} provides tools for vessel-track (AIS/VMS) data and the steps of
 the ICES fishing-activity flow (WGSFD): flagging pings, creating port
 calls and voyages, building record windows, and gear, effort and catch
-handling. Everything returns tibbles for downstream tidyverse
-processing, and data frames and lazy DuckDB tables give the same result.
+handling. A function returns the construct it is given (a data frame,
+tibble, data.table, sf object or lazy DuckDB table) with the rows in the
+order they came in, and data frames and lazy DuckDB tables give the same
+result.
 
 The multibeam-bathymetry raster and rayshading functions that used to
 live here moved to the sister package {omb} (`../omb`, functions

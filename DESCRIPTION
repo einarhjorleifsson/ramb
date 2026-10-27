@@ -1,7 +1,7 @@
 Package: ramb
 Type: Package
 Title: Vessel Track Tools and the ICES Fishing-Activity Flow
-Version: 2026.10.25.5
+Version: 2026.10.27
 Authors@R: c(
   person("Einar", "Hjörleifsson", role = c("aut", "cre"), email = "einar.hjorleifsson@gmail.com"),
   person("Charles", "Karney", role = "ctb", comment = "GeographicLib-C geodesic.c/h, vendored unchanged in src/ (MIT/X11); see inst/COPYRIGHTS")
@@ -10,8 +10,10 @@ Maintainer: Einar Hjörleifsson <einar.hjorleifsson@gmail.com>
 Description: Tools for vessel-track (AIS/VMS) data and the steps of the ICES
     fishing-activity flow (WGSFD): flagging pings, creating port calls and
     voyages, building record windows, and gear, effort and catch handling.
-    Everything returns tibbles for downstream tidyverse processing, and data
-    frames and lazy DuckDB tables give the same result.
+    A function returns the construct it is given (a data frame, tibble,
+    data.table, sf object or lazy DuckDB table) with the rows in the order
+    they came in, and data frames and lazy DuckDB tables give the same
+    result.
 License: GPL (>= 3)
 URL: https://heima.hafro.is/~einarhj/ramb,
     https://github.com/einarhjorleifsson/ramb
@@ -36,6 +38,7 @@ Imports:
 LinkingTo:
     Rcpp
 Suggests:
+    data.table,
     icesVocab,
     ggplot2,
     httpuv,
@@ -52,6 +55,7 @@ Suggests:
     rstudioapi,
     s2,
     testthat (>= 3.0.0),
+    withr,
     yaml
 Config/roxygen2/version: 8.1.0
 Roxygen: list(markdown = TRUE)

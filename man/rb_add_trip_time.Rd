@@ -40,8 +40,8 @@ several rows for a trip, its earliest time counts.}
 \verb{_basis}, \verb{_day} (\code{TRUE} where the value is a date only), \verb{_n} (the witnesses that hold a time), \verb{_outcome}
 (\code{"none"}, \code{"one"}, \code{"agree"}, \code{"differ"}) and \verb{_spread_s} (the largest distance in seconds from the chosen time
 to another witness's, by date where either is a date only). For the place
-(\code{place_name}): the value, \verb{_from}, \verb{_basis}, \verb{_n} and \verb{_outcome}. A data frame for data frame input, a lazy
-table for lazy input.
+(\code{place_name}): the value, \verb{_from}, \verb{_basis}, \verb{_n} and \verb{_outcome}. In the construct of \code{trips}: a lazy table
+for lazy \code{trips}, collected for \code{trips} in memory whatever \code{witnesses} is.
 }
 \description{
 A step-1 reconciliation of the fishing-activity flow. Several sources witness the same moment of a trip, such as

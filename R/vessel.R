@@ -99,6 +99,7 @@ rb_link_vessel_tracks <- function(
   }
   lazy_in <- inherits(x, "tbl_lazy")
   con <- .rb_con_for(x, y, pairs)
+  .rb_scope()
   q <- function(v) .rb_q(con, v)
   x_sql <- .rb_in_sql(x, con)
   y_sql <- .rb_in_sql(y, con)
@@ -179,5 +180,5 @@ rb_link_vessel_tracks <- function(
          coalesce(opportunity >= {min_opportunity} AND score >= {min_score}, false) AS strong
   FROM ot"
   )
-  .rb_out(con, sql, lazy_in, by = c(out_x, "period", "rank"))
+  .rb_out(con, sql, lazy_in, by = c(out_x, "period", "rank"), given = x)
 }

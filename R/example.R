@@ -192,7 +192,16 @@ rb_read_example <- function(name = NULL) {
       call. = FALSE
     )
   }
-  x <- duckdbfs::open_dataset(f)
+  # a query, not duckdbfs::open_dataset(): that names a view from R's random numbers, which moves the caller's
+  # random stream, and leaves the view on the connection
+  con <- duckdbfs::cached_connection()
+  x <- dplyr::tbl(
+    con,
+    dplyr::sql(sprintf(
+      "SELECT * FROM read_parquet(%s)",
+      DBI::dbQuoteString(con, f)
+    ))
+  )
   if (lazy) x else dplyr::collect(x)
 }
 

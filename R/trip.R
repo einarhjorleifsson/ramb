@@ -20,11 +20,32 @@
   }
   cons[[1]]
 }
-# Data frames registered for one call. A call on data frames releases them once it has collected its
-# result: registered frames left behind in a loop accumulate (fishycode R/write_parquet.R).
+# A name for a table on `con`, numbered, not drawn from R's random numbers: a draw moves the caller's random
+# stream (the maintainer's rule, 2026-10-27), and names drawn after set.seed() repeat. A name the connection
+# already has (after the package is loaded again) is skipped.
+.rb_names <- new.env(parent = emptyenv())
+.rb_names$n <- 0L
+.rb_name <- function(con, prefix) {
+  repeat {
+    .rb_names$n <- .rb_names$n + 1L
+    nm <- paste0(prefix, .rb_names$n)
+    if (!DBI::dbExistsTable(con, nm)) {
+      return(nm)
+    }
+  }
+}
+# Data frames registered for one call, and the temporary tables it makes (.rb_temp_table()), belong to that call
+# (the maintainer's rule, 2026-10-27: a function leaves the caller's session as it found it, on error too). A
+# function that registers calls .rb_scope() first: when it exits, by return or by error, what it made is released,
+# unless it handed it to its lazy result with .rb_hold(), which then reads it for the rest of the session. A
+# release never touches what an earlier call made, so a lazy result made before stays readable. Registered frames
+# left behind in a loop accumulate (fishycode R/write_parquet.R).
 .rb_reg <- new.env(parent = emptyenv())
+.rb_tmp <- new.env(parent = emptyenv())
+.rb_scopes <- new.env(parent = emptyenv())
+.rb_scopes$stack <- list()
 .rb_register <- function(con, x, prefix = "rb_in_") {
-  nm <- paste0(prefix, paste(sample(c(letters, 0:9), 10, TRUE), collapse = ""))
+  nm <- .rb_name(con, prefix)
   x <- as.data.frame(x)
   # a date-time or date stored as integer (seq() makes them) registers as INTEGER, not as a time
   for (k in names(x)) {
@@ -33,33 +54,70 @@
     }
   }
   duckdb::duckdb_register(con, nm, x)
-  assign(nm, TRUE, envir = .rb_reg)
+  assign(nm, con, envir = .rb_reg)
   nm
 }
-.rb_unregister <- function(con) {
-  for (nm in ls(.rb_reg)) {
-    try(duckdb::duckdb_unregister(con, nm), silent = TRUE)
+.rb_made <- function() c(ls(.rb_reg), ls(.rb_tmp))
+# Open a scope in the calling function's frame; closed by an on.exit() placed there.
+.rb_scope <- function(env = parent.frame()) {
+  before <- .rb_made()
+  .rb_scopes$stack <- c(.rb_scopes$stack, list(before))
+  do.call(
+    base::on.exit,
+    list(substitute(.rb_close_scope(b), list(b = before)), add = TRUE),
+    envir = env
+  )
+  invisible()
+}
+.rb_close_scope <- function(before) {
+  .rb_release_since(before)
+  n <- length(.rb_scopes$stack)
+  if (n > 0) {
+    .rb_scopes$stack <- .rb_scopes$stack[-n]
+  }
+}
+# What the innermost open scope has made so far (everything, outside a scope).
+.rb_own <- function() {
+  n <- length(.rb_scopes$stack)
+  setdiff(.rb_made(), if (n > 0) .rb_scopes$stack[[n]])
+}
+# Release the frames and drop the temporary tables made since `before`.
+.rb_release_since <- function(before) {
+  for (nm in setdiff(ls(.rb_reg), before)) {
+    try(duckdb::duckdb_unregister(get(nm, envir = .rb_reg), nm), silent = TRUE)
     rm(list = nm, envir = .rb_reg)
   }
-  for (nm in ls(.rb_tmp)) {
+  for (nm in setdiff(ls(.rb_tmp), before)) {
     try(
-      DBI::dbExecute(con, sprintf("DROP TABLE IF EXISTS %s", nm)),
+      DBI::dbExecute(
+        get(nm, envir = .rb_tmp),
+        sprintf("DROP TABLE IF EXISTS %s", nm)
+      ),
       silent = TRUE
     )
     rm(list = nm, envir = .rb_tmp)
   }
 }
+# Release what the current call has made, once it has collected its result.
+.rb_unregister <- function(con) {
+  .rb_release_since(setdiff(.rb_made(), .rb_own()))
+}
+# Hand what the current call has made to its lazy result `out`: kept for the session, never released.
+.rb_hold <- function(out) {
+  # forced first: `out` may register the very table it reads
+  force(out)
+  own <- .rb_own()
+  rm(list = intersect(own, ls(.rb_reg)), envir = .rb_reg)
+  rm(list = intersect(own, ls(.rb_tmp)), envir = .rb_tmp)
+  out
+}
 # A query materialised once as a temporary table, where a function reads it twice and both reads must agree.
 # Dropped with the registered frames when the function collects its result; kept while a lazy result needs it.
-.rb_tmp <- new.env(parent = emptyenv())
 .rb_temp_table <- function(con, sql, keep = FALSE) {
-  nm <- paste0(
-    "rb_tmp_",
-    paste(sample(c(letters, 0:9), 10, TRUE), collapse = "")
-  )
+  nm <- .rb_name(con, "rb_tmp_")
   DBI::dbExecute(con, sprintf("CREATE TEMP TABLE %s AS %s", nm, sql))
   if (!keep) {
-    assign(nm, TRUE, envir = .rb_tmp)
+    assign(nm, con, envir = .rb_tmp)
   }
   nm
 }
@@ -173,6 +231,7 @@ rb_create_port_calls <- function(
   lat = lat
 ) {
   method <- match.arg(method)
+  .rb_scope()
   if (method != "dwell") {
     v <- rb_create_voyages(
       pings,
@@ -185,13 +244,14 @@ rb_create_port_calls <- function(
       lon = {{ lon }},
       lat = {{ lat }}
     )
-    return(.rb_calls_between(
+    out <- .rb_calls_between(
       v,
       inherits(pings, "tbl_lazy"),
       rlang::as_name(rlang::enquo(vid)),
       method,
       t_in_window
-    ))
+    )
+    return(.rb_as_given(out, pings))
   }
   if (...length() > 0) {
     stop(
@@ -468,11 +528,11 @@ FROM st",
   )
   if (lazy_in) {
     attr(out, "min_dwell_h") <- G
-    return(out)
+    return(.rb_hold(out))
   }
   out <- dplyr::collect(out)
   .rb_unregister(con)
-  out <- out[order(out[[map[["vid"]]]], out$T_in), ]
+  out <- .rb_as_given(out[order(out[[map[["vid"]]]], out$T_in), ], pings)
   attr(out, "min_dwell_h") <- G
   out
 }
@@ -539,7 +599,7 @@ FROM c",
   out <- dplyr::tbl(con, dplyr::sql(sql)) |>
     dplyr::rename(!!!stats::setNames(rlang::syms("vid"), vid_name))
   if (lazy_in) {
-    return(out)
+    return(.rb_hold(out))
   }
   out <- dplyr::collect(out)
   .rb_unregister(con)
@@ -633,8 +693,8 @@ SELECT *, %s AS rb_year FROM ps",
 #'   (`distance = "geodesic"`, the default, as the R code measured them; needs lwgeom) or on ramb's sphere
 #'   (`"sphere"`, needs s2), whatever [sf::sf_use_s2()] says; the port buffer and the coastal zone are
 #'   tested on the plane, as in the R code.
-#' * `"iapesca"`: Ifremer's `Detect_FishingTrips()` with harbours (iapesca, J. Rodriguez), recoded as one DuckDB
-#'   query, so a lazy table (parquet) never comes into memory. Pings at the same time and place as earlier
+#' * `"iapesca"`: Ifremer's `Detect_FishingTrips()` with harbours (iapesca, J. Rodriguez), as version 0.1 of 2022
+#'   had it (see References), recoded as one DuckDB query, so a lazy table (parquet) never comes into memory. Pings at the same time and place as earlier
 #'   ones are dropped (each matched separately, as the R code does); then, up to `max_pass` (5) times, the first
 #'   of each run of pings reached at `max_speed_kn` (25) or more. A ping is in port within a buffer of the
 #'   `ports` polygons: `buf_start_m` (2,000 m), or 1 % of the track's bounding-box diagonal when that lies
@@ -693,7 +753,12 @@ SELECT *, %s AS rb_year FROM ps",
 #'   `dev_branch`.
 #'
 #'   For `"iapesca"`: Rodriguez, J. iapesca: interpretation of fishing paths from vessels' geo-spatial data,
-#'   R package version 0.1 (Ifremer, GPL), <https://github.com/JulRodrigu/r-packages_iapesca>.
+#'   R package (Ifremer), <https://gitlab.ifremer.fr/iapesca/r-packages_iapesca> (version 1.3, CC BY 4.0). The
+#'   method here follows version 0.1 (2022, GPL), the GitHub copy its author has since deprecated
+#'   (<https://github.com/JulRodrigu/r-packages_iapesca>). Version 1.3's `Detect_FishingTrips()` differs: a stop
+#'   is the gap between the fixes at sea either side of it, not the time since the previous voyage end; the buffer
+#'   is clamped to its cap and grows by a fifth of the distance to it, with no limit on the passes; a trip is named
+#'   by its last fix's date (fishycode decision 232).
 #' @family trip
 #' @export
 rb_create_voyages <- function(
@@ -771,9 +836,12 @@ rb_create_voyages <- function(
   )
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
+  .rb_scope()
+  # a lazy result keeps what the call registered; a data frame's comes back as the pings came in
+  done <- function(out) if (lazy_in) .rb_hold(out) else .rb_as_given(out, pings)
   p <- .rb_as_lazy(.rb_std_in(pings, map[use]), con)
   if (method == "cnr") {
-    return(.rb_cut_cnr(
+    return(done(.rb_cut_cnr(
       p,
       con,
       lazy_in,
@@ -784,10 +852,10 @@ rb_create_voyages <- function(
       coast,
       cnr,
       batch_pings
-    ))
+    )))
   }
   if (method == "iapesca") {
-    return(.rb_cut_iapesca(
+    return(done(.rb_cut_iapesca(
       p,
       con,
       lazy_in,
@@ -796,10 +864,10 @@ rb_create_voyages <- function(
       by_year,
       ports,
       iapesca
-    ))
+    )))
   }
   if (method == "jepol") {
-    return(.rb_cut_jepol(
+    return(done(.rb_cut_jepol(
       p,
       con,
       lazy_in,
@@ -810,7 +878,7 @@ rb_create_voyages <- function(
       max_dur_h,
       split,
       batch_pings
-    ))
+    )))
   }
   ps <- if (method == "dwell") {
     .rb_ping_call_sql(
@@ -854,11 +922,11 @@ FROM v WHERE n_pings >= %d",
     !!!stats::setNames(rlang::syms("vid"), map[["vid"]])
   )
   if (lazy_in) {
-    return(out)
+    return(.rb_hold(out))
   }
   out <- dplyr::collect(out)
   .rb_unregister(con)
-  out[order(out[[map[["vid"]]]], out$T1), ]
+  done(out[order(out[[map[["vid"]]]], out$T1), ])
 }
 
 #' Add the voyage to each ping
@@ -900,6 +968,11 @@ rb_add_voyages <- function(
   map <- .rb_cols(vid = {{ vid }}, time = {{ time }})
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
+  .rb_scope()
+  given <- pings
+  if (!lazy_in) {
+    pings <- .rb_with_rid(pings)
+  }
   p <- .rb_as_lazy(.rb_std_in(pings, map), con)
   v <- .rb_as_lazy(voyages, con)
   base <- if (is.null(port_calls)) {
@@ -942,11 +1015,11 @@ FROM j",
   out <- dplyr::tbl(con, dplyr::sql(sql))
   out <- .rb_std_out(out, map)
   if (lazy_in) {
-    return(out)
+    return(.rb_hold(out))
   }
-  out <- as.data.frame(dplyr::collect(out))
+  out <- dplyr::collect(out)
   .rb_unregister(con)
-  out
+  .rb_as_given(out, given, ".rb_rid")
 }
 
 #' Link declared trips to voyages by overlap
@@ -980,6 +1053,7 @@ rb_link_trip_voyages <- function(
   map <- .rb_cols(vid = {{ vid }})
   lazy_in <- inherits(trips, "tbl_lazy")
   con <- .rb_con_for(trips)
+  .rb_scope()
   tr <- .rb_as_lazy(.rb_std_in(trips, map), con)
   v <- .rb_as_lazy(voyages, con)
   kq <- paste(sprintf('"%s"', keys), collapse = ", ")
@@ -1018,11 +1092,12 @@ FROM ranked WHERE rn = 1",
     !!!stats::setNames(rlang::syms("vid"), map[["vid"]])
   )
   if (lazy_in) {
-    return(out)
+    return(.rb_hold(out))
   }
-  out <- as.data.frame(dplyr::collect(out))
+  out <- dplyr::collect(out)
   .rb_unregister(con)
-  out
+  out <- out[do.call(order, unname(as.list(out[c(map[["vid"]], keys)]))), ]
+  .rb_as_given(out, trips)
 }
 
 #' Add a time and a place to trips from ranked witnesses
@@ -1052,8 +1127,8 @@ FROM ranked WHERE rn = 1",
 #'   `_basis`, `_day` (`TRUE` where the value is a date only), `_n` (the witnesses that hold a time), `_outcome`
 #'   (`"none"`, `"one"`, `"agree"`, `"differ"`) and `_spread_s` (the largest distance in seconds from the chosen time
 #'   to another witness's, by date where either is a date only). For the place
-#'   (`place_name`): the value, `_from`, `_basis`, `_n` and `_outcome`. A data frame for data frame input, a lazy
-#'   table for lazy input.
+#'   (`place_name`): the value, `_from`, `_basis`, `_n` and `_outcome`. In the construct of `trips`: a lazy table
+#'   for lazy `trips`, collected for `trips` in memory whatever `witnesses` is.
 #' @family trip
 #' @export
 #' @examples
@@ -1098,8 +1173,14 @@ rb_add_trip_time <- function(
       i = "Pass the trips' keys only, or choose another `name` or `place_name`."
     ))
   }
-  lazy_in <- inherits(trips, "tbl_lazy") || inherits(witnesses, "tbl_lazy")
+  # the trips' construct comes back: lazy trips give a lazy result, trips in memory a collected one
+  lazy_in <- inherits(trips, "tbl_lazy")
   con <- .rb_con_for(trips, witnesses)
+  .rb_scope()
+  given <- trips
+  if (!lazy_in) {
+    trips <- .rb_with_rid(trips)
+  }
   tr <- .rb_as_lazy(trips, con)
   w <- .rb_as_lazy(witnesses, con)
   seen <- dplyr::collect(dplyr::distinct(w, witness))$witness
@@ -1180,11 +1261,11 @@ FROM ({tr_sql}) t LEFT JOIN tc USING ({kq}) LEFT JOIN tsp USING ({kq}){pjoin}"
   )
   out <- dplyr::tbl(con, dplyr::sql(sql))
   if (lazy_in) {
-    return(out)
+    return(.rb_hold(out))
   }
-  out <- as.data.frame(dplyr::collect(out))
+  out <- dplyr::collect(out)
   .rb_unregister(con)
-  out
+  .rb_as_given(out, given, ".rb_rid")
 }
 
 # The "jepol" method: whole vessels collected in batches, the rule applied in R (R/trip_jepol.R), one voyage table.
@@ -2118,7 +2199,8 @@ rb_pad_harbour <- function(voyage_id, port_id) {
 #' @param since_previous_days `NULL`, or the last step's reach in days (e.g. 14).
 #' @param vid,T2,date The columns.
 #' @return One row per link: the trip key, the landing key, `vid`, `match_type`, `dt_days` (the landing date minus
-#'   the trip's end date), `n_trips` (trips on the landing) and `n_landings` (landings on the trip). A data frame.
+#'   the trip's end date), `n_trips` (trips on the landing) and `n_landings` (landings on the trip). In the
+#'   construct of `trips`; a lazy table for lazy `trips`.
 #' @export
 #' @examples
 #' trips <- tibble::tibble(
@@ -2171,7 +2253,9 @@ rb_link_trip_landings <- function(
   if (any(steps$port) && (is.null(port_trip) || is.null(port_landing))) {
     steps <- steps[!steps$port, ]
   }
+  lazy_in <- inherits(trips, "tbl_lazy")
   con <- .rb_con_for(trips)
+  .rb_scope()
   q <- function(x) if (length(x) == 0) character(0) else .rb_q(con, x)
   t_sql <- .rb_in_sql(trips, con)
   l_sql <- .rb_in_sql(landings, con)
@@ -2263,19 +2347,21 @@ rb_link_trip_landings <- function(
     )
   }
   m_sql <- .rb_sql(dplyr::tbl(con, .rb_register(con, lk_df)))
-  out <- DBI::dbGetQuery(
-    con,
-    .rb_fill(
-      "WITH m AS ({m_sql}),
-            t AS ({tt}), l AS ({ll})
-       SELECT {paste(sprintf('t.%s', q(trip_key)), collapse = ', ')}, {paste(sprintf('l.%s', q(landing_key)), collapse = ', ')},
-              t.rb_vid AS {q(vid)}, m.match_type, CAST(m.dt_days AS INTEGER) AS dt_days,
-              count(*) OVER (PARTITION BY m.rb_lk) AS n_trips, count(*) OVER (PARTITION BY m.rb_tk) AS n_landings
-       FROM m JOIN t ON t.rb_tk = m.rb_tk JOIN l ON l.rb_lk = m.rb_lk"
-    )
+  sql <- .rb_fill(
+    "WITH m AS ({m_sql}),
+          t AS ({tt}), l AS ({ll})
+     SELECT {paste(sprintf('t.%s', q(trip_key)), collapse = ', ')}, {paste(sprintf('l.%s', q(landing_key)), collapse = ', ')},
+            t.rb_vid AS {q(vid)}, m.match_type, CAST(m.dt_days AS INTEGER) AS dt_days,
+            count(*) OVER (PARTITION BY m.rb_lk) AS n_trips, count(*) OVER (PARTITION BY m.rb_tk) AS n_landings
+     FROM m JOIN t ON t.rb_tk = m.rb_tk JOIN l ON l.rb_lk = m.rb_lk"
   )
+  if (lazy_in) {
+    return(.rb_hold(dplyr::tbl(con, dplyr::sql(sql))))
+  }
+  out <- DBI::dbGetQuery(con, sql)
   .rb_unregister(con)
-  tibble::as_tibble(out[
-    do.call(order, unname(as.list(out[c(vid, trip_key)]))),
-  ])
+  .rb_as_given(
+    out[do.call(order, unname(as.list(out[c(vid, trip_key)]))), ],
+    trips
+  )
 }

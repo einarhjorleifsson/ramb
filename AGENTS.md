@@ -55,6 +55,24 @@ fishing-activity flow. Functions are typically drafted in fishycode
 Keep dependencies light: heavy or single-purpose packages go in Suggests
 with an `.rb_need()` guard, never in Imports.
 
+## Two rules for every function (the maintainer, 2026-10-27)
+
+1. **Same construct out as in.** A function that takes a table returns the class it was given: a data.frame
+   stays a data.frame, a tibble a tibble, sf sf, a data.table a data.table, a lazy DuckDB table lazy, with its
+   rows in the order they came in. A method that needs time order sorts inside, by a row id, and puts the rows
+   back. A function that by design returns a table of its own (port calls, voyages, links, a summary) returns it
+   in the input's class. `.rb_as_given()` ([R/utils.R](R/utils.R)) does both.
+2. **Leave the caller's session as it was found, on error too.** No `sf::sf_use_s2()`, `options()`, `setwd()`,
+   `Sys.setenv()` or `library()` that an `on.exit()` does not undo; no random draw that moves the caller's
+   stream (a table is named by number, `.rb_name()`, never by `sample()`; a method that needs random numbers uses
+   `withr::with_seed()` or saves and restores `.Random.seed`); nothing assigned in the global environment; no
+   file written outside a path the caller gave, except under `tempdir()`; and no table left on duckdbfs's cached
+   connection by a call on data frames.
+
+`tests/testthat/test-etiquette.R` checks both for every exported function that takes a table, with the helper in
+`helper-etiquette.R`: data.frame, tibble and data.table input with its rows shuffled, and sf and lazy tables where
+the function takes them. A new exported function that takes a table gets a case there.
+
 ## Compatibility policy
 
 - No long-lived aliases. A renamed function's old name may survive one

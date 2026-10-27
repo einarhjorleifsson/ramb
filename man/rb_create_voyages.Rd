@@ -104,8 +104,8 @@ counts as slow. The \code{cnr} argument sets these values. Distances to the port
 (\code{distance = "geodesic"}, the default, as the R code measured them; needs lwgeom) or on ramb's sphere
 (\code{"sphere"}, needs s2), whatever \code{\link[sf:sf_use_s2]{sf::sf_use_s2()}} says; the port buffer and the coastal zone are
 tested on the plane, as in the R code.
-\item \code{"iapesca"}: Ifremer's \code{Detect_FishingTrips()} with harbours (iapesca, J. Rodriguez), recoded as one DuckDB
-query, so a lazy table (parquet) never comes into memory. Pings at the same time and place as earlier
+\item \code{"iapesca"}: Ifremer's \code{Detect_FishingTrips()} with harbours (iapesca, J. Rodriguez), as version 0.1 of 2022
+had it (see References), recoded as one DuckDB query, so a lazy table (parquet) never comes into memory. Pings at the same time and place as earlier
 ones are dropped (each matched separately, as the R code does); then, up to \code{max_pass} (5) times, the first
 of each run of pings reached at \code{max_speed_kn} (25) or more. A ping is in port within a buffer of the
 \code{ports} polygons: \code{buf_start_m} (2,000 m), or 1 \% of the track's bounding-box diagonal when that lies
@@ -134,7 +134,12 @@ J. Pulcinella, A.N. Tassetti and E. Armelloni (CNR-IRBIM), GNU GPL 3, in the WKS
 \code{dev_branch}.
 
 For \code{"iapesca"}: Rodriguez, J. iapesca: interpretation of fishing paths from vessels' geo-spatial data,
-R package version 0.1 (Ifremer, GPL), \url{https://github.com/JulRodrigu/r-packages_iapesca}.
+R package (Ifremer), \url{https://gitlab.ifremer.fr/iapesca/r-packages_iapesca} (version 1.3, CC BY 4.0). The
+method here follows version 0.1 (2022, GPL), the GitHub copy its author has since deprecated
+(\url{https://github.com/JulRodrigu/r-packages_iapesca}). Version 1.3's \code{Detect_FishingTrips()} differs: a stop
+is the gap between the fixes at sea either side of it, not the time since the previous voyage end; the buffer
+is clamped to its cap and grows by a fifth of the distance to it, with no limit on the passes; a trip is named
+by its last fix's date (fishycode decision 232).
 }
 \seealso{
 Other trip:
