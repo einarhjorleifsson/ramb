@@ -4,10 +4,13 @@
 \alias{rb_read_example}
 \title{Read an example dataset shipped with ramb}
 \usage{
-rb_read_example(name = NULL)
+rb_read_example(name = NULL, con = NULL)
 }
 \arguments{
 \item{name}{The dataset's name; \code{NULL} for the catalogue of all of them.}
+
+\item{con}{A DuckDB connection to open the dataset on; ramb's own by default. The lazy tables of one ramb call
+must share a connection, so give the one your other tables are on (\code{dbplyr::remote_con()} of one of them).}
 }
 \value{
 A lazy DuckDB table; or, for \code{name = NULL}, a tibble with one row per dataset: \code{name}, \code{label},
@@ -15,8 +18,8 @@ A lazy DuckDB table; or, for \code{name = NULL}, a tibble with one row per datas
 files' own metadata.
 }
 \description{
-ramb's data are parquet files in its \code{extdata} folder, opened lazily with \code{\link[duckdbfs:open_dataset]{duckdbfs::open_dataset()}} like any
-other track; collect one with \code{\link[dplyr:collect]{dplyr::collect()}}. Each dataset has its own help page (\code{?dansk}, \code{?ird_mg_gillnet},
+ramb's data are parquet files in its \code{extdata} folder, opened lazily like any other track (\code{\link[=rb_read_parquet]{rb_read_parquet()}});
+collect one with \code{\link[dplyr:collect]{dplyr::collect()}}. Each dataset has its own help page (\code{?dansk}, \code{?ird_mg_gillnet},
 ...): what a row is, its columns, its sources and its licence. The same is in the folder's data dictionary,
 \code{data-dict.yaml} (\url{https://data-dict.tidyverse.org/}), and in each file's own parquet metadata, so a file copied
 out of the package still says what it is. The sources are BibTeX entries in the package's \code{REFERENCES.bib}.

@@ -67,7 +67,6 @@ vt_brute <- function(
 }
 
 test_that("co-location: a partner, a sparse feed, a crossing and a vessel in port", {
-  skip_if_not_installed("duckdbfs")
   t0 <- as.POSIXct("2024-03-01 06:00", tz = "UTC")
   x <- vt_track(1L, t0, 120, -22, 66.5)
   names(x)[1] <- "unit"
@@ -141,8 +140,8 @@ test_that("co-location: a partner, a sparse feed, a crossing and a vessel in por
   expect_true(555 %in% a$mmsi)
   expect_true(all(is.na(a$period)))
   l <- dplyr::collect(rb_link_vessel_tracks(
-    duckdbfs::as_dataset(x),
-    duckdbfs::as_dataset(y),
+    as_lazy(x),
+    as_lazy(y),
     "unit",
     "mmsi"
   ))
@@ -151,7 +150,6 @@ test_that("co-location: a partner, a sparse feed, a crossing and a vessel in por
 })
 
 test_that("co-location equals a plain computation over every pair of pings", {
-  skip_if_not_installed("duckdbfs")
   set.seed(7)
   t0 <- as.POSIXct("2024-03-31 20:00", tz = "UTC") # the tracks cross into April
   walk <- function(id, n, lon0, lat0) {

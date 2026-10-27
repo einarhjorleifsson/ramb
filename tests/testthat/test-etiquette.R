@@ -84,7 +84,7 @@ test_that("the plots leave the session as they found it", {
 })
 
 
-test_that("rb_read_example() leaves the session as it found it", {
+test_that("the readers leave the session as they found it", {
   expect_session_kept(
     dplyr::collect(rb_read_example("whacks1")),
     "rb_read_example"
@@ -93,6 +93,15 @@ test_that("rb_read_example() leaves the session as it found it", {
   expect_session_kept(
     try(rb_read_example("nope"), silent = TRUE),
     "rb_read_example on error"
+  )
+  f <- system.file("extdata", "whacks1.parquet", package = "ramb")
+  expect_session_kept(dplyr::collect(rb_read_parquet(f)), "rb_read_parquet")
+  expect_session_kept(
+    try(
+      dplyr::collect(rb_read_parquet(file.path(tempdir(), "nope.parquet"))),
+      silent = TRUE
+    ),
+    "rb_read_parquet on error"
   )
 })
 
@@ -144,7 +153,6 @@ test_that("the map viewer's builders leave the session as they found them", {
 # What a call registers on the connection --------------------------------------------------------------------------
 
 test_that("a lazy result stays readable after a later call on data frames", {
-  skip_if_not_installed("duckdbfs")
   sq <- sf::st_sf(
     port_id = "a",
     geometry = sf::st_sfc(
@@ -159,7 +167,7 @@ test_that("a lazy result stays readable after a later call on data frames", {
     lat = c(0.5, 2)
   )
   # the lazy result reads the ports registered for it; the call on a data frame used to release them
-  lz <- rb_flag_ping_port(duckdbfs::as_dataset(d), sq)
+  lz <- rb_flag_ping_port(as_lazy(d), sq)
   df <- rb_flag_ping_port(d, sq)
   # collected once: a lazy table has no row order
   lz <- dplyr::collect(lz)

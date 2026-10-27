@@ -64,11 +64,10 @@ test_that("pressure: swept area where there is a width; kW from the pings; no ve
 })
 
 test_that("data frame = lazy table", {
-  skip_if_not_installed("duckdbfs")
   e <- rb_add_effort(pings, vessels, by = "voyage", width = "width")
   l <- rb_add_effort(
-    duckdbfs::as_dataset(pings),
-    duckdbfs::as_dataset(vessels),
+    as_lazy(pings),
+    as_lazy(vessels),
     by = "voyage",
     width = "width"
   )
@@ -94,14 +93,13 @@ test_that("misuse: a missing column, a second run, kW in both tables", {
 })
 
 test_that("lazy results compose: two of them in a union", {
-  skip_if_not_installed("duckdbfs")
   a <- rb_add_effort(
-    duckdbfs::as_dataset(pings),
-    duckdbfs::as_dataset(vessels)
+    as_lazy(pings),
+    as_lazy(vessels)
   )
   b <- rb_add_effort(
-    duckdbfs::as_dataset(pings),
-    duckdbfs::as_dataset(vessels),
+    as_lazy(pings),
+    as_lazy(vessels),
     interval = "previous"
   )
   u <- dplyr::collect(dplyr::union_all(a, b))

@@ -125,8 +125,7 @@ test_that("rb_calc_distance() data-frame form: clear errors", {
 })
 
 test_that("rb_calc_distance() refuses lazy tables, for now", {
-  skip_if_not_installed("duckdbfs")
-  d <- duckdbfs::as_dataset(data.frame(lon = 1, lat = 2, x2 = 3, y2 = 4))
+  d <- as_lazy(data.frame(lon = 1, lat = 2, x2 = 3, y2 = 4))
   expect_error(
     rb_calc_distance(d, lon2 = x2, lat2 = y2),
     "lazy DuckDB"

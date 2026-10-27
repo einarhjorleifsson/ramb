@@ -23,7 +23,7 @@ near_brute <- function(a, b, dist_m, dt_s = NULL, by = NULL) {
 }
 
 near_sql <- function(a, b, dist_m, dt_s = NULL, by = character(0)) {
-  con <- duckdbfs::cached_connection()
+  con <- .rb_connection()
   na <- ramb:::.rb_register(con, a)
   nb <- ramb:::.rb_register(con, b)
   on.exit(ramb:::.rb_unregister(con))
@@ -54,7 +54,6 @@ near_pts <- function(n, lon0, lat0, spread_m, seed) {
 }
 
 test_that("blocked pairs equal the full cross join, at any latitude and across +-180", {
-  skip_if_not_installed("duckdbfs")
   for (s in list(
     c(0, 0),
     c(-20, 65),
@@ -91,7 +90,6 @@ test_that("blocked pairs equal the full cross join, at any latitude and across +
 })
 
 test_that("a pair across the antimeridian and a pair across a pole are found", {
-  skip_if_not_installed("duckdbfs")
   t0 <- as.POSIXct("2024-01-01", tz = "UTC")
   a <- data.frame(
     rb_i = 1:2,

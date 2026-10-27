@@ -8,8 +8,8 @@
 
 #' Read an example dataset shipped with ramb
 #'
-#' ramb's data are parquet files in its `extdata` folder, opened lazily with [duckdbfs::open_dataset()] like any
-#' other track; collect one with [dplyr::collect()]. Each dataset has its own help page (`?dansk`, `?ird_mg_gillnet`,
+#' ramb's data are parquet files in its `extdata` folder, opened lazily like any other track ([rb_read_parquet()]);
+#' collect one with [dplyr::collect()]. Each dataset has its own help page (`?dansk`, `?ird_mg_gillnet`,
 #' ...): what a row is, its columns, its sources and its licence. The same is in the folder's data dictionary,
 #' `data-dict.yaml` (<https://data-dict.tidyverse.org/>), and in each file's own parquet metadata, so a file copied
 #' out of the package still says what it is. The sources are BibTeX entries in the package's `REFERENCES.bib`.
@@ -20,6 +20,8 @@
 #' `sf::st_sf(x[names(x) != "geometry"], geometry = sf::st_as_sfc(structure(x$geometry, class = "WKB"), crs = 4326))`.
 #'
 #' @param name The dataset's name; `NULL` for the catalogue of all of them.
+#' @param con A DuckDB connection to open the dataset on; ramb's own by default. The lazy tables of one ramb call
+#'   must share a connection, so give the one your other tables are on (`dbplyr::remote_con()` of one of them).
 #' @return A lazy DuckDB table; or, for `name = NULL`, a tibble with one row per dataset: `name`, `label`,
 #'   `description`, `rows`, `licence`, `cite` (its sources as text) and `bibtex` (the same as BibTeX), read from the
 #'   files' own metadata.
@@ -28,7 +30,7 @@
 #' rb_read_example()
 #' rb_read_example("wkssfgeo2_it_pots")
 #' cat(rb_read_example()$bibtex[1])
-rb_read_example <- function(name = NULL) {
+rb_read_example <- function(name = NULL, con = NULL) {
   dir <- system.file("extdata", package = "ramb")
   have <- sub("\\.parquet$", "", list.files(dir, pattern = "\\.parquet$"))
   if (is.null(name)) {
@@ -43,7 +45,11 @@ rb_read_example <- function(name = NULL) {
       call. = FALSE
     )
   }
-  .rb_read_parquet(file.path(dir, paste0(name, ".parquet")), lazy = TRUE)
+  .rb_read_parquet(
+    file.path(dir, paste0(name, ".parquet")),
+    lazy = TRUE,
+    con = con
+  )
 }
 
 # The catalogue: what data-raw/data_dict.R stamped into each file's parquet metadata, one row per file.
@@ -52,7 +58,7 @@ rb_read_example <- function(name = NULL) {
   for (f in files) {
     .rb_read_parquet(f, lazy = TRUE) # stops on a Git LFS pointer, with a message that says so
   }
-  con <- duckdbfs::cached_connection()
+  con <- .rb_connection()
   glob <- file.path(dir, "*.parquet")
   kv <- DBI::dbGetQuery(
     con,
@@ -116,7 +122,7 @@ rb_read_example <- function(name = NULL) {
   op <- options(useFancyQuotes = FALSE)
   on.exit(options(op))
   rows <- DBI::dbGetQuery(
-    duckdbfs::cached_connection(),
+    .rb_connection(),
     sprintf(
       "SELECT num_rows FROM parquet_file_metadata('%s')",
       system.file("extdata", t$source$parquet, package = "ramb")
@@ -182,7 +188,7 @@ rb_read_example <- function(name = NULL) {
 }
 
 # One of ramb's parquet files, lazy or collected.
-.rb_read_parquet <- function(f, lazy = FALSE) {
+.rb_read_parquet <- function(f, lazy = FALSE, con = NULL) {
   if (.rb_is_lfs_pointer(f)) {
     stop(
       sprintf(
@@ -192,9 +198,11 @@ rb_read_example <- function(name = NULL) {
       call. = FALSE
     )
   }
-  # a query, not duckdbfs::open_dataset(): that names a view from R's random numbers, which moves the caller's
-  # random stream, and leaves the view on the connection
-  con <- duckdbfs::cached_connection()
+  # a query, not a view: duckdbfs::open_dataset() named its view from R's random numbers, which moved the caller's
+  # random stream, and left the view on the connection
+  if (is.null(con)) {
+    con <- .rb_connection()
+  }
   x <- dplyr::tbl(
     con,
     dplyr::sql(sprintf(

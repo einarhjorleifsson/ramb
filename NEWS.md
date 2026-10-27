@@ -1,3 +1,30 @@
+# ramb 2026.10.27.1
+
+ramb opens its own DuckDB connection (the maintainer, 2026-10-27).
+
+- A call on data frames runs on one in-memory DuckDB per session, ramb's own, opened with nothing installed. Until
+  now it ran on duckdbfs's cached connection, which installs the spatial and h3 extensions as it opens, so a user who
+  could not download them (behind an institutional VPN) failed at the first call, spatial or not; it also turned
+  automatic extension installs on and set `options(duckdbfs_conn)`. duckdbfs moves from Imports to Suggests.
+- A lazy table brings its own connection, as before: one from `duckdbfs::open_dataset()` works in every function, on
+  duckdbfs's connection, with data frames of the same call registered there. Every function now takes the connection
+  from any of its tables that is lazy, not only the first: pings in memory with lazy voyages (`rb_add_voyages()`),
+  matches, windows, records, port calls, vessels, units or landings run on the lazy table's connection and come back
+  as the data frame came in. Before, that worked only because everything was on duckdbfs's one connection.
+- ramb's instance uses at most a quarter of the machine's memory, or `options(ramb.memory_limit = "8GB")`. DuckDB
+  gives every in-memory instance 80 % of it by default, knowing nothing of the others in the session.
+- Extensions (spatial, httpfs) are loaded where a function needs them, and installed if they are not there: from
+  `options(ramb.extension_repository = <folder or URL>)` when set. Where the download fails, the error names the file
+  to fetch and the folder to copy it into (a copied file counts as installed), and that DuckDB's downloads go through
+  `HTTP_PROXY`. Where extensions are kept follows duckdb's own setting (`DUCKDB_R_HOME`, `options(duckdb.home)`,
+  `~/.duckdb`). `rb_map_track()` loads spatial itself; it relied on duckdbfs having loaded it.
+- `rb_read_parquet()` (new): a lazy table over parquet files, a folder (hive-partitioned or not), a glob, or remote
+  files (`https://`, `s3://`); over http(s) the files are listed, since DuckDB cannot list a folder there. Only the
+  columns and row groups (and partitions) a query needs are read, when it runs.
+- `rb_read_example()` takes `con`, to open an example on the connection of the caller's other tables: the lazy
+  tables of one call must share a connection.
+- `.onUnload()` closes ramb's connection.
+
 # ramb 2026.10.27
 
 The maintainer's two rules for every function (2026-10-27), now in `AGENTS.md` and the package help ("What comes

@@ -22,10 +22,9 @@ records <- tibble::tibble(
 )
 
 test_that("windows: one per phase, capped tows, the day fallback; data frame = lazy table", {
-  skip_if_not_installed("duckdbfs")
   w <- rb_create_record_windows(records, min_hauls = 1)
   wl <- dplyr::collect(rb_create_record_windows(
-    duckdbfs::as_dataset(records),
+    as_lazy(records),
     min_hauls = 1
   ))
   wl <- wl[order(wl$vid, wl$w_start), names(w)]
@@ -43,7 +42,6 @@ test_that("windows: one per phase, capped tows, the day fallback; data frame = l
 })
 
 test_that("windows never overlap: what cuts what, what yields, and ties", {
-  skip_if_not_installed("duckdbfs")
   na <- as.POSIXct(NA, tz = "UTC")
   r <- tibble::tibble(
     .sid = c(11:14, 21:22, 31:34, 41:42),
@@ -67,7 +65,7 @@ test_that("windows never overlap: what cuts what, what yields, and ties", {
   )
   w <- rb_create_record_windows(r, min_hauls = 1)
   wl <- dplyr::collect(rb_create_record_windows(
-    duckdbfs::as_dataset(r),
+    as_lazy(r),
     min_hauls = 1
   ))
   expect_equal(
@@ -112,7 +110,6 @@ test_that("windows never overlap: what cuts what, what yields, and ties", {
 })
 
 test_that("event times: ties go to the earlier event time, then the lower key", {
-  skip_if_not_installed("duckdbfs")
   na <- as.POSIXct(NA, tz = "UTC")
   r <- tibble::tibble(
     .sid = 1:4,
@@ -154,8 +151,8 @@ test_that("event times: ties go to the earlier event time, then the lower key", 
     expect_equal(e2$event, c("t1", "t3"))
   }
   el <- dplyr::collect(rb_link_record_events(
-    duckdbfs::as_dataset(p),
-    duckdbfs::as_dataset(r)
+    as_lazy(p),
+    as_lazy(r)
   ))
   el <- el[order(el$vid, el$event_time, el$event, el$.sid), names(e)]
   expect_equal(
@@ -166,7 +163,6 @@ test_that("event times: ties go to the earlier event time, then the lower key", 
 })
 
 test_that("pings: tier-1 windows win over the day; the counts, the record and fishing", {
-  skip_if_not_installed("duckdbfs")
   w <- rb_create_record_windows(records, min_hauls = 1)
   pings <- tibble::tibble(
     vid = c(1L, 1L, 1L, 3L, 3L, 4L),
@@ -181,8 +177,8 @@ test_that("pings: tier-1 windows win over the day; the counts, the record and fi
     speed_max = "s2"
   )
   ml <- dplyr::collect(rb_link_record_pings(
-    duckdbfs::as_dataset(pings),
-    duckdbfs::as_dataset(w),
+    as_lazy(pings),
+    as_lazy(w),
     carry = "gear",
     speed_min = "s1",
     speed_max = "s2"
@@ -200,7 +196,6 @@ test_that("pings: tier-1 windows win over the day; the counts, the record and fi
 })
 
 test_that("fishing on the windowed speed: a spike inside a tow is fishing; data frame = lazy table", {
-  skip_if_not_installed("duckdbfs")
   w <- rb_create_record_windows(records[1, ], min_hauls = 1)
   pings <- tibble::tibble(
     vid = 1L,
@@ -219,8 +214,8 @@ test_that("fishing on the windowed speed: a spike inside a tow is fishing; data 
     window_s = 600
   )
   fl <- dplyr::collect(rb_add_fishing(
-    duckdbfs::as_dataset(pings),
-    duckdbfs::as_dataset(m),
+    as_lazy(pings),
+    as_lazy(m),
     speed_min = "s1",
     speed_max = "s2",
     window_s = 600
@@ -250,15 +245,14 @@ test_that("fishing on the windowed speed: a spike inside a tow is fishing; data 
 })
 
 test_that("event times: a start takes the next ping, an end the previous; the gap; data frame = lazy table", {
-  skip_if_not_installed("duckdbfs")
   pings <- tibble::tibble(
     vid = c(1L, 1L, 1L, 1L, 2L, 2L, 2L, 3L),
     time = h(c(-1, 0.25, 3.5, 6, 11, 11, 13, 0)) # vid 2 has a duplicate ping at 11:00 + 6
   )
   e <- rb_link_record_events(pings, records)
   el <- dplyr::collect(rb_link_record_events(
-    duckdbfs::as_dataset(pings),
-    duckdbfs::as_dataset(records)
+    as_lazy(pings),
+    as_lazy(records)
   ))
   el <- el[order(el$vid, el$event_time, el$event), names(e)]
   expect_equal(as.data.frame(el), as.data.frame(e), ignore_attr = TRUE)
@@ -330,8 +324,7 @@ test_that("durations above the gear's limit become NA, the raw value is kept", {
   expect_equal(r$duration_m, c(100, NA, NA, 5000))
   expect_equal(r$duration_m_raw, d$duration_m)
   expect_equal(r$duration_source, c("data", "implausible", "missing", "data"))
-  skip_if_not_installed("duckdbfs")
-  rl <- dplyr::collect(rb_limit_record_duration(duckdbfs::as_dataset(d), lim))
+  rl <- dplyr::collect(rb_limit_record_duration(as_lazy(d), lim))
   expect_equal(
     as.data.frame(rl[order(rl$gid, rl$duration_m_raw), ]),
     as.data.frame(r[order(r$gid, r$duration_m_raw), ]),
@@ -340,7 +333,6 @@ test_that("durations above the gear's limit become NA, the raw value is kept", {
 })
 
 test_that("fishing by speed and as a cascade: the window where a record holds the ping, the track elsewhere", {
-  skip_if_not_installed("duckdbfs")
   w <- rb_create_record_windows(records[1, ], min_hauls = 1) # one tow, 06:00-10:00 (t2 0, t3 4)
   pings <- tibble::tibble(
     vid = 1L,
@@ -400,8 +392,8 @@ test_that("fishing by speed and as a cascade: the window where a record holds th
     "rb_link_record_pings"
   )
   lz <- dplyr::collect(rb_add_fishing(
-    duckdbfs::as_dataset(pings),
-    duckdbfs::as_dataset(m),
+    as_lazy(pings),
+    as_lazy(m),
     method = c("window", "speed"),
     speed_min = "s1",
     speed_max = "s2",
@@ -417,7 +409,6 @@ test_that("fishing by speed and as a cascade: the window where a record holds th
 })
 
 test_that("positions for records with no pings: along the record's line, every interval, one for no length", {
-  skip_if_not_installed("duckdbfs")
   r <- tibble::tibble(
     id = 1:3,
     vid = c(7L, 7L, 8L),
@@ -448,7 +439,7 @@ test_that("positions for records with no pings: along the record's line, every i
   )
   expect_true(is.na(p$speed[p$id == 2]))
   l <- dplyr::collect(rb_create_record_pings(
-    duckdbfs::as_dataset(r),
+    as_lazy(r),
     key = "id",
     interval_s = 900
   ))
@@ -463,7 +454,6 @@ test_that("positions for records with no pings: along the record's line, every i
 })
 
 test_that("sets of static-gear hauls: the latest earlier pass along the haul's line", {
-  skip_if_not_installed("duckdbfs")
   line <- function(t0, n, lat0 = 64, dlat = 0.05) {
     tibble::tibble(
       vid = 1L,
@@ -502,15 +492,14 @@ test_that("sets of static-gear hauls: the latest earlier pass along the haul's l
   n <- rb_link_record_sets(far, dplyr::bind_rows(pings, lone), key = "id")
   expect_equal(n$set_basis, "none")
   l <- dplyr::collect(rb_link_record_sets(
-    duckdbfs::as_dataset(hauls),
-    duckdbfs::as_dataset(pings),
+    as_lazy(hauls),
+    as_lazy(pings),
     key = "id"
   ))
   expect_equal(as.data.frame(l), as.data.frame(s), ignore_attr = TRUE)
 })
 
 test_that("sets: the haul's line from its pings, a line through them, or its declared positions", {
-  skip_if_not_installed("duckdbfs")
   t0 <- as.POSIXct("2024-03-01 06:00", tz = "UTC")
   along <- function(t, lat) {
     tibble::tibble(vid = 1L, time = t, lon = -22, lat = lat)
@@ -551,8 +540,8 @@ test_that("sets: the haul's line from its pings, a line through them, or its dec
   expect_equal(rec$set_end, c(t0 + 9 * 60, t0 + 9 * 60))
   expect_equal(rec$set_method, c("record", "record"))
   l <- dplyr::collect(rb_link_record_sets(
-    duckdbfs::as_dataset(hauls),
-    duckdbfs::as_dataset(pings),
+    as_lazy(hauls),
+    as_lazy(pings),
     key = "id",
     method = c("pings", "record")
   ))
@@ -577,7 +566,6 @@ test_that("sets: the haul's line from its pings, a line through them, or its dec
 })
 
 test_that("sets: the run in to the haul, and the cap on a pass's length", {
-  skip_if_not_installed("duckdbfs")
   t0 <- as.POSIXct("2024-03-01 06:00", tz = "UTC")
   t1 <- t0 + 86400
   along <- function(t, lat) {
@@ -599,8 +587,8 @@ test_that("sets: the run in to the haul, and the cap on a pass's length", {
   nocap <- rb_link_record_sets(hauls, pings, key = "id", max_pass_pings = Inf)
   expect_equal(nocap$set_start, t0)
   l <- dplyr::collect(rb_link_record_sets(
-    duckdbfs::as_dataset(hauls),
-    duckdbfs::as_dataset(pings),
+    as_lazy(hauls),
+    as_lazy(pings),
     key = "id",
     skip_approach = TRUE,
     max_pass_pings = Inf
@@ -609,7 +597,6 @@ test_that("sets: the run in to the haul, and the cap on a pass's length", {
 })
 
 test_that("sets: the connection comes from whichever input is lazy; two connections stop", {
-  skip_if_not_installed("duckdbfs")
   t0 <- as.POSIXct("2024-03-01 06:00", tz = "UTC")
   along <- function(t, lat) {
     tibble::tibble(vid = 1L, time = t, lon = -22, lat = lat)
@@ -631,7 +618,7 @@ test_that("sets: the connection comes from whichever input is lazy; two connecti
   s <- rb_link_record_sets(hauls, lp, key = "id")
   expect_equal(s$set_start, t0)
   expect_error(
-    rb_link_record_sets(duckdbfs::as_dataset(hauls), lp, key = "id"),
+    rb_link_record_sets(as_lazy(hauls), lp, key = "id"),
     "different DuckDB connections"
   )
 })

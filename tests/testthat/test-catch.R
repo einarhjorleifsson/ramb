@@ -74,9 +74,8 @@ test_that("units: overlapping events of a level merge, a shared key joins window
   expect_false(uid("r1") == uid("r2")) # another rectangle
   expect_equal(u$start[u$id == "L"], h(48) - 31 * 86400) # no earlier landing: max_days back
   expect_true(u$start_filled[u$id == "L"])
-  skip_if_not_installed("duckdbfs")
   l <- dplyr::collect(rb_add_catch_units(
-    duckdbfs::as_dataset(events),
+    as_lazy(events),
     key = "id",
     match_by = "rect"
   ))
@@ -155,13 +154,12 @@ test_that("the last resorts: the vessel's month, then no ping at all", {
 })
 
 test_that("data frame = lazy table", {
-  skip_if_not_installed("duckdbfs")
   u <- rb_add_catch_units(events, key = "id")
   s <- rb_share_catch(pings, u, catch, key = "id")
   l <- rb_share_catch(
-    duckdbfs::as_dataset(pings),
-    duckdbfs::as_dataset(u),
-    duckdbfs::as_dataset(catch),
+    as_lazy(pings),
+    as_lazy(u),
+    as_lazy(catch),
     key = "id"
   )
   expect_s3_class(l, "tbl_lazy")
@@ -283,7 +281,6 @@ test_that("misuse names the step to run first; method eflalo keeps the ICES shar
 })
 
 test_that("units are the same every run: landings tied on their day, and a landing over two islands", {
-  skip_if_not_installed("duckdbfs")
   d <- as.POSIXct("2024-05-01", tz = "UTC")
   ev <- tibble::tibble(
     id = c("L1", "L2", "L3", "L4", "L4"),
@@ -307,7 +304,7 @@ test_that("units are the same every run: landings tied on their day, and a landi
   )
   runs <- lapply(1:5, function(i) {
     u <- dplyr::collect(rb_add_catch_units(
-      duckdbfs::as_dataset(ev),
+      as_lazy(ev),
       key = "id"
     ))
     u[order(u$id, u$start), c("id", "start", "unit_id")]

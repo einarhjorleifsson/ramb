@@ -851,9 +851,7 @@ rb_map_tiles_table <- function(
   con <- .rb_con_for(x)
   # a data frame registered here is the tile function's for the session (it remakes its table from it)
   .rb_scope()
-  tryCatch(DBI::dbExecute(con, "LOAD spatial"), error = function(e) {
-    DBI::dbExecute(con, "INSTALL spatial; LOAD spatial")
-  })
+  .rb_extension(con, "spatial")
   src <- .rb_sql(.rb_as_lazy(x, con))
   q <- function(s) DBI::dbQuoteIdentifier(con, s)
   g <- if (!is.null(lon)) {
@@ -1321,6 +1319,7 @@ rb_map_track <- function(
   # a line per vessel and stretch: a silence of more than gap_h hours starts a new one, and so does a change of any
   # column's value, so each run carries one value of each; a run ends at the next run's first fix, so the line stays
   # joined across a change
+  .rb_extension(con, "spatial")
   lines <- dplyr::tbl(
     con,
     dplyr::sql(sprintf(

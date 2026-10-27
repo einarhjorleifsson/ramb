@@ -432,9 +432,7 @@ rb_flag_ping_port <- function(pings, ports, keep = NULL, lon = lon, lat = lat) {
   lazy_in <- inherits(pings, "tbl_lazy")
   con <- .rb_con_for(pings)
   .rb_scope()
-  tryCatch(DBI::dbExecute(con, "LOAD spatial"), error = function(e) {
-    DBI::dbExecute(con, "INSTALL spatial; LOAD spatial")
-  })
+  .rb_extension(con, "spatial")
   given <- pings
   if (!lazy_in) {
     pings <- .rb_with_rid(pings)

@@ -264,7 +264,7 @@ rb_share_catch <- function(
   }
   .rb_need_cols(catch, "catch", c(key, species, kg, value))
   lazy_in <- inherits(pings, "tbl_lazy")
-  con <- .rb_con_for(pings)
+  con <- .rb_con_for(pings, units, catch)
   .rb_scope()
   q <- function(x) if (length(x) == 0) character(0) else .rb_q(con, x)
   p_sql <- .rb_in_sql(pings, con)

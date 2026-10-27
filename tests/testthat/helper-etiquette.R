@@ -12,15 +12,14 @@ for (pkg in c(
   "lwgeom",
   "data.table",
   "duckdb",
-  "duckdbfs",
   "dbplyr",
   "withr"
 )) {
   requireNamespace(pkg, quietly = TRUE)
 }
 
-# The session as a caller sees it. The tables of duckdbfs's cached connection are the caller's too: a call on data
-# frames must not leave its registered copies there. Not counted: dbplyr's `dbplyr_subquery_name`, the counter it
+# The session as a caller sees it. The tables of ramb's connection, and of duckdbfs's if it is open, are the caller's
+# too: a call on data frames must not leave its registered copies there. Not counted: dbplyr's `dbplyr_subquery_name`, the counter it
 # moves on every lazy query it renders, whoever asks for it (dbplyr 2.6.0).
 .session_state <- function() {
   g <- globalenv()
@@ -42,7 +41,12 @@ for (pkg in c(
     search = search(),
     devices = grDevices::dev.list(),
     connections = rownames(showConnections()),
-    duckdb = sort(DBI::dbListTables(duckdbfs::cached_connection()))
+    duckdb = sort(c(
+      DBI::dbListTables(.rb_connection()),
+      if (inherits(getOption("duckdbfs_conn"), "duckdb_connection")) {
+        paste0("duckdbfs:", DBI::dbListTables(getOption("duckdbfs_conn")))
+      }
+    ))
   )
 }
 
@@ -110,7 +114,7 @@ expect_session_kept <- function(code, label, ignore = character(0)) {
     data.table = data.table::as.data.table(x),
     sf = as_sf(as.data.frame(x)),
     sf_tibble = as_sf(tibble::as_tibble(x)),
-    lazy = duckdbfs::as_dataset(x)
+    lazy = as_lazy(x)
   )
 }
 
@@ -156,7 +160,7 @@ expect_etiquette <- function(case) {
     args[[case$main]] <- x
     if (to == "lazy") {
       for (a in case$lazy_also) {
-        args[[a]] <- duckdbfs::as_dataset(args[[a]])
+        args[[a]] <- as_lazy(args[[a]])
       }
     }
     label <- sprintf(

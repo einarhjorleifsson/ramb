@@ -11,11 +11,14 @@ execute:
 {ramb} provides tools for vessel-track (AIS/VMS) data and the steps of
 the ICES fishing-activity flow
 ([WGSFD](https://www.ices.dk/community/groups/Pages/WGSFD.aspx)). Two
-promises hold everywhere: everything returns a tibble for downstream
-[tidyverse](https://www.tidyverse.org) processing, and a data frame and
-a lazy [DuckDB](https://duckdb.org) table give the same result — so
-code prototyped on a data frame runs unchanged on parquet files many
-times larger than memory (opened with
+promises hold everywhere: a function returns what it was given (a data
+frame, tibble, data.table, sf object or lazy table, the rows in the
+order they came in), and a data frame and a lazy
+[DuckDB](https://duckdb.org) table give the same result — so code
+prototyped on a data frame runs unchanged on parquet files many times
+larger than memory (opened with
+[rb_read_parquet()](../reference/rb_read_parquet.html), or any other
+way to a lazy DuckDB table, such as
 [duckdbfs::open_dataset()](https://cboettig.github.io/duckdbfs/reference/open_dataset.html)).
 
 ## The flow

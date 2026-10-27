@@ -1,7 +1,6 @@
 # The example data (example.R): parquet in inst/extdata, read lazily; a Git LFS pointer is named as such.
 
 test_that("the catalogue lists every dataset with its label, licence and sources", {
-  skip_if_not_installed("duckdbfs")
   cat <- rb_read_example()
   expect_s3_class(cat, "tbl_df")
   expect_named(
@@ -34,7 +33,6 @@ test_that("the catalogue lists every dataset with its label, licence and sources
 })
 
 test_that("the labelled tracks are read lazily, in their columns", {
-  skip_if_not_installed("duckdbfs")
   for (n in c("wkssfgeo2_it_pots", "wkssfgeo_pt_gps", "ird_mg_gillnet")) {
     x <- rb_read_example(n)
     expect_s3_class(x, "tbl_lazy")
@@ -50,7 +48,6 @@ test_that("the labelled tracks are read lazily, in their columns", {
 })
 
 test_that("the data dictionary, the files and the references agree", {
-  skip_if_not_installed("duckdbfs")
   dir <- system.file("extdata", package = "ramb")
   dd_file <- file.path(dir, "data-dict.yaml")
   bib <- readLines(
@@ -79,7 +76,7 @@ test_that("the data dictionary, the files and the references agree", {
   files <- list.files(dir, pattern = "\\.parquet$")
   expect_setequal(vapply(dd$tables, function(t) t$source$parquet, ""), files)
   # each file carries its own entry of the dictionary, unchanged since it was stamped (data-raw/data_dict.R)
-  con <- duckdbfs::cached_connection()
+  con <- .rb_connection()
   for (t in dd$tables) {
     f <- file.path(dir, t$source$parquet)
     kv <- DBI::dbGetQuery(

@@ -52,7 +52,6 @@ test_that("rows hang together: kinds, stages, inputs and the step before", {
 })
 
 test_that("a missing column names the step that adds it; data frame and lazy table alike", {
-  skip_if_not_installed("duckdbfs")
   t0 <- as.POSIXct("2024-03-01", tz = "UTC")
   p <- tibble::tibble(vid = 1L, time = t0 + 0:2)
   expect_snapshot(.rb_check_input(p[, "vid"], "rb_add_effort"), error = TRUE)
@@ -63,7 +62,7 @@ test_that("a missing column names the step that adds it; data frame and lazy tab
     error = TRUE
   )
   expect_error(
-    .rb_check_input(duckdbfs::as_dataset(p[, "vid"]), "rb_add_effort"),
+    .rb_check_input(as_lazy(p[, "vid"]), "rb_add_effort"),
     "time"
   )
   # the user's own names are checked, and named in the message
@@ -73,7 +72,6 @@ test_that("a missing column names the step that adds it; data frame and lazy tab
 })
 
 test_that("types are checked on a lazy table's schema; a step's own columns mean it has run", {
-  skip_if_not_installed("duckdbfs")
   p <- tibble::tibble(vid = 1L, time = "2024-03-01 00:00:00")
   expect_snapshot(
     .rb_check_input(p, "rb_add_effort", types = c(time = "time")),
@@ -81,7 +79,7 @@ test_that("types are checked on a lazy table's schema; a step's own columns mean
   )
   expect_error(
     .rb_check_input(
-      duckdbfs::as_dataset(p),
+      as_lazy(p),
       "rb_add_effort",
       types = c(time = "time")
     ),

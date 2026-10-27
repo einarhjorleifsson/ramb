@@ -1,7 +1,7 @@
 Package: ramb
 Type: Package
 Title: Vessel Track Tools and the ICES Fishing-Activity Flow
-Version: 2026.10.27
+Version: 2026.10.27.1
 Authors@R: c(
   person("Einar", "Hjörleifsson", role = c("aut", "cre"), email = "einar.hjorleifsson@gmail.com"),
   person("Charles", "Karney", role = "ctb", comment = "GeographicLib-C geodesic.c/h, vendored unchanged in src/ (MIT/X11); see inst/COPYRIGHTS")
@@ -24,7 +24,6 @@ Imports:
     DBI,
     dbplyr,
     duckdb,
-    duckdbfs,
     dplyr,
     lubridate,
     purrr,
@@ -39,6 +38,7 @@ LinkingTo:
     Rcpp
 Suggests:
     data.table,
+    duckdbfs,
     icesVocab,
     ggplot2,
     httpuv,

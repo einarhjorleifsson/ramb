@@ -118,5 +118,6 @@ reference:
   - rb_read_survey_tracks_mfri
 - title: "Data"
   contents:
+  - rb_read_parquet
   - rb_read_example
   - has_keyword("datasets")

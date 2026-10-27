@@ -15,10 +15,9 @@ ports <- sf::st_transform(dansk_harbours, 4326) |>
   dplyr::mutate(port_id = as.character(SI_HARB))
 
 test_that("a data frame and a lazy table give the same port calls", {
-  skip_if_not_installed("duckdbfs")
   a <- rb_create_port_calls(pings, ports, min_dwell_h = 2)
   b <- dplyr::collect(rb_create_port_calls(
-    duckdbfs::as_dataset(pings),
+    as_lazy(pings),
     ports,
     min_dwell_h = 2
   ))
@@ -148,7 +147,6 @@ test_that("the time budget finds the calls that sparse pings hide, and none at s
 })
 
 test_that("the time budget: a data frame and a lazy table give the same port calls", {
-  skip_if_not_installed("duckdbfs")
   a <- rb_create_port_calls(
     budget_tracks$pings,
     budget_tracks$ports,
@@ -156,7 +154,7 @@ test_that("the time budget: a data frame and a lazy table give the same port cal
     speed_kn = 6
   )
   b <- dplyr::collect(rb_create_port_calls(
-    duckdbfs::as_dataset(budget_tracks$pings),
+    as_lazy(budget_tracks$pings),
     budget_tracks$ports,
     min_dwell_h = 2,
     speed_kn = 6
@@ -220,11 +218,10 @@ test_that("voyages are labelled short and open, and with min_pings = 1 none is d
 })
 
 test_that("voyages and trip labels agree between a data frame and a lazy table", {
-  skip_if_not_installed("duckdbfs")
   v <- rb_create_voyages(pings, calls, min_pings = 10)
   vl <- dplyr::collect(rb_create_voyages(
-    duckdbfs::as_dataset(pings),
-    duckdbfs::as_dataset(calls),
+    as_lazy(pings),
+    as_lazy(calls),
     min_pings = 10
   ))
   vl <- vl[order(vl$vid, vl$T1), ]
@@ -233,9 +230,9 @@ test_that("voyages and trip labels agree between a data frame and a lazy table",
   expect_true(all(v$n_pings >= 10))
   a <- rb_add_voyages(pings, v, port_calls = calls)
   al <- dplyr::collect(rb_add_voyages(
-    duckdbfs::as_dataset(pings),
-    duckdbfs::as_dataset(v),
-    port_calls = duckdbfs::as_dataset(calls)
+    as_lazy(pings),
+    as_lazy(v),
+    port_calls = as_lazy(calls)
   ))
   expect_equal(nrow(a), nrow(pings))
   k <- function(d) {
@@ -398,11 +395,10 @@ test_that("method runs numbers the sea runs as the old rb_trip() did, vessel by 
 })
 
 test_that("methods runs and jepol: a data frame and a lazy table give the same voyages", {
-  skip_if_not_installed("duckdbfs")
   for (m in c("runs", "jepol")) {
     a <- rb_create_voyages(tagged, method = m)
     b <- dplyr::collect(rb_create_voyages(
-      duckdbfs::as_dataset(tagged),
+      as_lazy(tagged),
       method = m,
       batch_pings = 1e5
     ))
@@ -580,10 +576,9 @@ test_that("trips to landings: a cascade of unambiguous steps, then many trips to
     ),
     "different names"
   )
-  skip_if_not_installed("duckdbfs")
   l <- rb_link_trip_landings(
-    duckdbfs::as_dataset(trips),
-    duckdbfs::as_dataset(landings),
+    as_lazy(trips),
+    as_lazy(landings),
     "tid",
     "lid",
     port_trip = "port",
@@ -1020,10 +1015,9 @@ test_that("port calls of runs and jepol lie between the method's voyages, a spli
 })
 
 test_that("port calls of runs: a lazy table gives the data frame's, and dwell refuses the other methods' arguments", {
-  skip_if_not_installed("duckdbfs")
   a <- rb_create_port_calls(tagged, method = "runs")
   b <- dplyr::collect(rb_create_port_calls(
-    duckdbfs::as_dataset(tagged),
+    as_lazy(tagged),
     method = "runs"
   ))
   b <- b[order(b$vid, b$T_in), ]
@@ -1108,7 +1102,6 @@ test_that("rb_add_trip_time() takes each field from the best-ranked witness that
 })
 
 test_that("rb_add_trip_time() gives the same on lazy tables, and refuses an unranked witness or a taken name", {
-  skip_if_not_installed("duckdbfs")
   t0 <- as.POSIXct("2024-03-01 06:00", tz = "UTC")
   trips <- data.frame(tid = 1:2, schema = "a")
   w <- data.frame(
@@ -1121,8 +1114,8 @@ test_that("rb_add_trip_time() gives the same on lazy tables, and refuses an unra
   rk <- c("track", "logbook")
   d <- rb_add_trip_time(trips, w, keys = c("tid", "schema"), rank = rk)
   l <- rb_add_trip_time(
-    duckdbfs::as_dataset(trips),
-    duckdbfs::as_dataset(w),
+    as_lazy(trips),
+    as_lazy(w),
     keys = c("tid", "schema"),
     rank = rk
   )

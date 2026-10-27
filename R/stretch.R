@@ -84,7 +84,7 @@ rb_create_record_stretches <- function(
     stopifnot(is.numeric(x), length(x) == 1, x >= 0)
   }
   lazy_in <- inherits(pings, "tbl_lazy")
-  con <- .rb_con_for(pings)
+  con <- .rb_con_for(pings, records)
   .rb_scope()
   p <- .rb_as_lazy(dplyr::select(pings, dplyr::all_of(need)), con)
   q <- function(x) .rb_q(con, x)

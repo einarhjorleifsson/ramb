@@ -66,12 +66,31 @@ with an `.rb_need()` guard, never in Imports.
    `Sys.setenv()` or `library()` that an `on.exit()` does not undo; no random draw that moves the caller's
    stream (a table is named by number, `.rb_name()`, never by `sample()`; a method that needs random numbers uses
    `withr::with_seed()` or saves and restores `.Random.seed`); nothing assigned in the global environment; no
-   file written outside a path the caller gave, except under `tempdir()`; and no table left on duckdbfs's cached
-   connection by a call on data frames.
+   file written outside a path the caller gave, except under `tempdir()`; and no table left on ramb's connection
+   or the caller's by a call on data frames.
 
 `tests/testthat/test-etiquette.R` checks both for every exported function that takes a table, with the helper in
 `helper-etiquette.R`: data.frame, tibble and data.table input with its rows shuffled, and sf and lazy tables where
 the function takes them. A new exported function that takes a table gets a case there.
+
+## The DuckDB connection (the maintainer, 2026-10-27)
+
+- ramb opens its own in-memory DuckDB for calls on data frames, `.rb_connection()` in
+  [R/connection.R](R/connection.R): one per session, kept in the package (never in `options()`), opened with
+  nothing installed. A lazy table brings its own connection (duckdbfs's, the caller's, ramb's), which
+  `.rb_con_for()` uses; data frames in the same call are registered on it. Until 2026.10.27 ramb used
+  duckdbfs's cached connection, which installs spatial and h3 as it opens (a user who cannot download failed at
+  the first call), turns automatic installs on and sets `options(duckdbfs_conn)`. duckdbfs is in Suggests only.
+- Memory: DuckDB gives every in-memory instance 80 % of RAM and every core, knowing nothing of the others in the
+  session. ramb's takes a quarter of RAM, or `options(ramb.memory_limit)`. Big runs belong on lazy tables, on a
+  connection the caller has sized.
+- Extensions: load one with `.rb_extension(con, name)`, never with a bare `INSTALL`, and only where a function
+  needs it (spatial, httpfs). It installs from `options(ramb.extension_repository)` with `INSTALL ... FROM` when set
+  (no setting changed on a caller's connection), and its error names the offline routes: a file copied into the
+  extension folder counts as installed, and downloads go through `HTTP_PROXY`. Where extensions live is duckdb's
+  to resolve (`DUCKDB_R_HOME`, `options(duckdb.home)`, `~/.duckdb`, else a per-session temporary directory).
+- Parquet is read with a query, `read_parquet([...])` (`rb_read_parquet()`, `rb_read_example()`), never through a
+  view: lazy, only the columns and row groups a query needs.
 
 ## Compatibility policy
 
@@ -133,8 +152,7 @@ the function takes them. A new exported function that takes a table gets a case 
   formatting noise). Note: the CRAN package called `air` is an unrelated
   OpenAI client.
 - Re-running `devtools::test()` in the same R session can fail on leftover
-  tables in duckdbfs's cached connection; run
-  `duckdbfs::close_connection()` first.
+  tables in ramb's connection; run `ramb:::.rb_disconnect()` first.
 - To test what users get, install a clean `git archive HEAD` with
   `R CMD INSTALL --preclean` (to a scratch library if need be) and run
   `testthat::test_dir("tests/testthat", package = "ramb", load_package =

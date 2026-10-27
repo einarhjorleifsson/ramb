@@ -284,7 +284,7 @@ rb_link_record_pings <- function(
     types = c(time = "time")
   )
   lazy_in <- inherits(pings, "tbl_lazy")
-  con <- .rb_con_for(pings)
+  con <- .rb_con_for(pings, windows)
   .rb_scope()
   p_sql <- .rb_in_sql(
     dplyr::select(pings, dplyr::all_of(c("vid", "time", speed))),
@@ -393,7 +393,7 @@ rb_link_record_events <- function(
   }
   stopifnot(is.numeric(max_dt_s), length(max_dt_s) == 1, max_dt_s >= 0)
   lazy_in <- inherits(pings, "tbl_lazy")
-  con <- .rb_con_for(pings)
+  con <- .rb_con_for(pings, records)
   .rb_scope()
   p_sql <- .rb_in_sql(
     dplyr::select(pings, dplyr::all_of(c("vid", "time"))),
@@ -487,7 +487,7 @@ rb_add_record <- function(
 ) {
   .rb_check_input(pings, "rb_add_record", types = c(time = "time"))
   lazy_in <- inherits(pings, "tbl_lazy")
-  con <- .rb_con_for(pings)
+  con <- .rb_con_for(pings, matches)
   .rb_scope()
   given <- pings
   if (!lazy_in) {
@@ -596,7 +596,7 @@ rb_add_fishing <- function(
     ))
   }
   lazy_in <- inherits(pings, "tbl_lazy")
-  con <- .rb_con_for(pings)
+  con <- .rb_con_for(pings, matches)
   .rb_scope()
   given <- pings
   if (!lazy_in) {

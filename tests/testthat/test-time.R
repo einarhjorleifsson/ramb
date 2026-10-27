@@ -87,9 +87,8 @@ test_that("rb_add_timestamp adds the column, sets impossible dates to NA, and ne
   expect_equal(attr(b$departure, "tzone"), "UTC")
   expect_error(rb_add_timestamp(a, date, clock), "already exists")
   expect_error(rb_add_timestamp(d, date), "must be given")
-  skip_if_not_installed("duckdbfs")
   expect_error(
-    rb_add_timestamp(duckdbfs::as_dataset(d), date, clock),
+    rb_add_timestamp(as_lazy(d), date, clock),
     "data frame"
   )
 })

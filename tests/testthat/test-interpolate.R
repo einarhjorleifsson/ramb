@@ -1,4 +1,4 @@
-library(duckdb) # attaches DBI S4 methods duckdbfs::as_dataset() needs
+library(duckdb) # attaches DBI S4 methods as_lazy() needs
 
 # Reference: a direct, unoptimised transcription of the original
 # fishycode/curate/logbook_sensor_gps.R group_modify() logic - kept here only
@@ -153,9 +153,9 @@ test_that("the tbl_lazy (DuckDB) path matches the reference too", {
   r_ref <- ref_interpolate_track(d$events, d$track) |>
     dplyr::arrange(vid, trip, time)
 
-  ev_lazy <- duckdbfs::as_dataset(d$events) |>
+  ev_lazy <- as_lazy(d$events) |>
     dplyr::mutate(time = dplyr::sql("time::TIMESTAMP"))
-  trk_lazy <- duckdbfs::as_dataset(d$track) |>
+  trk_lazy <- as_lazy(d$track) |>
     dplyr::mutate(time = dplyr::sql("time::TIMESTAMP"))
   r_sql <- rb_interpolate_track(ev_lazy, trk_lazy) |>
     dplyr::collect() |>

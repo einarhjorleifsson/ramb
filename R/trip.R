@@ -9,12 +9,12 @@
   # the connection of the lazy inputs, which must share one; a data frame is registered in it
   lazy <- Filter(function(t) inherits(t, "tbl_lazy"), list(x, ...))
   if (length(lazy) == 0) {
-    return(duckdbfs::cached_connection())
+    return(.rb_connection())
   }
   cons <- lapply(lazy, dbplyr::remote_con)
   if (!all(vapply(cons, identical, logical(1), cons[[1]]))) {
     stop(
-      "The lazy tables are on different DuckDB connections; open them on one (duckdbfs::open_dataset() shares its cached connection).",
+      "The lazy tables are on different DuckDB connections; open them on one (rb_read_parquet() and rb_read_example() take `con`).",
       call. = FALSE
     )
   }
@@ -282,10 +282,8 @@ rb_create_port_calls <- function(
     lat = {{ lat }}
   )
   lazy_in <- inherits(pings, "tbl_lazy")
-  con <- .rb_con_for(pings)
-  tryCatch(DBI::dbExecute(con, "LOAD spatial"), error = function(e) {
-    DBI::dbExecute(con, "INSTALL spatial; LOAD spatial")
-  })
+  con <- .rb_con_for(pings, events)
+  .rb_extension(con, "spatial")
   p <- .rb_as_lazy(.rb_std_in(pings, map), con) |>
     dplyr::select(vid, time, lon, lat)
 
@@ -835,7 +833,7 @@ rb_create_voyages <- function(
     c("vid", "time", "port_id")
   )
   lazy_in <- inherits(pings, "tbl_lazy")
-  con <- .rb_con_for(pings)
+  con <- .rb_con_for(pings, port_calls)
   .rb_scope()
   # a lazy result keeps what the call registered; a data frame's comes back as the pings came in
   done <- function(out) if (lazy_in) .rb_hold(out) else .rb_as_given(out, pings)
@@ -967,7 +965,7 @@ rb_add_voyages <- function(
   )
   map <- .rb_cols(vid = {{ vid }}, time = {{ time }})
   lazy_in <- inherits(pings, "tbl_lazy")
-  con <- .rb_con_for(pings)
+  con <- .rb_con_for(pings, voyages, port_calls)
   .rb_scope()
   given <- pings
   if (!lazy_in) {
@@ -1052,7 +1050,7 @@ rb_link_trip_voyages <- function(
   t2_fix <- match.arg(t2_fix)
   map <- .rb_cols(vid = {{ vid }})
   lazy_in <- inherits(trips, "tbl_lazy")
-  con <- .rb_con_for(trips)
+  con <- .rb_con_for(trips, voyages)
   .rb_scope()
   tr <- .rb_as_lazy(.rb_std_in(trips, map), con)
   v <- .rb_as_lazy(voyages, con)
@@ -1877,9 +1875,7 @@ FROM ({tr_sql}) t LEFT JOIN tc USING ({kq}) LEFT JOIN tsp USING ({kq}){pjoin}"
   iapesca
 ) {
   par <- .rb_iapesca_par(iapesca)
-  tryCatch(DBI::dbExecute(con, "LOAD spatial"), error = function(e) {
-    DBI::dbExecute(con, "INSTALL spatial; LOAD spatial")
-  })
+  .rb_extension(con, "spatial")
   if (is.null(par$crs_m)) {
     m <- dplyr::collect(dplyr::summarise(
       p,
@@ -2254,7 +2250,7 @@ rb_link_trip_landings <- function(
     steps <- steps[!steps$port, ]
   }
   lazy_in <- inherits(trips, "tbl_lazy")
-  con <- .rb_con_for(trips)
+  con <- .rb_con_for(trips, landings)
   .rb_scope()
   q <- function(x) if (length(x) == 0) character(0) else .rb_q(con, x)
   t_sql <- .rb_in_sql(trips, con)

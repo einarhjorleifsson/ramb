@@ -203,8 +203,9 @@ is summed in it. Here the pings are counted by 0.01-degree cell, with a
 filter on behaviour:
 
 ```{r}
-con <- duckdbfs::cached_connection() # the connection rb_read_example() uses
-dansk_sql <- dbplyr::sql_render(rb_read_example("dansk"))
+con <- DBI::dbConnect(duckdb::duckdb())
+DBI::dbExecute(con, "INSTALL spatial; LOAD spatial") # the tiles are made with DuckDB's ST_ functions
+dansk_sql <- dbplyr::sql_render(rb_read_example("dansk", con = con))
 
 cell_tile <- function(z, x, y, params) {
   where <- if (is.null(params$behaviour)) {

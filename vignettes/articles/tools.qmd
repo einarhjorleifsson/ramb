@@ -118,8 +118,9 @@ dansk |>
 [rb_bin_midpoint()](../reference/rb_bin_midpoint.html) is exact for floating-point bin widths (`dx = 0.1`
 places 0.3 in the 0.3-bin, not the 0.2-bin) and has a dbplyr SQL
 translation, so it runs inside `mutate()` on DuckDB-backed tables,
-including [duckdbfs::open_dataset()](https://cboettig.github.io/duckdbfs/reference/open_dataset.html)
-parquet sources.
+including parquet sources opened with
+[rb_read_parquet()](../reference/rb_read_parquet.html) or
+[duckdbfs::open_dataset()](https://cboettig.github.io/duckdbfs/reference/open_dataset.html).
 
 ## Values and identifiers
 

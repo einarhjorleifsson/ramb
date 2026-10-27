@@ -90,7 +90,7 @@ rb_add_effort <- function(
     fresh = TRUE
   )
   lazy_in <- inherits(pings, "tbl_lazy")
-  con <- .rb_con_for(pings)
+  con <- .rb_con_for(pings, vessels)
   .rb_scope()
   given <- pings
   if (!lazy_in) {

@@ -2,7 +2,7 @@
 # grid's parameters, the table tiles, and a real server started and stopped. All on ramb's example data.
 
 skip_if_no_spatial <- function() {
-  con <- duckdbfs::cached_connection()
+  con <- .rb_connection()
   ok <- !inherits(
     try(DBI::dbExecute(con, "LOAD spatial"), silent = TRUE),
     "try-error"
@@ -32,7 +32,7 @@ tile_of <- function(lon, lat, z) {
 
 # a map of the example pings by cell (a grid, filtered by behaviour) and the harbours (as tiles and as GeoJSON)
 example_map <- function() {
-  con <- duckdbfs::cached_connection()
+  con <- .rb_connection()
   pings <- dbplyr::sql_render(rb_read_example("dansk"))
   grid_tile <- function(z, x, y, params) {
     where <- if (is.null(params$behaviour)) {
@@ -240,7 +240,7 @@ test_that("the server's routes: the page, its config, meta, tiles and data", {
   expect_gt(length(all$body), length(fishing$body))
   expect_gt(length(fishing$body), 0)
   # a harbour's own tile has features in both layers
-  con <- duckdbfs::cached_connection()
+  con <- .rb_connection()
   p <- DBI::dbGetQuery(
     con,
     sprintf(
@@ -266,7 +266,7 @@ test_that("the server's routes: the page, its config, meta, tiles and data", {
 
 test_that("a table's properties of any type reach its tiles, cast to what a tile holds", {
   skip_if_no_spatial()
-  con <- duckdbfs::cached_connection()
+  con <- .rb_connection()
   duckdb::duckdb_register(
     con,
     "rb_test_types",
@@ -571,7 +571,7 @@ test_that("a track: a line per vessel broken at silences, or coloured by runs of
   expect_setequal(vapply(p$legend, `[[`, "", "label"), c("Fishing", "Other"))
   # a run ends where the next begins, except at a silence: as many unjoined ends as the plain line has stretches
   ends <- DBI::dbGetQuery(
-    duckdbfs::cached_connection(),
+    .rb_connection(),
     sprintf(
       "WITH r AS (SELECT ST_AsText(ST_StartPoint(g3857)) AS s, ST_AsText(ST_EndPoint(g3857)) AS e FROM %s)
        SELECT count(*) FILTER (WHERE e NOT IN (SELECT s FROM r)) AS n FROM r",
@@ -616,7 +616,7 @@ test_that("a map is served when printed at a console; a replaced map's tables ar
   skip_if_not_installed("httpuv")
   skip_if_not_installed("jsonlite")
   skip_if_no_spatial()
-  con <- duckdbfs::cached_connection()
+  con <- .rb_connection()
   exists <- function(m) {
     vapply(
       attr(m, "tables"),

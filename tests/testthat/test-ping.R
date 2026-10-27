@@ -51,18 +51,17 @@ test_that("the chain gives the labels of the procedure it replaces", {
 })
 
 test_that("a lazy DuckDB table gives the same labels as a data frame", {
-  skip_if_not_installed("duckdbfs")
   set.seed(2)
   d <- two_feeds()
   df <- chain(d, c("stk", "astd"))
-  lz <- chain(duckdbfs::as_dataset(d), c("stk", "astd"))
+  lz <- chain(as_lazy(d), c("stk", "astd"))
   expect_s3_class(lz, "tbl_lazy")
   lz <- dplyr::collect(lz)
   expect_equal(lz$ping_flag[order(lz$rid)], df$ping_flag[order(df$rid)])
   for (m in c("sda", "forward", "fwdbwd", "sequential")) {
     a <- rb_flag_ping_impossible(d, method = m)
     b <- dplyr::collect(rb_flag_ping_impossible(
-      duckdbfs::as_dataset(d),
+      as_lazy(d),
       method = m
     ))
     expect_equal(b$ping_flag[order(b$rid)], a$ping_flag[order(a$rid)], info = m)
@@ -100,10 +99,10 @@ test_that("pings of one second at two places do not make the flags depend on row
   for (m in c("clean", "sda", "forward", "fwdbwd", "sequential")) {
     a <- flags(d, m)
     expect_identical(flags(rev_d, m), a, info = m)
-    expect_identical(flags(duckdbfs::as_dataset(rev_d), m), a, info = m)
+    expect_identical(flags(as_lazy(rev_d), m), a, info = m)
   }
   # the SQL branch of the fwdbwd engine (lazy input) agrees with its data-frame branch
-  sql <- dplyr::collect(.rb_whack_fwdbwd(duckdbfs::as_dataset(rev_d)))
+  sql <- dplyr::collect(.rb_whack_fwdbwd(as_lazy(rev_d)))
   df <- .rb_whack_fwdbwd(d)
   expect_identical(
     sql$whack[order(sql$key)] %in% TRUE,
@@ -145,7 +144,6 @@ test_that("the flag chain does not warn", {
 })
 
 test_that("the port tag: data frame = lazy table, one row per ping, the smaller of two polygons wins", {
-  skip_if_not_installed("duckdbfs")
   sq <- function(x0, y0, w) {
     sf::st_polygon(list(rbind(
       c(x0, y0),
@@ -176,7 +174,7 @@ test_that("the port tag: data frame = lazy table, one row per ping, the smaller 
   expect_equal(a$port_id[order(a$time)], c("small", "big", "far", NA))
   expect_equal(a$code[order(a$time)], c("S", "B", "F", NA))
   b <- dplyr::collect(rb_flag_ping_port(
-    duckdbfs::as_dataset(d),
+    as_lazy(d),
     h,
     keep = "code"
   ))
