@@ -1,3 +1,14 @@
+# ramb 2026.10.28.1
+
+Documentation and attribution only (the maintainer, 2026-10-28: a recode of code that exists only as scripts or
+PDFs stands on that alone, if it is checked against the original's output and listed in `inst/COPYRIGHTS`).
+
+- `rb_create_voyages(method = "jepol")` is WKSSFGEO's `define_trips_pol()` (`R/define_trips_pol.R`, MIT), now
+  listed in `inst/COPYRIGHTS`. Its help, the trips article and the dictionary entry of `wkssfgeo_cnr_dansk_trips`
+  called it the ICES VMS data call's rule, which the data call's repository has never held.
+- `rb_link_record_sets()` and the sets article cite Mendo et al. (2023), the other published set and soak method,
+  and say why it is not recoded (fishycode decision 234).
+
 # ramb 2026.10.28
 
 The iapesca methods follow iapesca 1.3 (the maintainer, 2026-10-28), the package as Ifremer keeps it at

@@ -879,6 +879,14 @@ rb_create_record_pings <- function(
 #'   0.1 (2022, GPL; <https://github.com/JulRodrigu/r-packages_iapesca>, since deprecated) with changes of its own:
 #'   a window of 0 to 240 hours, a buffer per haul, a score of lateness (at least 0.25) times the pass's pings (at
 #'   most 4), and the later pass on a tie (fishycode decision 232).
+#'
+#'   The other published set and soak method: Mendo, T., Glemarec, G., Mendo, J., et al. (2023). "Estimating
+#'   fishing effort from highly resolved geospatial data: focusing on passive gears". Ecological Indicators 154,
+#'   110822. \doi{10.1016/j.ecolind.2023.110822}. Its R code is in the article's Supplementary Materials 3 and 4
+#'   (CC BY 4.0): from hauling pings a classifier labelled, on a dense track at a regular interval, it takes the
+#'   vessel's longest pass through a buffer of the haul that covers most of the haul's length. It is not recoded
+#'   here: on ramb's labelled tracks it did no better than this function from 2-minute pings on (fishycode
+#'   decision 234).
 #' @export
 rb_link_record_sets <- function(
   hauls,

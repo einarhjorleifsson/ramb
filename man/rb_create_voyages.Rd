@@ -84,7 +84,7 @@ call it falls in (the earlier of two that overlap), the track is cut into runs o
 sea run becomes a voyage, from the port of the port call before it to the port of the port call after it.
 \item \code{"runs"}: as \code{"dwell"}, but every run of pings tagged in a port (\code{\link[=rb_flag_ping_port]{rb_flag_ping_port()}}) is a port call,
 however short.
-\item \code{"jepol"}: the ICES VMS datacall rule (\code{define_trips_pol}): a voyage runs from the
+\item \code{"jepol"}: WKSSFGEO's rule (\code{define_trips_pol()}; see References): a voyage runs from the
 first ping at sea to the first ping back in port; voyages of \code{min_dur_h} hours or less are dropped, and
 with \code{split} one over \code{max_dur_h} hours is cut at its longest gap between pings, repeatedly. A long
 voyage with no inside gap of three minutes or more is left whole.
@@ -120,12 +120,12 @@ port of the in-port ping before and after the voyage. The \code{iapesca} argumen
 }
 }
 \references{
-For \code{"jepol"}: the trip rule \code{define_trips_pol} of the ICES VMS
-data-call workflow, after \code{vmstools} (Hintzen, N.T., Bastardie, F.,
-Beare, D., et al. (2012). "VMStools: Open-source software for the
-processing, analysis and visualisation of fisheries logbook and VMS
-data". Fisheries Research, 115–116, 31–43.
-\doi{10.1016/j.fishres.2011.11.007}).
+For \code{"jepol"}: \code{define_trips_pol()} in \code{R/define_trips_pol.R} of the ICES Workshop WKSSFGEO,
+\url{https://github.com/ices-eg/WKSSFGEO} (MIT), which reads the harbour flag \code{SI_HARB} of \code{vmstools}' tacsat
+format (Hintzen, N.T., Bastardie, F., Beare, D., et al. (2012). "VMStools: Open-source software for the
+processing, analysis and visualisation of fisheries logbook and VMS data". Fisheries Research, 115–116,
+31–43. \doi{10.1016/j.fishres.2011.11.007}). Until 2026.10.28.1 this page called it the ICES VMS data call's
+rule; the data call's repository has never held it.
 
 For \code{"cnr"}: Galdelli, A., Mancini, A., Tassetti, A.N., et al. (2019). "A cloud computing architecture to
 map trawling activities using positioning data". Proceedings of the ASME 2019 IDETC/CIE, Volume 9.

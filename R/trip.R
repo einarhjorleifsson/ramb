@@ -671,7 +671,7 @@ SELECT *, %s AS rb_year FROM ps",
 #'   sea run becomes a voyage, from the port of the port call before it to the port of the port call after it.
 #' * `"runs"`: as `"dwell"`, but every run of pings tagged in a port ([rb_flag_ping_port()]) is a port call,
 #'   however short.
-#' * `"jepol"`: the ICES VMS datacall rule (`define_trips_pol`): a voyage runs from the
+#' * `"jepol"`: WKSSFGEO's rule (`define_trips_pol()`; see References): a voyage runs from the
 #'   first ping at sea to the first ping back in port; voyages of `min_dur_h` hours or less are dropped, and
 #'   with `split` one over `max_dur_h` hours is cut at its longest gap between pings, repeatedly. A long
 #'   voyage with no inside gap of three minutes or more is left whole.
@@ -737,12 +737,12 @@ SELECT *, %s AS rb_year FROM ps",
 #'   after the voyage: the start or end of the vessel's series, or a New Year cut with `by_year`) and `short`
 #'   (fewer than `short_pings` pings). A data frame for data frame input, a lazy table for lazy input.
 #'
-#' @references For `"jepol"`: the trip rule `define_trips_pol` of the ICES VMS
-#'   data-call workflow, after `vmstools` (Hintzen, N.T., Bastardie, F.,
-#'   Beare, D., et al. (2012). "VMStools: Open-source software for the
-#'   processing, analysis and visualisation of fisheries logbook and VMS
-#'   data". Fisheries Research, 115–116, 31–43.
-#'   \doi{10.1016/j.fishres.2011.11.007}).
+#' @references For `"jepol"`: `define_trips_pol()` in `R/define_trips_pol.R` of the ICES Workshop WKSSFGEO,
+#'   <https://github.com/ices-eg/WKSSFGEO> (MIT), which reads the harbour flag `SI_HARB` of `vmstools`' tacsat
+#'   format (Hintzen, N.T., Bastardie, F., Beare, D., et al. (2012). "VMStools: Open-source software for the
+#'   processing, analysis and visualisation of fisheries logbook and VMS data". Fisheries Research, 115–116,
+#'   31–43. \doi{10.1016/j.fishres.2011.11.007}). Until 2026.10.28.1 this page called it the ICES VMS data call's
+#'   rule; the data call's repository has never held it.
 #'
 #'   For `"cnr"`: Galdelli, A., Mancini, A., Tassetti, A.N., et al. (2019). "A cloud computing architecture to
 #'   map trawling activities using positioning data". Proceedings of the ASME 2019 IDETC/CIE, Volume 9.
@@ -1364,7 +1364,7 @@ FROM ({tr_sql}) t LEFT JOIN tc USING ({kq}) LEFT JOIN tsp USING ({kq}){pjoin}"
   }
   dplyr::tbl(con, .rb_register(con, out, "rb_voy_"))
 }
-# trip_jepol.R — the ICES datacall's trip rule (define_trips_pol), recoded in base R from rb_trip_jepol()'s
+# trip_jepol.R — WKSSFGEO's trip rule (define_trips_pol), recoded in base R from rb_trip_jepol()'s
 # data.table body (plan 013: recoded, not copied). Sequential (the split loop), so tier 4: one vessel at a time.
 #
 # A trip runs from the first ping at sea to the first ping back in harbour. Trips of min_dur hours or less are

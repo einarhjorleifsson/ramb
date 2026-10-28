@@ -6,7 +6,7 @@
 \format{
 A parquet file of 184 rows in the package's \code{extdata} folder, \code{wkssfgeo_cnr_dansk_trips.parquet}, with the columns:
 \itemize{
-\item \code{method}: The method that cut the trip. Values: \code{galdelli} CNR-IRBIM's method (Galdelli et al. 2019), its table \code{galdelli_trips}; \code{jepol} the ICES data call's rule \code{define_trips_pol}, its table \code{jepol_trips}.
+\item \code{method}: The method that cut the trip. Values: \code{galdelli} CNR-IRBIM's method (Galdelli et al. 2019), its table \code{galdelli_trips}; \code{jepol} WKSSFGEO's rule \code{define_trips_pol}, its table \code{jepol_trips}.
 \item \code{vessel_id}: The vessel of \code{dansk}.
 \item \code{trip_id}: The trip: the vessel and the method's trip number. galdelli numbers its trips over all vessels, jepol per vessel.
 \item \code{T1}: The trip's start, as the method gives it.
@@ -37,7 +37,7 @@ the Exploration of the Sea. doi:10.17895/ices.pub.10032
 Licence: GNU GPL version 3, the licence of the folder \code{R-dev/galdelli_pulcinella_tassetti}.
 }
 \description{
-Each row is a trip of the Danish tracks (\code{dansk}) as one of two methods cut them: CNR-IRBIM's (94 trips) and jepol, the ICES data call's rule \code{define_trips_pol} (90 trips). CNR-IRBIM made both for WKSSFGEO, to compare the methods. Read it with \code{rb_read_example("wkssfgeo_cnr_dansk_trips")}.
+Each row is a trip of the Danish tracks (\code{dansk}) as one of two methods cut them: CNR-IRBIM's (94 trips) and jepol, WKSSFGEO's rule \code{define_trips_pol} (90 trips). CNR-IRBIM made both for WKSSFGEO, to compare the methods. Read it with \code{rb_read_example("wkssfgeo_cnr_dansk_trips")}.
 }
 \details{
 \code{galdelli_trips.rData} and \code{jepol_trips.rData} of \code{R-dev/galdelli_pulcinella_tassetti/data} (WKSSFGEO, \code{dev_branch}), stacked with \code{method} added. Columns renamed: \code{start_timestamp} and \code{depart} to \code{T1}, \code{end_timestamp} and \code{return} to \code{T2}, \code{departure} and \code{arrival} to \code{port_from} and \code{port_to}. The galdelli \code{trip_id} is made of vessel and trip number; \code{duration_hrs} is left out, being \code{T2} less \code{T1} (\code{data-raw/wkssfgeo_examples.R}).

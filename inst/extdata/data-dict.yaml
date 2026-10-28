@@ -691,8 +691,7 @@ tables:
     label: The Danish tracks cut into trips by two methods
     description: >
       Each row is a trip of the Danish tracks (`dansk`) as one of two methods cut them: CNR-IRBIM's (94 trips) and
-      jepol, the ICES data call's rule `define_trips_pol` (90 trips). CNR-IRBIM made both for WKSSFGEO, to compare the
-      methods.
+      jepol, WKSSFGEO's rule `define_trips_pol` (90 trips). CNR-IRBIM made both for WKSSFGEO, to compare the methods.
     details: |
       **Cite:** [@galdelli2019; @wkssfgeo_cnr_github; @ices2022wkssfgeo]
 
@@ -712,7 +711,7 @@ tables:
         description: The method that cut the trip.
         values:
           galdelli: CNR-IRBIM's method (Galdelli et al. 2019), its table `galdelli_trips`
-          jepol: the ICES data call's rule `define_trips_pol`, its table `jepol_trips`
+          jepol: WKSSFGEO's rule `define_trips_pol`, its table `jepol_trips`
       - name: vessel_id
         type: string
         description: The vessel of `dansk`.
@@ -766,7 +765,7 @@ tables:
         description: The method that put the ping in the trip.
         values:
           galdelli: CNR-IRBIM's method (Galdelli et al. 2019), its table `galdelli_pp_trips`
-          jepol: the ICES data call's rule `define_trips_pol`, its table `jepol_pp_trip`
+          jepol: WKSSFGEO's rule `define_trips_pol`, its table `jepol_pp_trip`
       - name: vessel_id
         type: string
         description: The vessel of `dansk`.

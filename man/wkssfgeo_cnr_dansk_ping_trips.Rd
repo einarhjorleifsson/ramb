@@ -6,7 +6,7 @@
 \format{
 A parquet file of 663,335 rows in the package's \code{extdata} folder, \code{wkssfgeo_cnr_dansk_ping_trips.parquet}, with the columns:
 \itemize{
-\item \code{method}: The method that put the ping in the trip. Values: \code{galdelli} CNR-IRBIM's method (Galdelli et al. 2019), its table \code{galdelli_pp_trips}; \code{jepol} the ICES data call's rule \code{define_trips_pol}, its table \code{jepol_pp_trip}.
+\item \code{method}: The method that put the ping in the trip. Values: \code{galdelli} CNR-IRBIM's method (Galdelli et al. 2019), its table \code{galdelli_pp_trips}; \code{jepol} WKSSFGEO's rule \code{define_trips_pol}, its table \code{jepol_pp_trip}.
 \item \code{vessel_id}: The vessel of \code{dansk}.
 \item \code{time_stamp}: Time of the ping, as in \code{dansk}.
 \item \code{trip_id}: The trip, as in \code{wkssfgeo_cnr_dansk_trips}.

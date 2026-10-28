@@ -18,6 +18,14 @@ src/trip_cnr.cpp (rb_create_voyages(method = "cnr"))
   by A. Galdelli, J. Pulcinella, A.N. Tassetti and E. Armelloni (CNR-IRBIM).
   License: GNU GPL 3, the folder's own licence, as ramb's GPL (>= 3) allows.
 
+R/trip.R (rb_create_voyages(method = "jepol"))
+  The trip rule of define_trips_pol() in R/define_trips_pol.R of the ICES
+  Workshop WKSSFGEO, https://github.com/ices-eg/WKSSFGEO, commit 8ac5f07 (the
+  file as added on 2021-11-24 in 436e3f5), recoded in base R and checked
+  against its saved trips on the Danish tracks (fishycode plan 031: 89 of 90,
+  the one difference a split ramb corrects on purpose).
+  Copyright (c) 2021 ICES Expert Groups. License: MIT (text below).
+
 R/trip.R (rb_create_voyages(method = "iapesca"))
   The trip rule of Detect_FishingTrips(), CleanSpuriousSpeeds() and CalcSpeed()
   of the R package iapesca 1.3 by Julien Rodriguez (Ifremer),

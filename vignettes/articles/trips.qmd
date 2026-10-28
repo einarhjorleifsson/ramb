@@ -91,8 +91,9 @@ two of them:
 
 * `method = "runs"`: every run of pings in port, however short, ends a
   voyage.
-* `method = "jepol"`: the ICES VMS datacall rule (`define_trips_pol`,
-  after [vmstools](https://github.com/nielshintzen/vmstools),
+* `method = "jepol"`: the rule of the ICES workshop WKSSFGEO
+  ([`define_trips_pol`](https://github.com/ices-eg/WKSSFGEO/blob/8ac5f07/R/define_trips_pol.R),
+  on [vmstools](https://github.com/nielshintzen/vmstools)' harbour flag,
   [Hintzen et al. 2012](https://doi.org/10.1016/j.fishres.2011.11.007)).
   A voyage runs from the first ping at sea to the first ping back in
   port; voyages shorter than `min_dur_h` hours are dropped, and voyages

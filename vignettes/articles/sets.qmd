@@ -17,6 +17,14 @@ and its length. The rule is that of Ifremer's iapesca package, version 1.3,
 recoded. This article measures it on tracks whose pings an observer or an
 expert labelled, and compares the variants the function offers.
 
+The other published method is Mendo et al.
+([2023](https://doi.org/10.1016/j.ecolind.2023.110822)), in R in the
+article's Supplementary Materials 3 and 4: from hauling pings a classifier
+labelled, on a dense track at a regular interval, it takes the vessel's
+longest pass through a buffer of the haul that covers most of the haul's
+length. It is not recoded in ramb: on these tracks it did no better than
+`rb_link_record_sets()` from 2-minute pings on (fishycode decision 234).
+
 ```{r}
 library(ramb)
 library(dplyr)
