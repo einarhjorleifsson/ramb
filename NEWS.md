@@ -1,3 +1,11 @@
+# ramb 2026.10.28.2
+
+Runs on DuckDB 2.0 (fishycode decision 235). ramb's 225 tests pass under DuckDB 2.0.0 and 1.5.6 alike.
+
+- The test of an extension installed offline copies a core extension, the kind ramb loads (spatial, httpfs). It took
+  the smallest installed extension, which can be a community one (h3), and DuckDB 2.0 loads a copied community
+  extension only with the `.info` file its install writes beside it; 1.5.6 loaded it alone.
+
 # ramb 2026.10.28.1
 
 Documentation and attribution only (the maintainer, 2026-10-28: a recode of code that exists only as scripts or

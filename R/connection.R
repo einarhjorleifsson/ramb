@@ -78,7 +78,8 @@
 # there are three ways in, each tested on 2026-10-27: a file copied into the extension folder counts as installed;
 # options(ramb.extension_repository) names a folder or URL laid out as DuckDB's, installed from with INSTALL ... FROM,
 # which leaves the connection's settings as they were (SET custom_extension_repository would not, on a caller's
-# connection); and DuckDB's downloads go through the web proxy in HTTP_PROXY.
+# connection); and DuckDB's downloads go through the web proxy in HTTP_PROXY. ramb loads core extensions only
+# (spatial, httpfs): DuckDB 2.0 loads a copied community extension only with the .info file its install writes beside it.
 .rb_extension <- function(con, name) {
   load <- function() {
     !inherits(

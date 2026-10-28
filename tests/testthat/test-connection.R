@@ -57,13 +57,15 @@ test_that("ramb's instance takes a quarter of the memory, or what options(ramb.m
 })
 
 test_that("an extension installs offline: from a copied file or a folder, and the error names both ways", {
-  # the smallest extension already installed for the user, copied; skipped where there is none
+  # the smallest core extension already installed for the user, copied; skipped where there is none. ramb loads core
+  # extensions only, and DuckDB 2.0 refuses a community one copied without its .info file
   have <- DBI::dbGetQuery(
     .rb_connection(),
-    "SELECT extension_name, install_path FROM duckdb_extensions() WHERE installed AND install_path <> ''"
+    "SELECT extension_name, install_path FROM duckdb_extensions()
+     WHERE installed AND install_path <> '' AND installed_from = 'core'"
   )
   have <- have[file.exists(have$install_path), ]
-  skip_if(nrow(have) == 0, "no DuckDB extension is installed to copy")
+  skip_if(nrow(have) == 0, "no core DuckDB extension is installed to copy")
   pick <- have[which.min(file.size(have$install_path)), ]
   name <- pick$extension_name
   # nothing reachable: a download would fail
