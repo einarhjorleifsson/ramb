@@ -691,19 +691,19 @@ SELECT *, %s AS rb_year FROM ps",
 #'   (`distance = "geodesic"`, the default, as the R code measured them; needs lwgeom) or on ramb's sphere
 #'   (`"sphere"`, needs s2), whatever [sf::sf_use_s2()] says; the port buffer and the coastal zone are
 #'   tested on the plane, as in the R code.
-#' * `"iapesca"`: Ifremer's `Detect_FishingTrips()` with harbours (iapesca, J. Rodriguez), as version 0.1 of 2022
-#'   had it (see References), recoded as one DuckDB query, so a lazy table (parquet) never comes into memory. Pings at the same time and place as earlier
-#'   ones are dropped (each matched separately, as the R code does); then, up to `max_pass` (5) times, the first
-#'   of each run of pings reached at `max_speed_kn` (25) or more. A ping is in port within a buffer of the
-#'   `ports` polygons: `buf_start_m` (2,000 m), or 1 % of the track's bounding-box diagonal when that lies
-#'   between `buf_start_m` and `buf_max_m` (2 nautical miles); with no ping in port the buffer grows by that 1 %,
-#'   up to five times. A voyage is a run of pings outside the buffer; it ends at a run of more pings in port than
-#'   the mean ping interval in hours (rounded down) plus one, but only if over `min_stop_s` (1 hour) have passed
-#'   since the previous voyage end, so a short voyage merges with the next. Pings in port belong to no voyage.
-#'   The geometry is planar in `crs_m` (default: the UTM zone of the pings' mean position), as the R code is with
-#'   projected input; the buffer is GEOS's (30 segments a quarter circle), as sf's. Added here: `port_from` and
-#'   `port_to`, the nearest port of the in-port ping before and after the voyage. The `iapesca` argument sets
-#'   these values.
+#' * `"iapesca"`: Ifremer's `Detect_FishingTrips()` with harbours (iapesca 1.3, J. Rodriguez; see References),
+#'   recoded as one DuckDB query, so a lazy table (parquet) never comes into memory. A ping at the same time as an
+#'   earlier one is dropped, wherever it is; then, up to `max_pass` (5) times, the first of each run of pings
+#'   reached at `max_speed_kn` (25) or more. A ping is in port within a buffer of the `ports` polygons: 1 % of the
+#'   track's bounding-box diagonal, at least `buf_start_m` (2,000 m) and at most `buf_max_m` (2 nautical miles);
+#'   with no ping in port the buffer grows by a fifth of its way to `buf_max_m`, rounded to the metre, until a ping
+#'   is in port or it reaches `buf_max_m`. A voyage runs from a ping outside the buffer to the last before a stop:
+#'   a run in port of over `min_stop_s` (1 hour), timed from the last ping at sea before it to the first after it.
+#'   The pings in port during a shorter stop belong to the voyage and count in `n_pings`; those in port between
+#'   voyages belong to none. The geometry is planar in `crs_m` (default: the UTM zone of the pings' mean
+#'   position), as the R code is with projected input (with longitude and latitude it works on s2's sphere); the
+#'   buffer is GEOS's (30 segments a quarter circle), as sf's. Added here: `port_from` and `port_to`, the nearest
+#'   port of the in-port ping before and after the voyage. The `iapesca` argument sets these values.
 #'
 #' @param pings A data frame or lazy DuckDB table with `vid` and `time`, and `port_id` for `"runs"`,
 #'   `"jepol"` and `"cnr"` (NA at sea). For `"cnr"` also `speed` (knots, recorded) and `lon`, `lat`; for
@@ -751,12 +751,12 @@ SELECT *, %s AS rb_year FROM ps",
 #'   `dev_branch`.
 #'
 #'   For `"iapesca"`: Rodriguez, J. iapesca: interpretation of fishing paths from vessels' geo-spatial data,
-#'   R package (Ifremer), <https://gitlab.ifremer.fr/iapesca/r-packages_iapesca> (version 1.3, CC BY 4.0). The
-#'   method here follows version 0.1 (2022, GPL), the GitHub copy its author has since deprecated
-#'   (<https://github.com/JulRodrigu/r-packages_iapesca>). Version 1.3's `Detect_FishingTrips()` differs: a stop
-#'   is the gap between the fixes at sea either side of it, not the time since the previous voyage end; the buffer
-#'   is clamped to its cap and grows by a fifth of the distance to it, with no limit on the passes; a trip is named
-#'   by its last fix's date (fishycode decision 232).
+#'   R package (Ifremer), <https://gitlab.ifremer.fr/iapesca/r-packages_iapesca> (version 1.3, CC BY 4.0), whose
+#'   trips the method gives on CNR-IRBIM's Italian tracks. Until 2026.10.28 it followed version 0.1 (2022, GPL), the
+#'   GitHub copy its author has since deprecated (<https://github.com/JulRodrigu/r-packages_iapesca>), where a stop
+#'   was timed from the previous voyage end, a ping was a duplicate when its time and its place had each occurred
+#'   before, and the buffer grew by 1 % of the diagonal, at most five times (fishycode decision 232). iapesca names
+#'   a trip by its last fix's date; here voyages are numbered.
 #' @family trip
 #' @export
 rb_create_voyages <- function(
@@ -1831,14 +1831,13 @@ FROM ({tr_sql}) t LEFT JOIN tc USING ({kq}) LEFT JOIN tsp USING ({kq}){pjoin}"
   dplyr::tbl(con, .rb_register(con, out, "rb_voy_"))
 }
 
-# The "iapesca" method: Ifremer's Detect_FishingTrips() with harbours (iapesca 0.1, J. Rodriguez, GPL), recoded as
-# one DuckDB query; checked against the R function, ping for ping, in fishycode plan 031's bench. Planar in a metric
-# CRS, as the R function is with projected input. Kept from the R function so the two agree:
-# - a ping is dropped as a duplicate when its time and its position each occurred on an earlier ping, matched
-#   separately (CalcSpeed's duplicated(time) & duplicated(geometry));
-# - min_stop_s is the time since the previous voyage end, not the length of the stop;
-# - the buffer is 1 % of the diagonal only between buf_start_m and buf_max_m, and buf_start_m above the cap.
-# Not kept: the R function's NA rows when a duplicate and a spurious speed meet, and its midnight parsing.
+# The "iapesca" method: Ifremer's Detect_FishingTrips() with harbours (iapesca 1.3, J. Rodriguez, CC BY 4.0), recoded
+# as one DuckDB query; checked against the R function on the Italian tracks (data-raw/iapesca_trips.R). Planar in a
+# metric CRS, as the R function is with projected input. Kept from the R function so the two agree:
+# - a ping at the same time as an earlier one is dropped, wherever it is (CalcSpeed's duplicated(time));
+# - the buffer's step is rounded half to even, as R's round().
+# Not kept: the R function loops for ever when no ping is in port and the step rounds to 0 m (the start buffer within
+# 2.5 m of the cap); here the buffer then stays at its start.
 # "In port" is the exact distance to the nearest harbour, and only pings within 2 m inside a buffer's edge are
 # tested against GEOS's 30-segment buffer polygon, which lies inside the exact offset, at most 1.3 m short at 3.7 km.
 .rb_iapesca_par <- function(iapesca) {
@@ -1937,8 +1936,7 @@ s0 AS MATERIALIZED (
     ")
         WHERE time IS NOT NULL AND lon IS NOT NULL AND lat IS NOT NULL)),
 c0 AS (SELECT vid, rb_year, time, rid, t, x, y FROM (
-       SELECT *, row_number() OVER (PARTITION BY vid, rb_year, t ORDER BY rid) > 1
-                 AND row_number() OVER (PARTITION BY vid, rb_year, x, y ORDER BY rid) > 1 AS dup FROM s0)
+       SELECT *, row_number() OVER (PARTITION BY vid, rb_year, t ORDER BY rid) > 1 AS dup FROM s0)
        WHERE NOT dup),",
     if (np > 0) {
       paste0(paste(sapply(seq_len(np), pass), collapse = ","), ",")
@@ -1949,10 +1947,15 @@ c0 AS (SELECT vid, rb_year, time, rid, t, x, y FROM (
 cl AS MATERIALIZED (SELECT *, row_number() OVER (PARTITION BY vid, rb_year ORDER BY rid) AS r FROM c",
     np,
     "),
-v AS MATERIALIZED (SELECT vid, rb_year, count(*) AS n, floor(((max(t) - min(t)) / count(*)) / ",
-    ms,
-    ") + 1 AS mtl,
-                          sqrt((max(x) - min(x))^2 + (max(y) - min(y))^2) / 100 AS inc FROM cl GROUP BY ALL),
+v AS MATERIALIZED (SELECT vid, rb_year, b0, round_even((",
+    bm,
+    " - b0) / 5, 0) AS step
+                   FROM (SELECT vid, rb_year, least(greatest(",
+    bs,
+    ", sqrt((max(x) - min(x))^2 + (max(y) - min(y))^2) / 100), ",
+    bm,
+    ") AS b0
+                         FROM cl GROUP BY ALL)),
 h AS MATERIALIZED (SELECT port_id, g AS geom, ST_XMin(g) - ",
     reach,
     " AS x0, ST_XMax(g) + ",
@@ -1969,24 +1972,17 @@ h AS MATERIALIZED (SELECT port_id, g AS geom, ST_XMin(g) - ",
 d AS MATERIALIZED (SELECT c.vid, c.rb_year, c.r, c.x, c.y, min(ST_Distance(h.geom, ST_Point(c.x, c.y))) AS d,
                           arg_min(h.port_id, ST_Distance(h.geom, ST_Point(c.x, c.y))) AS pid
                    FROM cl c JOIN h ON c.x BETWEEN h.x0 AND h.x1 AND c.y BETWEEN h.y0 AND h.y1 GROUP BY ALL),
-b AS MATERIALIZED (SELECT vid, rb_year, j,
-                          least(CASE WHEN inc > ",
-    bs,
-    " AND inc < ",
-    bm,
-    " THEN inc ELSE ",
-    bs,
-    " END + j * inc, ",
+b AS MATERIALIZED (SELECT vid, rb_year, j, step, least(b0 + j * step, ",
     bm,
     ") AS bj
-                   FROM v, range(0, 6) r(j)),
+                   FROM v, range(0, 9) r(j)),
 x AS MATERIALIZED (SELECT d.vid, d.rb_year, d.r, b.j, bool_or(ST_Intersects(ST_Buffer(h.geom, b.bj, 30), ST_Point(d.x, d.y))) AS inp
                    FROM d JOIN b ON b.vid = d.vid AND b.rb_year = d.rb_year AND d.d > b.bj - 2 AND d.d <= b.bj
                    JOIN h ON d.x BETWEEN h.x0 AND h.x1 AND d.y BETWEEN h.y0 AND h.y1 GROUP BY ALL),
-jj AS (SELECT b.vid, b.rb_year, b.j, b.bj, coalesce(bool_or(d.d <= b.bj - 2 OR coalesce(x.inp, FALSE)), FALSE) AS any_in
+jj AS (SELECT b.vid, b.rb_year, b.j, b.step, b.bj, coalesce(bool_or(d.d <= b.bj - 2 OR coalesce(x.inp, FALSE)), FALSE) AS any_in
        FROM b LEFT JOIN d ON d.vid = b.vid AND d.rb_year = b.rb_year
        LEFT JOIN x ON x.vid = d.vid AND x.rb_year = d.rb_year AND x.r = d.r AND x.j = b.j GROUP BY ALL),
-js AS (SELECT vid, rb_year, min(j) AS js FROM jj WHERE any_in OR j = 5 OR bj >= ",
+js AS (SELECT vid, rb_year, min(j) AS js FROM jj WHERE any_in OR step = 0 OR bj >= ",
     bm,
     " GROUP BY ALL),
 fb AS (SELECT jj.vid, jj.rb_year, jj.j, jj.bj AS buf FROM jj JOIN js ON js.vid = jj.vid AND js.rb_year = jj.rb_year AND js.js = jj.j),
@@ -1995,30 +1991,25 @@ ip AS MATERIALIZED (SELECT c.vid, c.rb_year, c.r, c.t, c.time, d.pid,
                     FROM cl c JOIN fb ON fb.vid = c.vid AND fb.rb_year = c.rb_year
                     LEFT JOIN d ON d.vid = c.vid AND d.rb_year = c.rb_year AND d.r = c.r
                     LEFT JOIN x ON x.vid = c.vid AND x.rb_year = c.rb_year AND x.r = c.r AND x.j = fb.j),
-sr AS (SELECT vid, rb_year, r, lead(r) OVER (PARTITION BY vid, rb_year ORDER BY r) AS nr FROM ip WHERE NOT inp),
-cand AS (SELECT DISTINCT q.vid, q.rb_year, q.c
-         FROM (SELECT vid, rb_year, 1 AS c FROM v
-               UNION ALL SELECT s.vid, s.rb_year, s.r FROM sr s JOIN v ON v.vid = s.vid AND v.rb_year = s.rb_year
-               WHERE s.nr - s.r > v.mtl) q
-         JOIN v ON v.vid = q.vid AND v.rb_year = q.rb_year WHERE q.c < v.n - v.mtl),
-ct AS (SELECT k.vid, k.rb_year, k.c, ip.t, lag(ip.t) OVER (PARTITION BY k.vid, k.rb_year ORDER BY k.c) AS pt
-       FROM cand k JOIN ip ON ip.vid = k.vid AND ip.rb_year = k.rb_year AND ip.r = k.c),
-kept AS (SELECT vid, rb_year, c, row_number() OVER (PARTITION BY vid, rb_year ORDER BY c) AS k
-         FROM ct WHERE pt IS NULL OR t - pt > ",
+rn AS (SELECT vid, rb_year, min(r) AS r1, max(r) AS r2, min(t) AS t1, max(t) AS t2
+       FROM (SELECT *, r - row_number() OVER (PARTITION BY vid, rb_year ORDER BY r) AS g FROM ip WHERE NOT inp)
+       GROUP BY vid, rb_year, g),
+lab AS (SELECT *, sum(CASE WHEN pt IS NULL OR t1 - pt > ",
     ms,
-    "),
-lab AS (SELECT s.vid, s.rb_year, s.r, s.time, coalesce(k.k, 1) AS lab FROM (SELECT * FROM ip WHERE NOT inp) s
-        ASOF LEFT JOIN kept k ON s.vid = k.vid AND s.rb_year = k.rb_year AND s.r > k.c),
-tr AS (SELECT vid, rb_year, lab, min(time) AS T1, max(time) AS T2, min(r) AS r1, max(r) AS r2, count(*) AS n_pings
-       FROM lab GROUP BY ALL)
+    " THEN 1 ELSE 0 END)
+                    OVER (PARTITION BY vid, rb_year ORDER BY r1 ROWS UNBOUNDED PRECEDING) AS lab
+        FROM (SELECT *, lag(t2) OVER (PARTITION BY vid, rb_year ORDER BY r1) AS pt FROM rn)),
+tr AS (SELECT vid, rb_year, lab, min(r1) AS r1, max(r2) AS r2 FROM lab GROUP BY ALL)
 SELECT tr.vid, ",
     if (by_year) "tr.rb_year AS year, " else "",
-    "CAST(tr.lab AS DOUBLE) AS voyage_id, tr.T1, tr.T2,
+    "CAST(tr.lab AS DOUBLE) AS voyage_id, a1.time AS T1, a2.time AS T2,
        CASE WHEN a.inp THEN a.pid END AS port_from, CASE WHEN z.inp THEN z.pid END AS port_to,
-       CAST(tr.n_pings AS DOUBLE) AS n_pings
-FROM tr LEFT JOIN ip a ON a.vid = tr.vid AND a.rb_year = tr.rb_year AND a.r = tr.r1 - 1
+       CAST(tr.r2 - tr.r1 + 1 AS DOUBLE) AS n_pings
+FROM tr JOIN ip a1 ON a1.vid = tr.vid AND a1.rb_year = tr.rb_year AND a1.r = tr.r1
+JOIN ip a2 ON a2.vid = tr.vid AND a2.rb_year = tr.rb_year AND a2.r = tr.r2
+LEFT JOIN ip a ON a.vid = tr.vid AND a.rb_year = tr.rb_year AND a.r = tr.r1 - 1
 LEFT JOIN ip z ON z.vid = tr.vid AND z.rb_year = tr.rb_year AND z.r = tr.r2 + 1
-WHERE tr.n_pings >= ",
+WHERE tr.r2 - tr.r1 + 1 >= ",
     as.integer(min_pings)
   )
   out <- dplyr::tbl(con, dplyr::sql(sql))

@@ -1,11 +1,11 @@
 # iapesca_trips.R — the test fixture of rb_create_voyages(method = "iapesca"): Ifremer's iapesca, run as published
 # on CNR-IRBIM's Italian tracks.
 #
-# Input:  Detect_FishingTrips() of the iapesca package (J. Rodriguez, Ifremer, GPL), installed from
-#         https://github.com/JulRodrigu/r-packages_iapesca at commit 1b7248c; the tracks and harbours as ramb holds them
-#         (wkssfgeo_cnr_ais, wkssfgeo_cnr_med_harbours), projected to UTM zone 33N (EPSG:32633).
-# Output: inst/testdata/iapesca_italy_trips.csv, one row per trip: vid, T1 and T2 (its first and last position at
-#         sea), n_pings (its positions at sea).
+# Input:  Detect_FishingTrips() of the iapesca package (J. Rodriguez, Ifremer, CC BY 4.0), version 1.3, installed
+#         from https://gitlab.ifremer.fr/iapesca/r-packages_iapesca at commit 1882892; the tracks and harbours as ramb
+#         holds them (wkssfgeo_cnr_ais, wkssfgeo_cnr_med_harbours), projected to UTM zone 33N (EPSG:32633).
+# Output: inst/testdata/iapesca_italy_trips.csv, one row per trip: vid, T1 and T2 (its first and last position),
+#         n_pings (its positions: those at sea, and those in port during a stop of an hour or less).
 #
 # iapesca's code and data are not copied into ramb: its function is called from the installed package, on ramb's
 # own data. Run from the package root, with ramb loaded. Takes about 2 s.
@@ -14,7 +14,7 @@ stopifnot(
   requireNamespace("iapesca", quietly = TRUE),
   identical(
     packageDescription("iapesca")$RemoteSha,
-    "1b7248c0dc2b29df814cc2b92f914764320b8405"
+    "1882892c74f950155222367b00043311f684f4e0"
   )
 )
 
@@ -66,9 +66,9 @@ out <- out[order(out$vid, out$T1), ]
 f <- "inst/testdata/iapesca_italy_trips.csv"
 writeLines(
   c(
-    "# iapesca::Detect_FishingTrips() (https://github.com/JulRodrigu/r-packages_iapesca, 1b7248c, GPL), run as",
-    "# published on wkssfgeo_cnr_ais with the harbours of wkssfgeo_cnr_med_harbours, both in EPSG:32633;",
-    "# T1, T2: a trip's first and last position at sea; n_pings: its positions at sea. Made by data-raw/iapesca_trips.R."
+    "# iapesca::Detect_FishingTrips() (https://gitlab.ifremer.fr/iapesca/r-packages_iapesca, 1.3, 1882892, CC BY 4.0),",
+    "# run as published on wkssfgeo_cnr_ais with the harbours of wkssfgeo_cnr_med_harbours, both in EPSG:32633;",
+    "# T1, T2: a trip's first and last position; n_pings: its positions. Made by data-raw/iapesca_trips.R."
   ),
   f
 )

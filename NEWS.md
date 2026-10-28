@@ -1,3 +1,44 @@
+# ramb 2026.10.28
+
+The iapesca methods follow iapesca 1.3 (the maintainer, 2026-10-28), the package as Ifremer keeps it at
+<https://gitlab.ifremer.fr/iapesca/r-packages_iapesca> (CC BY 4.0). Until now they followed version 0.1 of 2022, the
+GitHub copy its author has deprecated (fishycode decision 232).
+
+- `rb_create_voyages(method = "iapesca")` gives `Detect_FishingTrips()` 1.3's trips: a ping at the same time as an
+  earlier one is dropped wherever it is (was: only where its place had occurred before too); the buffer is 1 % of the
+  track's diagonal clamped to 2,000 m to 2 nautical miles, and grows by a fifth of its way to the cap, rounded (was:
+  by 1 % of the diagonal, at most five times); a stop is timed from the last ping at sea before it to the first after
+  it (was: from the previous voyage's end), and a stop of an hour or less is part of the voyage, its pings in port
+  counted in `n_pings`. On CNR-IRBIM's Italian tracks it gives iapesca 1.3's 72 trips, each with the same first and
+  last ping and number of pings (the fixture `inst/testdata/iapesca_italy_trips.csv`, made again by
+  `data-raw/iapesca_trips.R`; 0.1 gave 79). Where iapesca's step rounds to 0 m and no ping is in port, iapesca loops
+  for ever; here the buffer stays at its start.
+- `rb_link_record_sets()` is iapesca 1.3's `Retrieve_SettingOperations()`, recoded. Breaking:
+  - The arguments `max_back_h`, `skip_approach` and `max_pass_pings` are gone. New: `soak_h = c(1, 240)` (the hours
+    before the haul's start within which the set lies, both ends excluded; was 0 to 240), `consolidate = TRUE`
+    (iapesca's second search of the hauls with an outlying soak or set speed, after its `CleanSkewness()`), `trip`
+    (a ping column: a set is sought in the haul's trip and up to `floor(soak_h[2] / 24) + 1` trips before it, which
+    started less than `soak_h[2]` hours before the haul's) and `setting` (a logical ping column of known setting).
+  - `method` defaults to `"line"` (was `"pings"`): iapesca's nets are lines.
+  - One buffer per vessel, widened until every haul's line has a ping within it that is not a hauling one, at any
+    time (was: per haul, among its candidates). A pass scores its rank in time over the number of passes, plus its
+    length along the track (at most the line's) over the longest's, plus its share of setting labels; the earliest
+    wins a tie (was: lateness, at least 0.25, times its pings, at most 4; the later on a tie).
+  - `soak_h` in the result is iapesca's soak, the haul's end minus the set's start (was: the haul's start minus the
+    set's end). New columns: `set_speed` (knots), `set_consolidated` and, with `trip`, `set_trip`. A pass over two
+    trips ends at the end of its first.
+  - Checked against iapesca 1.3 itself (`data-raw/iapesca_sets.R`, fixture `inst/testdata/iapesca_sets.csv`): on
+    iapesca's example vessel and the Italian pot vessel, with nets drawn through each labelled haul's pings, the same
+    set to the second for all 94 hauls, with and without setting labels and the second search (which changes 4 of
+    the Italian sets); set speeds within 0.3 % (ramb's sphere against the UTM plane).
+  - Measured on the labelled tracks (article "Finding the set of a static-gear haul"), right sets at the tracks' own
+    ping rate: pots 33 of 56 (13 with 2026.10.27.1's defaults), iapesca's vessel 37 of 39 (19), drive-in gillnets 56
+    of 72 (70). The hour left out before the haul drops the run in to the buoy on dense pot tracks, and drops many
+    gillnet sets, whose soak is under two hours: with `soak_h = c(0, 240)` the gillnets get 70 and the pots 16. At
+    30-minute pings the default line, which needs two pings in the haul, misses most hauls; `method = c("line",
+    "record")` gives a line back where the haul's positions are declared.
+- `inst/COPYRIGHTS` names iapesca 1.3 for both.
+
 # ramb 2026.10.27.1
 
 ramb opens its own DuckDB connection (the maintainer, 2026-10-27).

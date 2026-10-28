@@ -453,7 +453,7 @@ test_that("positions for records with no pings: along the record's line, every i
   expect_equal(sum(e$hours, na.rm = TRUE), 0.75 + 2.75)
 })
 
-test_that("sets of static-gear hauls: the latest earlier pass along the haul's line", {
+test_that("sets of static-gear hauls: a pass along the haul's line in the hours before it", {
   line <- function(t0, n, lat0 = 64, dlat = 0.05) {
     tibble::tibble(
       vid = 1L,
@@ -470,18 +470,32 @@ test_that("sets of static-gear hauls: the latest earlier pass along the haul's l
     lon = -21,
     lat = 64.5
   )
-  pings <- dplyr::bind_rows(line(d1, 16), steam, line(d2, 31)) # set 06:00-06:30, haul 12:00-13:00
+  set <- line(d1, 16)
+  pings <- dplyr::bind_rows(set, steam, line(d2, 31)) # set 06:00-06:30, haul 12:00-13:00
   hauls <- tibble::tibble(id = 1L, vid = 1L, start = d2, end = d2 + 3600)
   s <- rb_link_record_sets(hauls, pings, key = "id")
   expect_equal(s$set_start, d1)
   expect_equal(s$set_end, d1 + 15 * 120)
+  # iapesca's soak: from the set's start to the haul's end
   expect_equal(
     s$soak_h,
-    as.numeric(difftime(d2, d1 + 15 * 120, units = "hours"))
+    as.numeric(difftime(d2 + 3600, d1, units = "hours"))
   )
+  # the mean of the set's pings' speeds, each from the ping before it (0 for the track's first)
+  step <- rb_calc_distance(
+    lon1 = set$lon[-16],
+    lat1 = set$lat[-16],
+    lon2 = set$lon[-1],
+    lat2 = set$lat[-1],
+    method = "haversine"
+  )
+  expect_equal(s$set_speed, mean(c(0, step * 0.539957 / 1000 / (120 / 3600))))
+  expect_equal(s$n_set_pings, 16)
   expect_equal(s$set_basis, "reconstructed")
+  expect_equal(s$set_method, "line")
   expect_equal(s$buffer_m, 330)
-  # a haul with no earlier pass near it: none
+  expect_false(s$set_consolidated)
+  # a haul of one ping has no line: none
   lone <- tibble::tibble(vid = 1L, time = d2 + 5 * 3600, lon = -19, lat = 63)
   far <- tibble::tibble(
     id = 2L,
@@ -491,6 +505,7 @@ test_that("sets of static-gear hauls: the latest earlier pass along the haul's l
   )
   n <- rb_link_record_sets(far, dplyr::bind_rows(pings, lone), key = "id")
   expect_equal(n$set_basis, "none")
+  expect_true(is.na(n$set_method))
   l <- dplyr::collect(rb_link_record_sets(
     as_lazy(hauls),
     as_lazy(pings),
@@ -519,7 +534,7 @@ test_that("sets: the haul's line from its pings, a line through them, or its dec
     lon2 = -22,
     lat2 = c(64.05, NA)
   )
-  by_pings <- rb_link_record_sets(hauls, pings, key = "id")
+  by_pings <- rb_link_record_sets(hauls, pings, key = "id", method = "pings")
   expect_equal(by_pings$set_basis, c("none", "none")) # the set is 2 km from either haul ping
   expect_equal(by_pings$set_method, c("pings", NA))
   by_line <- rb_link_record_sets(hauls, pings, key = "id", method = "line")
@@ -565,7 +580,7 @@ test_that("sets: the haul's line from its pings, a line through them, or its dec
   )
 })
 
-test_that("sets: the run in to the haul, and the cap on a pass's length", {
+test_that("sets: the hour before the haul is left out; a pass scores its lateness, length and setting labels", {
   t0 <- as.POSIXct("2024-03-01 06:00", tz = "UTC")
   t1 <- t0 + 86400
   along <- function(t, lat) {
@@ -578,22 +593,214 @@ test_that("sets: the run in to the haul, and the cap on a pass's length", {
     along(t1 + (0:30) * 120, seq(64, 64.05, length.out = 31)) # the haul
   )
   hauls <- tibble::tibble(id = 1L, vid = 1L, start = t1, end = t1 + 3601)
-  # iapesca's score: the later pass wins at 4 pings or more, so the run in is taken for the set
-  old <- rb_link_record_sets(hauls, pings, key = "id")
-  expect_equal(old$set_start, t1 - 180)
-  skip <- rb_link_record_sets(hauls, pings, key = "id", skip_approach = TRUE)
-  expect_equal(skip$set_start, t0)
-  expect_equal(skip$n_set_pings, 16)
-  nocap <- rb_link_record_sets(hauls, pings, key = "id", max_pass_pings = Inf)
-  expect_equal(nocap$set_start, t0)
+  # the run in ends a minute before the haul, inside the hour left out
+  s <- rb_link_record_sets(hauls, pings, key = "id")
+  expect_equal(s$set_start, t0)
+  expect_equal(s$n_set_pings, 16)
+  # with that hour let in, the run in is the later pass (1 against 0.5), but the set is 25 times as long
+  # (1 against 0.04): the set wins
+  s0 <- rb_link_record_sets(hauls, pings, key = "id", soak_h = c(0, 240))
+  expect_equal(s0$set_start, t0)
+  # the run in labelled as setting gets 1 more and the set 0: the run in wins
+  pl <- dplyr::mutate(pings, set = time >= t1 - 180 & time < t1)
+  s1 <- rb_link_record_sets(
+    hauls,
+    pl,
+    key = "id",
+    soak_h = c(0, 240),
+    setting = "set"
+  )
+  expect_equal(s1$set_start, t1 - 180)
+  expect_equal(s1$n_set_pings, 3)
+  # every candidate labelled: the labels tell nothing, and every pass gets 1
+  s2 <- rb_link_record_sets(
+    hauls,
+    dplyr::mutate(pings, set = TRUE),
+    key = "id",
+    soak_h = c(0, 240),
+    setting = "set"
+  )
+  expect_equal(s2$set_start, t0)
+  l <- dplyr::collect(rb_link_record_sets(
+    as_lazy(hauls),
+    as_lazy(pl),
+    key = "id",
+    soak_h = c(0, 240),
+    setting = "set"
+  ))
+  expect_equal(l$set_start, t1 - 180)
+})
+
+test_that("sets: a vessel's hauls share one buffer; a set is sought in the haul's trip and those just before it", {
+  t0 <- as.POSIXct("2024-03-01 06:00", tz = "UTC")
+  along <- function(t, lat, lon = -22) {
+    tibble::tibble(vid = 1L, time = t, lon = lon, lat = lat)
+  }
+  pings <- dplyr::bind_rows(
+    along(t0 + (0:9) * 60, seq(64.01, 64.04, length.out = 10), lon = -22.0103), # a pass ~500 m from haul A's line
+    along(t0 + 2 * 86400 + (0:9) * 60, seq(64, 64.05, length.out = 10)), # haul A, two days later
+    along(t0 + 2 * 86400 + 3 * 3600, 64.025, lon = -21.9931), # ~336 m from A's line, after A
+    along(t0 + 3 * 86400 + (0:9) * 60, seq(65, 65.05, length.out = 10)) # haul B, nothing near it
+  )
+  hauls <- tibble::tibble(
+    id = 1:2,
+    vid = 1L,
+    start = t0 + c(2, 3) * 86400,
+    end = t0 + c(2, 3) * 86400 + 601
+  )
+  # A alone: the buffer stops at 340 m, where the ping after A lies, and the pass at 500 m is not a candidate
+  a <- rb_link_record_sets(hauls[1, ], pings, key = "id")
+  expect_equal(a$buffer_m, 340)
+  expect_equal(a$set_basis, "none")
+  # with B, which has no ping within 550 m, the vessel's buffer is 550 m and A finds the pass
+  ab <- rb_link_record_sets(hauls, pings, key = "id")
+  expect_equal(ab$buffer_m, c(550, 550))
+  expect_equal(ab$set_start, c(t0, NA))
+  expect_equal(ab$set_basis, c("reconstructed", "none"))
+  # trips: the pass in trip 1, A and the ping after it in trip 2, B in trip 3
+  pings$trip <- rep(c(1, 2, 3), c(10, 11, 10))
+  tr <- rb_link_record_sets(hauls, pings, key = "id", trip = "trip")
+  expect_equal(tr$set_start, c(t0, NA))
+  expect_equal(tr$set_trip, c(1, NA))
+  # a window to 47.9 h holds the pass's last three pings, but trip 1 started 48 h before trip 2: no set
+  w <- rb_link_record_sets(hauls, pings, key = "id", soak_h = c(1, 47.9))
+  expect_equal(w$set_start, c(t0 + 420, NA))
+  wt <- rb_link_record_sets(
+    hauls,
+    pings,
+    key = "id",
+    soak_h = c(1, 47.9),
+    trip = "trip"
+  )
+  expect_equal(wt$set_basis, c("none", "none"))
+  # a pass over two trips ends with its first trip, and its speed is taken there
+  pings$trip <- rep(c(1, 2, 3), c(5, 16, 10))
+  sp <- rb_link_record_sets(hauls, pings, key = "id", trip = "trip")
+  expect_equal(sp$set_start[1], t0)
+  expect_equal(sp$set_end[1], t0 + 240)
+  expect_equal(sp$n_set_pings[1], 10)
+  expect_equal(sp$set_trip[1], 1)
   l <- dplyr::collect(rb_link_record_sets(
     as_lazy(hauls),
     as_lazy(pings),
     key = "id",
-    skip_approach = TRUE,
-    max_pass_pings = Inf
+    trip = "trip"
   ))
-  expect_equal(l$set_start, t0)
+  expect_equal(
+    as.data.frame(l[order(l$id), ]),
+    as.data.frame(sp),
+    ignore_attr = TRUE
+  )
+})
+
+# rb_link_record_sets() against iapesca 1.3's own Retrieve_SettingOperations(), as data-raw/iapesca_sets.R ran it on
+# two labelled pot tracks (the Italian one always; iapesca's example vessel where iapesca is installed). A haul is a
+# run of pings labelled hauling, the same as there.
+labelled <- function(p) {
+  p <- p[order(p$vid, p$time, p$lon, p$lat), ]
+  p <- p[!duplicated(p[c("vid", "time")]), ]
+  p$op[is.na(p$op)] <- "other"
+  r <- cumsum(c(TRUE, p$op[-1] != p$op[-nrow(p)] | p$vid[-1] != p$vid[-nrow(p)]))
+  i <- which(p$op == "haul")
+  h <- do.call(rbind, lapply(split(i, r[i]), function(j) {
+    data.frame(
+      vid = p$vid[j[1]],
+      trip = p$trip[j[1]],
+      start = min(p$time[j]),
+      end = max(p$time[j]) + 1,
+      n = length(j)
+    )
+  }))
+  h <- h[order(h$vid, h$start), ]
+  h$id <- seq_len(nrow(h))
+  rownames(h) <- NULL
+  list(pings = p, hauls = h)
+}
+
+test_that("sets: iapesca 1.3's sets on labelled pot tracks, with and without labels and the second search", {
+  ref <- utils::read.csv(
+    system.file("testdata", "iapesca_sets.csv", package = "ramb"),
+    comment.char = "#"
+  )
+  tracks <- list(
+    it_pots = labelled(as.data.frame(dplyr::collect(rb_read_example(
+      "wkssfgeo2_it_pots"
+    )))[c("vid", "trip", "time", "lon", "lat", "op")])
+  )
+  if (requireNamespace("iapesca", quietly = TRUE)) {
+    ip <- iapesca::positions
+    tracks$iapesca <- labelled(data.frame(
+      vid = ip$VESSEL_FK,
+      trip = ip$FISHING_TRIP_FK,
+      time = as.POSIXct(ip$DATE_TIME, tz = "UTC"),
+      lon = ip$LONGITUDE,
+      lat = ip$LATITUDE,
+      op = c(Setting = "set", Hauling = "haul", NotFishing = NA)[as.character(
+        ip$FishingOperation
+      )]
+    ))
+  }
+  variants <- list(
+    labels = list(setting = "is_set"),
+    no_labels = list(),
+    first_search = list(setting = "is_set", consolidate = FALSE)
+  )
+  fmt <- function(x) format(x, "%Y-%m-%d %H:%M:%S", tz = "UTC")
+  for (ds in names(tracks)) {
+    p <- tracks[[ds]]$pings
+    p$is_set <- p$op == "set"
+    for (v in names(variants)) {
+      s <- do.call(
+        rb_link_record_sets,
+        c(
+          list(
+            tracks[[ds]]$hauls[c("id", "vid", "start", "end")],
+            p,
+            key = "id",
+            trip = "trip"
+          ),
+          variants[[v]]
+        )
+      )
+      s <- s[!is.na(s$set_method), ]
+      r <- ref[ref$ds == ds & ref$variant == v, ]
+      expect_equal(s$id, r$id)
+      expect_equal(fmt(s$set_start), r$set_start)
+      expect_equal(fmt(s$set_end), r$set_end)
+      expect_equal(s$soak_h, r$soak_h, tolerance = 1e-9)
+      # iapesca's distances on the plane of the UTM zone, ramb's on its sphere
+      expect_equal(s$set_speed, r$set_speed, tolerance = 0.01)
+      if (ds == "it_pots" && v == "labels") {
+        # the second search changes 4 of these sets
+        expect_equal(sum(s$set_consolidated), 4)
+      }
+    }
+  }
+})
+
+test_that("sets: the second search trims as iapesca's CleanSkewness() does", {
+  skip_if_not_installed("iapesca")
+  skip_if_not_installed("e1071")
+  withr::with_seed(1, {
+    cases <- list(
+      rexp(40),
+      rexp(200, 0.1),
+      -rexp(60),
+      rnorm(50),
+      c(rexp(35), NA, NA),
+      rexp(10),
+      rlnorm(100, 0, 2),
+      c(rexp(31), 1000),
+      runif(30),
+      numeric(0),
+      rgamma(500, 0.3)
+    )
+  })
+  for (v in cases) {
+    expect_identical(.rb_clean_skewness(v), iapesca:::CleanSkewness(v))
+  }
+  # where every value left is the same, iapesca stops with an error; here the trimming stops
+  expect_identical(.rb_clean_skewness(c(rep(1, 40), 50)), c(rep(1, 40), NA))
 })
 
 test_that("sets: the connection comes from whichever input is lazy; two connections stop", {

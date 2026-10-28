@@ -296,10 +296,12 @@
       "set_start",
       "set_end",
       "soak_h",
+      "set_speed",
       "n_set_pings",
       "buffer_m",
       "set_basis",
-      "set_method"
+      "set_method",
+      "set_consolidated"
     ),
     after = "rb_create_record_windows"
   ),

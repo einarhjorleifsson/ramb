@@ -8,11 +8,12 @@ rb_link_record_sets(
   hauls,
   pings,
   key,
-  method = "pings",
-  max_back_h = 240,
+  method = "line",
+  soak_h = c(1, 240),
   buffer_m = c(330, 550),
-  skip_approach = FALSE,
-  max_pass_pings = 4,
+  consolidate = TRUE,
+  trip = NULL,
+  setting = NULL,
   start = "start",
   end = "end",
   lon1 = "lon1",
@@ -25,60 +26,85 @@ rb_link_record_sets(
 \item{hauls}{A data frame or lazy DuckDB table, one row per haul: the \code{key} columns, \code{vid}, and the haul's
 \code{start} and \code{end}; for \code{method = "record"} also its positions.}
 
-\item{pings}{A data frame or lazy table with \code{vid}, \code{time}, \code{lon}, \code{lat}.}
+\item{pings}{A data frame or lazy table with \code{vid}, \code{time}, \code{lon}, \code{lat}, and the \code{trip} and \code{setting} columns
+when they are named.}
 
 \item{key}{The columns that identify a haul.}
 
-\item{method}{Where the haul's line comes from: \code{"pings"}, \code{"line"} or \code{"record"}, or several, tried in order.}
+\item{method}{Where the haul's line comes from: \code{"line"}, \code{"pings"} or \code{"record"}, or several, tried in order.}
 
-\item{max_back_h}{How long before the haul a set may be, hours (iapesca: 240).}
+\item{soak_h}{The hours before a haul's start within which its set lies, both ends excluded (iapesca's
+\code{tol.soaktime}, 1 to 240).}
 
-\item{buffer_m}{The smallest and largest buffer, metres.}
+\item{buffer_m}{The smallest and largest buffer, metres (iapesca's \code{buffer.min} and \code{buffer.max}, 330 and 550).}
 
-\item{skip_approach}{Whether the pass that leads straight into the haul is left out.}
+\item{consolidate}{Whether hauls with an outlying soak or set speed are searched again (iapesca's
+\code{Consolidate}).}
 
-\item{max_pass_pings}{The pass length at which its score stops growing (iapesca: 4); \code{Inf} for none.}
+\item{trip}{A ping column with the vessel's trip (a voyage of \code{\link[=rb_create_voyages]{rb_create_voyages()}}), or \code{NULL}: a vessel's
+pings are then one trip.}
+
+\item{setting}{A logical ping column, \code{TRUE} where the ping is known to be setting gear, or \code{NULL}.}
 
 \item{start, end}{The haul's window columns.}
 
 \item{lon1, lat1, lon2, lat2}{The haul's declared start and end positions, for \code{method = "record"}.}
 }
 \value{
-One row per haul: the key, \code{vid}, \code{set_start} and \code{set_end} (the pass's first and last ping), \code{soak_h}
-(the haul's start minus \code{set_end}), \code{n_set_pings}, \code{buffer_m}, \code{set_basis} (\code{"reconstructed"}, or \code{"none"}
-where no pass was found) and \code{set_method} (the \code{method} that gave the haul's line; \code{NA} where none could). A
-data frame for data frame input, a lazy table for lazy input.
+One row per haul: the key, \code{vid}, \code{set_start} and \code{set_end}, \code{soak_h} (the haul's end minus
+\code{set_start}, as iapesca measures the soak), \code{set_speed} (knots), \code{n_set_pings}, \code{buffer_m} (the vessel's;
+\code{NA} where the haul has no line), \code{set_basis} (\code{"reconstructed"}, or \code{"none"} where no pass was found),
+\code{set_method} (the \code{method} that gave the haul's line; \code{NA} where none could) and \code{set_consolidated} (\code{TRUE}
+where the second search gave the set); with \code{trip} also \code{set_trip}, the trip the set is in. A data frame for
+data frame input, a lazy table for lazy input.
 }
 \description{
 A step-2 builder for static gear (nets, pots, longlines), where the logbook often records only the haul. The
-haul traces the gear's line; the set is the vessel's latest earlier pass along that line. Recoded from the
-method of Ifremer's iapesca (\code{Retrieve_SettingOperations}; fishycode decision 078), not copied, as version 0.1
-of 2022 had it (\url{https://github.com/JulRodrigu/r-packages_iapesca}, since deprecated). The package lives at
-\url{https://gitlab.ifremer.fr/iapesca/r-packages_iapesca}, and its version 1.3 looks back 1 to 240 hours over up to
-11 trips and scores a pass by its length along the line, capped at the net's length (fishycode decision 232):
+haul traces the gear's line; the set is a pass of the vessel along that line in the hours before the haul. The
+method of Ifremer's iapesca 1.3 (\code{Retrieve_SettingOperations()}, J. Rodriguez; see References), recoded in
+DuckDB, vessel by vessel:
 }
 \details{
 \itemize{
-\item the haul's line comes from \code{method}: the haul's own pings as points (\code{"pings"}), the haul's pings joined into
-a line (\code{"line"}, two pings or more), or the haul's declared start and end positions joined into a line
-(\code{"record"}; its start alone where it has no end), for a track too sparse to trace the haul. Several are tried
-in order for each haul, the first the haul has data for answering;
-\item candidate pings are the vessel's pings within \code{max_back_h} hours before the haul starts, outside every haul
-window given, and near the haul's line;
-\item the buffer is the smallest of \code{buffer_m[1]}, \code{buffer_m[1] + 10}, ... up to \code{buffer_m[2]} metres that finds
-any candidate (iapesca: 330 to 550 m);
-\item a pass is a run of candidates that follow each other in the vessel's track; with \code{skip_approach}, the pass
-that ends at the vessel's last ping before the haul (the run in to the gear) is not one. Each pass is scored
-by how late it is among the haul's passes (at least 0.25) times its number of pings (at most
-\code{max_pass_pings}, scaled), and the best is the set, the later one on a tie.
+\item the haul's line comes from \code{method}: a line through the haul's pings (\code{"line"}, two pings or more), the haul's
+pings as points (\code{"pings"}), or the haul's declared start and end positions joined into a line (\code{"record"};
+its start alone where it has no end), for a track too sparse to trace the haul. Several are tried in order for
+each haul, the first the haul has data for answering. iapesca builds its lines (nets) from labelled hauling
+pings with \code{Create_Nets()}, which ramb does not; its line's length caps a pass's length (below);
+\item a ping inside any haul's window (\code{start} to \code{end}) is a hauling ping, never part of a set; of pings at the
+same time in one trip only the first is kept (iapesca: the first in input order; here, the smallest \code{lon},
+then \code{lat}); with \code{trip}, pings with no trip are left out, as iapesca's track holds trips only;
+\item one buffer serves all a vessel's hauls: \code{buffer_m[1]} metres, widened 10 m at a time until every haul's line
+has a ping within it that is not a hauling one (at any time), or \code{buffer_m[2]} is reached;
+\item a haul's candidates are the pings within the buffer of its line, more than \code{soak_h[1]} and less than
+\code{soak_h[2]} hours before the haul starts, in the haul's trip (that of its first ping, else of the vessel's
+last ping before it) or one of the \code{floor(soak_h[2] / 24) + 1} trips before it (at least 2) that started less
+than \code{soak_h[2]} hours before the haul's trip did;
+\item a pass is a run of candidates that follow each other in the vessel's track. It scores its rank in time among
+the haul's passes over their number (the latest scores 1), plus its length along the track (from its second
+ping on; a pass of one ping, the step to it), at most the line's length, over the longest pass's, plus, with
+\code{setting}, its pings labelled as setting over the most any pass has (1 for every pass where none or all of the
+candidates are labelled). The best is the set, the earliest on a tie;
+\item the set runs from the pass's first ping to its last, or to the end of its first trip where it spans two. Its
+speed is the mean of its pings' speeds in that trip, each from the previous ping of the same trip (0 for a
+trip's first);
+\item with \code{consolidate}, iapesca's second search: per vessel, the set speeds, and then the soaks of the hauls whose
+speed was kept, are trimmed as iapesca's \code{CleanSkewness()} does (from the skewed end, in steps of 1 \% of
+the range, while the skewness exceeds 0.5 and at least 30 values and over 80 \% of them remain). A haul whose
+soak lies outside the kept soaks' range, or whose speed was trimmed or is missing, is searched again with that
+range for \code{soak_h} (the number of trips back stays). Where the second search finds nothing, the haul keeps
+what the first found.
 }
 
-Hauls are not paired one to one with sets: a set hauled in parts serves several hauls. A line is measured as
-points every \code{buffer_m[1] / 10} metres along it (under 0.5 m from the distance to the line itself at 330 m), on
-\code{\link[=rb_calc_distance]{rb_calc_distance()}}'s sphere.
-
-On labelled pot data (WKSSFGEO2, 57 hauls with a labelled set, 60 s pings), the defaults find the right set for
-14 hauls: the other 43 picks are the run in to the haul. \code{skip_approach = TRUE} with \code{max_pass_pings = Inf}
-finds 40 (see NEWS for the other rates and datasets). The defaults stay as they were until more labelled data
-decide.
+Hauls are not paired one to one with sets: a set hauled in parts serves several hauls. Distances are on
+\code{\link[=rb_calc_distance]{rb_calc_distance()}}'s sphere, and a line is measured as points every \code{buffer_m[1] / 10} metres along it (under
+0.5 m from the distance to the line itself at 330 m); iapesca buffers the line on the plane of its input's CRS.
+}
+\references{
+Rodriguez, J. iapesca: interpretation of fishing paths from vessels' geo-spatial data, R package
+(Ifremer), \url{https://gitlab.ifremer.fr/iapesca/r-packages_iapesca} (version 1.3, CC BY 4.0), whose sets the
+function gives for the nets it is handed (\code{data-raw/iapesca_sets.R}). Until 2026.10.28 ramb followed version
+0.1 (2022, GPL; \url{https://github.com/JulRodrigu/r-packages_iapesca}, since deprecated) with changes of its own:
+a window of 0 to 240 hours, a buffer per haul, a score of lateness (at least 0.25) times the pass's pings (at
+most 4), and the later pass on a tie (fishycode decision 232).
 }

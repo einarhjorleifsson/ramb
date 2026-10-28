@@ -784,8 +784,8 @@ test_that("method cnr checks its input and settings", {
   )
 })
 
-# rb_create_voyages(method = "iapesca"): Ifremer's Detect_FishingTrips(), recoded as one DuckDB query. The fixture is
-# the installed iapesca's own output on CNR-IRBIM's Italian tracks, made by data-raw/iapesca_trips.R.
+# rb_create_voyages(method = "iapesca"): Ifremer's Detect_FishingTrips() (iapesca 1.3), recoded as one DuckDB query.
+# The fixture is iapesca's own output on CNR-IRBIM's Italian tracks, made by data-raw/iapesca_trips.R.
 ia_italy <- function() {
   h <- dplyr::collect(rb_read_example("wkssfgeo_cnr_med_harbours"))
   list(
@@ -875,7 +875,7 @@ test_that("method iapesca: parquet read lazily gives the data frame's voyages", 
   )
 })
 
-test_that("method iapesca cuts at a run in port only an hour after the previous voyage end, as published", {
+test_that("method iapesca ends a voyage at a stop of over an hour between pings at sea, as iapesca 1.3", {
   # a square port at 3 E, 50 N; a ping every 2 min, in port or out east and back at about 11 knots
   port <- sf::st_sf(
     port_id = 7L,
@@ -887,7 +887,7 @@ test_that("method iapesca cuts at a run in port only an hour after the previous 
       crs = 4326
     )
   )
-  track <- function(...) {
+  track <- function(..., lat = 50) {
     lon <- unlist(lapply(list(...), function(l) {
       if (l < 1) {
         3 + c(seq(0.005, l, by = 0.005), seq(l, 0.005, by = -0.005))
@@ -900,26 +900,40 @@ test_that("method iapesca cuts at a run in port only an hour after the previous 
       time = as.POSIXct("2021-12-01 06:00", tz = "UTC") +
         (seq_along(lon) - 1) * 120,
       lon = lon,
-      lat = 50
+      lat = lat
     )
   }
-  # 40 min out, 5 h in port, out again: one voyage, since the first ended under an hour after the track began
-  a <- rb_create_voyages(
-    track(3, 0.05, 150, 0.2, 3),
-    method = "iapesca",
-    ports = port,
-    by_year = FALSE
-  )
-  expect_equal(nrow(a), 1)
-  expect_equal(c(a$port_from, a$port_to), c(7L, 7L))
-  # 2.7 h out, 10 min in port, out again: two voyages
-  b <- rb_create_voyages(
-    track(3, 0.2, 5, 0.2, 3),
-    method = "iapesca",
-    ports = port,
-    by_year = FALSE
-  )
-  expect_equal(nrow(b), 2)
+  # the pings at sea, worked out here and not by the method: further from the port than `buf` metres, on the plane
+  # of UTM zone 31N (the default CRS here)
+  at_sea <- function(d, buf = 2000) {
+    x <- sf::st_transform(sf::st_as_sf(d, coords = c("lon", "lat"), crs = 4326), 32631)
+    which(as.numeric(sf::st_distance(x, sf::st_transform(port, 32631))) > buf)
+  }
+  ia <- function(d) {
+    rb_create_voyages(d, method = "iapesca", ports = port, by_year = FALSE)
+  }
+  # 40 min out, 5 h in port, out again: two voyages
+  a <- ia(track(3, 0.05, 150, 0.2, 3))
+  expect_equal(nrow(a), 2)
+  expect_equal(c(a$port_from, a$port_to), rep(7L, 4))
+  # 2.7 h out, 10 min in port, out again: one voyage from the first ping at sea to the last, with the pings in
+  # port during the stop
+  d <- track(3, 0.2, 5, 0.2, 3)
+  b <- ia(d)
+  s <- at_sea(d)
+  expect_equal(nrow(b), 1)
+  expect_equal(c(b$T1, b$T2), d$time[range(s)])
+  expect_equal(b$n_pings, diff(range(s)) + 1)
+  expect_gt(b$n_pings, length(s))
+  # a ping at the same second as an earlier one is dropped, wherever it is
+  expect_equal(ia(rbind(d[1:30, ], transform(d[30, ], lon = 3.4), d[31:nrow(d), ])), b)
+  # never within 2 km of the port: the buffer grows by a fifth of its way to 2 nautical miles, rounded, to 2,341 m
+  d <- track(3, 0.2, 5, 0.2, 3, lat = 50 + 2300 / 111200)
+  g <- ia(d)
+  s <- at_sea(d, 2000 + round((2 / 0.539957 * 1000 - 2000) / 5))
+  expect_equal(nrow(g), 1)
+  expect_equal(c(g$T1, g$T2), d$time[range(s)])
+  expect_equal(g$n_pings, diff(range(s)) + 1)
 })
 
 test_that("method iapesca checks its input and settings", {

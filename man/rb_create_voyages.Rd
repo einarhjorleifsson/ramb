@@ -104,19 +104,19 @@ counts as slow. The \code{cnr} argument sets these values. Distances to the port
 (\code{distance = "geodesic"}, the default, as the R code measured them; needs lwgeom) or on ramb's sphere
 (\code{"sphere"}, needs s2), whatever \code{\link[sf:sf_use_s2]{sf::sf_use_s2()}} says; the port buffer and the coastal zone are
 tested on the plane, as in the R code.
-\item \code{"iapesca"}: Ifremer's \code{Detect_FishingTrips()} with harbours (iapesca, J. Rodriguez), as version 0.1 of 2022
-had it (see References), recoded as one DuckDB query, so a lazy table (parquet) never comes into memory. Pings at the same time and place as earlier
-ones are dropped (each matched separately, as the R code does); then, up to \code{max_pass} (5) times, the first
-of each run of pings reached at \code{max_speed_kn} (25) or more. A ping is in port within a buffer of the
-\code{ports} polygons: \code{buf_start_m} (2,000 m), or 1 \% of the track's bounding-box diagonal when that lies
-between \code{buf_start_m} and \code{buf_max_m} (2 nautical miles); with no ping in port the buffer grows by that 1 \%,
-up to five times. A voyage is a run of pings outside the buffer; it ends at a run of more pings in port than
-the mean ping interval in hours (rounded down) plus one, but only if over \code{min_stop_s} (1 hour) have passed
-since the previous voyage end, so a short voyage merges with the next. Pings in port belong to no voyage.
-The geometry is planar in \code{crs_m} (default: the UTM zone of the pings' mean position), as the R code is with
-projected input; the buffer is GEOS's (30 segments a quarter circle), as sf's. Added here: \code{port_from} and
-\code{port_to}, the nearest port of the in-port ping before and after the voyage. The \code{iapesca} argument sets
-these values.
+\item \code{"iapesca"}: Ifremer's \code{Detect_FishingTrips()} with harbours (iapesca 1.3, J. Rodriguez; see References),
+recoded as one DuckDB query, so a lazy table (parquet) never comes into memory. A ping at the same time as an
+earlier one is dropped, wherever it is; then, up to \code{max_pass} (5) times, the first of each run of pings
+reached at \code{max_speed_kn} (25) or more. A ping is in port within a buffer of the \code{ports} polygons: 1 \% of the
+track's bounding-box diagonal, at least \code{buf_start_m} (2,000 m) and at most \code{buf_max_m} (2 nautical miles);
+with no ping in port the buffer grows by a fifth of its way to \code{buf_max_m}, rounded to the metre, until a ping
+is in port or it reaches \code{buf_max_m}. A voyage runs from a ping outside the buffer to the last before a stop:
+a run in port of over \code{min_stop_s} (1 hour), timed from the last ping at sea before it to the first after it.
+The pings in port during a shorter stop belong to the voyage and count in \code{n_pings}; those in port between
+voyages belong to none. The geometry is planar in \code{crs_m} (default: the UTM zone of the pings' mean
+position), as the R code is with projected input (with longitude and latitude it works on s2's sphere); the
+buffer is GEOS's (30 segments a quarter circle), as sf's. Added here: \code{port_from} and \code{port_to}, the nearest
+port of the in-port ping before and after the voyage. The \code{iapesca} argument sets these values.
 }
 }
 \references{
@@ -134,12 +134,12 @@ J. Pulcinella, A.N. Tassetti and E. Armelloni (CNR-IRBIM), GNU GPL 3, in the WKS
 \code{dev_branch}.
 
 For \code{"iapesca"}: Rodriguez, J. iapesca: interpretation of fishing paths from vessels' geo-spatial data,
-R package (Ifremer), \url{https://gitlab.ifremer.fr/iapesca/r-packages_iapesca} (version 1.3, CC BY 4.0). The
-method here follows version 0.1 (2022, GPL), the GitHub copy its author has since deprecated
-(\url{https://github.com/JulRodrigu/r-packages_iapesca}). Version 1.3's \code{Detect_FishingTrips()} differs: a stop
-is the gap between the fixes at sea either side of it, not the time since the previous voyage end; the buffer
-is clamped to its cap and grows by a fifth of the distance to it, with no limit on the passes; a trip is named
-by its last fix's date (fishycode decision 232).
+R package (Ifremer), \url{https://gitlab.ifremer.fr/iapesca/r-packages_iapesca} (version 1.3, CC BY 4.0), whose
+trips the method gives on CNR-IRBIM's Italian tracks. Until 2026.10.28 it followed version 0.1 (2022, GPL), the
+GitHub copy its author has since deprecated (\url{https://github.com/JulRodrigu/r-packages_iapesca}), where a stop
+was timed from the previous voyage end, a ping was a duplicate when its time and its place had each occurred
+before, and the buffer grew by 1 \% of the diagonal, at most five times (fishycode decision 232). iapesca names
+a trip by its last fix's date; here voyages are numbered.
 }
 \seealso{
 Other trip:

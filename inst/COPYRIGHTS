@@ -20,9 +20,16 @@ src/trip_cnr.cpp (rb_create_voyages(method = "cnr"))
 
 R/trip.R (rb_create_voyages(method = "iapesca"))
   The trip rule of Detect_FishingTrips(), CleanSpuriousSpeeds() and CalcSpeed()
-  of the R package iapesca 0.1 by Julien Rodriguez (Ifremer),
-  https://github.com/JulRodrigu/r-packages_iapesca, commit 1b7248c, recoded as
-  DuckDB SQL. License: GPL (its DESCRIPTION), as ramb's GPL (>= 3) allows.
+  of the R package iapesca 1.3 by Julien Rodriguez (Ifremer),
+  https://gitlab.ifremer.fr/iapesca/r-packages_iapesca, commit 1882892, recoded
+  as DuckDB SQL. License: CC BY 4.0 (its DESCRIPTION), with this attribution.
+  Until 2026.10.28 the rule of iapesca 0.1 (GPL),
+  https://github.com/JulRodrigu/r-packages_iapesca, commit 1b7248c.
+
+R/record.R (rb_link_record_sets())
+  The set rule of Retrieve_SettingOperations() and CleanSkewness() of the R
+  package iapesca 1.3 (as above), recoded as DuckDB SQL and R. License: CC BY
+  4.0, with this attribution.
 
 ramb also ships these third-party datasets in inst/extdata, as parquet, read
 with rb_read_example(); data-raw/labelled_tracks.R and data-raw/extdata.R make

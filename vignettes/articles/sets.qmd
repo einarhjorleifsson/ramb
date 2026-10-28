@@ -11,10 +11,11 @@ execute:
 Step 2 of the [fishing-activity flow](flow.html), for static gear (nets, pots,
 longlines). The logbook often records only the haul. The soak starts at the
 set, which is then only on the track:
-[rb_link_record_sets()](../reference/rb_link_record_sets.html) takes the
-vessel's latest earlier pass along the haul's line. The rule is recoded from
-Ifremer's iapesca package. This article measures it on tracks whose pings an
-observer or an expert labelled, and compares the variants the function offers.
+[rb_link_record_sets()](../reference/rb_link_record_sets.html) takes a pass of
+the vessel along the haul's line in the hours before it, scored by its lateness
+and its length. The rule is that of Ifremer's iapesca package, version 1.3,
+recoded. This article measures it on tracks whose pings an observer or an
+expert labelled, and compares the variants the function offers.
 
 ```{r}
 library(ramb)
@@ -30,7 +31,7 @@ Portuguese pot vessels (ICES WKSSFGEO), and four drive-in gillnet fishers in
 Madagascar (Behivoke et al., IRD). The pings are a minute apart or closer.
 
 Where Ifremer's iapesca package is installed, its own example vessel is added
-(`iapesca::positions`, GPL): a passive-gear vessel on 8 trips, a ping every 15
+(`iapesca::positions`, CC BY 4.0): a passive-gear vessel on 8 trips, a ping every 15
 minutes, each labelled setting, hauling or not fishing by iapesca's authors.
 It is the one track here at a VMS-like rate. Without the package, the tables
 below have no iapesca rows.
@@ -153,12 +154,12 @@ score <- function(found) {
     summarise(cell = sprintf("%d / %d / %d", sum(right), sum(wrong), sum(missed)))
 }
 variants <- list(
-  "as iapesca (the defaults)" = list(),
-  "no cap on the pass length" = list(max_pass_pings = Inf),
-  "skip the run in, no cap" = list(skip_approach = TRUE, max_pass_pings = Inf),
-  "the haul's line" = list(method = "line"),
+  "as iapesca 1.3 (the defaults)" = list(),
+  "the first search alone" = list(consolidate = FALSE),
+  "the hour before the haul let in" = list(soak_h = c(0, 240)),
+  "the haul's pings as points" = list(method = "pings"),
   "declared positions" = list(method = "record"),
-  "pings, else declared positions" = list(method = c("pings", "record"))
+  "line, else declared positions" = list(method = c("line", "record"))
 )
 h_in <- select(hauls, id, vid, start, end, lon1, lat1, lon2, lat2)
 res <- list()
@@ -178,34 +179,35 @@ bind_rows(res) |>
 
 ## What the labels say
 
-- **Dense pot tracks: the run in to the buoy.** With iapesca's score a pass
-  stops gaining at four pings, so the latest pass wins, and on a track a
-  minute apart that is the vessel's run in to the haul. Skipping the pass
-  that leads straight into the haul and scoring passes by their full length
-  finds most sets.
-- **Drive-in gillnets: the same guard is wrong.** The net is set, the fish
-  driven and the net hauled in one continuous pass, so skipping the run in
-  drops the set itself. The defaults find nearly every set.
-- **Sparse tracks: declared positions.** At 30 minutes many hauls hold no
-  ping, and `method = "line"`, which needs two, loses the most. The haul's
-  declared start and end, where the logbook has them, give the line back:
-  `method = c("pings", "record")` uses the pings where the haul has any and
-  never does worse than `"pings"`.
-- **iapesca's own vessel: a line beats a few pings.** At 15 minutes a haul
-  holds a few pings, and the latest pass along them, iapesca's own rule,
-  finds about half its labelled sets. The haul's line, from its first to its
-  last ping, or its declared positions find about two thirds. Thinning to
-  2, 5 or 10 minutes changes nothing on a track that is already sparser.
+- **Dense pot tracks: the hour before the haul.** On a track a minute apart,
+  the latest pass along the line is the vessel's run in to the buoy. iapesca
+  1.3 leaves out the hour before the haul and scores a pass by its length as
+  well as its lateness: it finds 33 of the 56 sets, where the rule of
+  iapesca's 2022 version, which ramb followed until 2026.10.28, found 13. With
+  that hour let in, 16.
+- **Drive-in gillnets: the same hour is wrong.** The net is set, the fish
+  driven and the net hauled within two hours, so the hour left out holds many
+  of the sets: the defaults find 56 of 72, and 70 with the hour let in
+  (`soak_h = c(0, 240)`), as the 2022 rule did.
+- **Sparse tracks: declared positions.** At 10 and 30 minutes many hauls hold
+  fewer than two pings, and the default line, which needs two, misses them.
+  The haul's pings as points, or its declared start and end where the logbook
+  has them, give a line back: `method = c("line", "record")` misses the
+  fewest, though many of the sets it then finds are wrong.
+- **iapesca's own vessel: 37 of 39.** At 15 minutes a haul holds a few
+  pings. iapesca 1.3's rule finds 37 of its 39 labelled sets, where the 2022
+  rule found 19; the second search (`consolidate`) gives 4 of them. Thinning
+  to 2, 5 or 10 minutes changes nothing on a track that is already sparser.
 
-The best choice differs by gear and by ping rate, so the defaults stay as
-iapesca has them. Each variant is an argument, and `set_method` says which
-line each haul was measured against.
+The best choice differs by gear and by ping rate. The defaults are iapesca
+1.3's (the maintainer, 2026-10-28); each variant is an argument, and
+`set_method` says which line each haul was measured against.
 
 ## The result on a map
 
 The table counts; a map shows each haul with its labelled set and the set each
-variant found. Here are the defaults and the variant that skips the run in, at
-the tracks' own ping rate, scored as above:
+variant found. Here are the defaults and the variant that lets in the hour
+before the haul, at the tracks' own ping rate, scored as above:
 
 ```{r}
 p_own <- select(p0, vid, time, lon, lat)
@@ -225,11 +227,11 @@ outcome <- function(found) {
     )
 }
 by_default <- outcome(rb_link_record_sets(h_in, p_own, key = "id"))
-by_skip <- outcome(rb_link_record_sets(
-  h_in, p_own, key = "id", skip_approach = TRUE, max_pass_pings = Inf
+by_hour <- outcome(rb_link_record_sets(
+  h_in, p_own, key = "id", soak_h = c(0, 240)
 ))
 count(by_default, outcome)
-count(by_skip, outcome)
+count(by_hour, outcome)
 ```
 
 Each haul, labelled set and found set becomes a line through its pings, in
@@ -286,7 +288,7 @@ sets_map <- function(vessel) {
   h <- filter(hauls, vid == .env$vessel) |>
     left_join(truth, by = "id") |>
     left_join(select(by_default, id, defaults = outcome), by = "id") |>
-    left_join(select(by_skip, id, skip = outcome), by = "id")
+    left_join(select(by_hour, id, hour = outcome), by = "id")
   found <- function(x) {
     h |>
       select(id, vid) |>
@@ -321,7 +323,7 @@ sets_map <- function(vessel) {
   hauls_layer <- rb_map_layer(
     "hauls", "geojson",
     label = "Hauls",
-    data = lines_of(transmute(h, vid, from = start, to = end, haul = id, defaults, skip), d),
+    data = lines_of(transmute(h, vid, from = start, to = end, haul = id, defaults, hour), d),
     style = list(list(
       id = "hauls-line", type = "line",
       paint = list("line-color" = "#c0392b", "line-width" = 6, "line-opacity" = 0.4)
@@ -330,7 +332,7 @@ sets_map <- function(vessel) {
       click = "hauls-line", title = "haul",
       fields = list(
         list(field = "defaults", label = "set found by the defaults"),
-        list(field = "skip", label = "set found when the run in is skipped")
+        list(field = "hour", label = "set found with the hour before the haul let in")
       )
     )
   )
@@ -347,8 +349,8 @@ sets_map <- function(vessel) {
     rb_map_group("found", "Sets found", list(
       line_layer("defaults", "By the defaults", lines_of(found(by_default), d), outcome_colour,
                  info = "Blue: the found set overlaps the labelled one; orange: it does not."),
-      line_layer("skip", "Skipping the run in", lines_of(found(by_skip), d), outcome_colour,
-                 visible = FALSE, info = "skip_approach = TRUE, max_pass_pings = Inf.")
+      line_layer("hour", "The hour before the haul let in", lines_of(found(by_hour), d), outcome_colour,
+                 visible = FALSE, info = "soak_h = c(0, 240).")
     )),
     title = paste("Sets of", d$ds[1], "vessel", vessel),
     view = list(
@@ -379,10 +381,10 @@ rb_map_serve(iapesca_map, port = 8792) # where iapesca is installed
 # rb_map_stop() when done
 ```
 
-On the pots map, tick one variant at a time. The sets the defaults find lie
-mostly in orange on the hauls' own lines, the run in to the buoy; those found
-when the run in is skipped lie in blue on the green labelled sets. On the
-gillnet map the defaults are blue, and skipping the run in drops the set. On
-iapesca's map the hauls are a few pings each, and the defaults' sets are
-orange about as often as blue; most of the wrong ones are a pass of a single
-ping, drawn as a dot. A click on a haul gives both outcomes.
+On the pots map, tick one variant at a time. The defaults' sets lie mostly in
+blue on the green labelled sets; with the hour before the haul let in, most
+turn orange on the hauls' own lines, the run in to the buoy. On the gillnet map
+it goes the other way: the defaults miss or mistake the sets laid within the
+hour before the haul, and with that hour let in nearly every set is blue. On
+iapesca's map the hauls are a few pings each, and the sets are blue but for
+two. A click on a haul gives both outcomes.
