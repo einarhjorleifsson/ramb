@@ -38,6 +38,12 @@ GitHub copy its author has deprecated (fishycode decision 232).
     30-minute pings the default line, which needs two pings in the haul, misses most hauls; `method = c("line",
     "record")` gives a line back where the haul's positions are declared.
 - `inst/COPYRIGHTS` names iapesca 1.3 for both.
+- `rb_create_voyages(method = "iapesca")` no longer slows or spills with the number of vessels. Pings met the harbours
+  by a join on four ranges, which DuckDB ran by comparing every ping with every harbour, and each voyage's times and
+  ports were joined back from its pings, tables DuckDB guessed empty, so it joined two of them on the vessel alone
+  (336 million rows at 60 vessels). Now pings meet harbours in grid cells (an equality join) and a voyage's times and
+  ports come from its own rows. On copies of the Italian tracks: 60 vessels in 0.24 s (was 25 s), 1,800 in 1.5 s (it
+  ran out of disk after spilling 85 GiB). The voyages are unchanged.
 
 # ramb 2026.10.27.1
 

@@ -1901,6 +1901,12 @@ FROM ({tr_sql}) t LEFT JOIN tc USING ({kq}) LEFT JOIN tsp USING ({kq}){pjoin}"
   hw$rb_wkb <- lapply(sf::st_as_binary(sf::st_geometry(hb)), as.raw)
   hn <- .rb_register(con, hw, "rb_harb_")
   reach <- par$buf_max_m + 2
+  # pings meet harbours in square cells twice the reach wide, an equality join: on the boxes alone, four ranges,
+  # DuckDB compared every ping with every harbour (2026.10.28: 26 s at 60 vessels, 85 GiB spilled at 1,800)
+  gs <- sprintf("%.17g", 2 * reach)
+  # a voyage's times and ports come from its own pings' rows (window functions, ordered first/last), not from joins
+  # back to them: DuckDB guessed those tables empty and joined two of them on the vessel alone (336 million rows at 60
+  # vessels)
   pass <- function(k) {
     sprintf(
       "
@@ -1944,7 +1950,12 @@ c0 AS (SELECT vid, rb_year, time, rid, t, x, y FROM (
       ""
     },
     "
-cl AS MATERIALIZED (SELECT *, row_number() OVER (PARTITION BY vid, rb_year ORDER BY rid) AS r FROM c",
+cl AS MATERIALIZED (SELECT *, row_number() OVER (PARTITION BY vid, rb_year ORDER BY rid) AS r,
+                           floor(x / ",
+    gs,
+    ")::BIGINT AS cx, floor(y / ",
+    gs,
+    ")::BIGINT AS cy FROM c",
     np,
     "),
 v AS MATERIALIZED (SELECT vid, rb_year, b0, round_even((",
@@ -1969,16 +1980,28 @@ h AS MATERIALIZED (SELECT port_id, g AS geom, ST_XMin(g) - ",
                    FROM (SELECT port_id, ST_GeomFromWKB(rb_wkb) AS g FROM ",
     hn,
     ")),
-d AS MATERIALIZED (SELECT c.vid, c.rb_year, c.r, c.x, c.y, min(ST_Distance(h.geom, ST_Point(c.x, c.y))) AS d,
+hc0 AS (SELECT *, unnest(range(floor(x0 / ",
+    gs,
+    ")::BIGINT, floor(x1 / ",
+    gs,
+    ")::BIGINT + 1)) AS cx FROM h),
+hc AS MATERIALIZED (SELECT *, unnest(range(floor(y0 / ",
+    gs,
+    ")::BIGINT, floor(y1 / ",
+    gs,
+    ")::BIGINT + 1)) AS cy FROM hc0),
+d AS MATERIALIZED (SELECT c.vid, c.rb_year, c.r, c.x, c.y, c.cx, c.cy, min(ST_Distance(h.geom, ST_Point(c.x, c.y))) AS d,
                           arg_min(h.port_id, ST_Distance(h.geom, ST_Point(c.x, c.y))) AS pid
-                   FROM cl c JOIN h ON c.x BETWEEN h.x0 AND h.x1 AND c.y BETWEEN h.y0 AND h.y1 GROUP BY ALL),
+                   FROM cl c JOIN hc h ON h.cx = c.cx AND h.cy = c.cy
+                   WHERE c.x BETWEEN h.x0 AND h.x1 AND c.y BETWEEN h.y0 AND h.y1 GROUP BY ALL),
 b AS MATERIALIZED (SELECT vid, rb_year, j, step, least(b0 + j * step, ",
     bm,
     ") AS bj
                    FROM v, range(0, 9) r(j)),
 x AS MATERIALIZED (SELECT d.vid, d.rb_year, d.r, b.j, bool_or(ST_Intersects(ST_Buffer(h.geom, b.bj, 30), ST_Point(d.x, d.y))) AS inp
                    FROM d JOIN b ON b.vid = d.vid AND b.rb_year = d.rb_year AND d.d > b.bj - 2 AND d.d <= b.bj
-                   JOIN h ON d.x BETWEEN h.x0 AND h.x1 AND d.y BETWEEN h.y0 AND h.y1 GROUP BY ALL),
+                   JOIN hc h ON h.cx = d.cx AND h.cy = d.cy
+                   WHERE d.x BETWEEN h.x0 AND h.x1 AND d.y BETWEEN h.y0 AND h.y1 GROUP BY ALL),
 jj AS (SELECT b.vid, b.rb_year, b.j, b.step, b.bj, coalesce(bool_or(d.d <= b.bj - 2 OR coalesce(x.inp, FALSE)), FALSE) AS any_in
        FROM b LEFT JOIN d ON d.vid = b.vid AND d.rb_year = b.rb_year
        LEFT JOIN x ON x.vid = d.vid AND x.rb_year = d.rb_year AND x.r = d.r AND x.j = b.j GROUP BY ALL),
@@ -1991,25 +2014,26 @@ ip AS MATERIALIZED (SELECT c.vid, c.rb_year, c.r, c.t, c.time, d.pid,
                     FROM cl c JOIN fb ON fb.vid = c.vid AND fb.rb_year = c.rb_year
                     LEFT JOIN d ON d.vid = c.vid AND d.rb_year = c.rb_year AND d.r = c.r
                     LEFT JOIN x ON x.vid = c.vid AND x.rb_year = c.rb_year AND x.r = c.r AND x.j = fb.j),
-rn AS (SELECT vid, rb_year, min(r) AS r1, max(r) AS r2, min(t) AS t1, max(t) AS t2
-       FROM (SELECT *, r - row_number() OVER (PARTITION BY vid, rb_year ORDER BY r) AS g FROM ip WHERE NOT inp)
+rn AS (SELECT vid, rb_year, min(r) AS r1, max(r) AS r2, min(t) AS t1, max(t) AS t2, min(time) AS time1, max(time) AS time2,
+              first(CASE WHEN pin THEN ppid END ORDER BY r) AS port_from, last(CASE WHEN nin THEN npid END ORDER BY r) AS port_to
+       FROM (SELECT *, r - row_number() OVER (PARTITION BY vid, rb_year ORDER BY r) AS g
+             FROM (SELECT *, lag(inp) OVER w AS pin, lag(pid) OVER w AS ppid, lead(inp) OVER w AS nin, lead(pid) OVER w AS npid
+                   FROM ip WINDOW w AS (PARTITION BY vid, rb_year ORDER BY r))
+             WHERE NOT inp)
        GROUP BY vid, rb_year, g),
 lab AS (SELECT *, sum(CASE WHEN pt IS NULL OR t1 - pt > ",
     ms,
     " THEN 1 ELSE 0 END)
                     OVER (PARTITION BY vid, rb_year ORDER BY r1 ROWS UNBOUNDED PRECEDING) AS lab
         FROM (SELECT *, lag(t2) OVER (PARTITION BY vid, rb_year ORDER BY r1) AS pt FROM rn)),
-tr AS (SELECT vid, rb_year, lab, min(r1) AS r1, max(r2) AS r2 FROM lab GROUP BY ALL)
-SELECT tr.vid, ",
-    if (by_year) "tr.rb_year AS year, " else "",
-    "CAST(tr.lab AS DOUBLE) AS voyage_id, a1.time AS T1, a2.time AS T2,
-       CASE WHEN a.inp THEN a.pid END AS port_from, CASE WHEN z.inp THEN z.pid END AS port_to,
-       CAST(tr.r2 - tr.r1 + 1 AS DOUBLE) AS n_pings
-FROM tr JOIN ip a1 ON a1.vid = tr.vid AND a1.rb_year = tr.rb_year AND a1.r = tr.r1
-JOIN ip a2 ON a2.vid = tr.vid AND a2.rb_year = tr.rb_year AND a2.r = tr.r2
-LEFT JOIN ip a ON a.vid = tr.vid AND a.rb_year = tr.rb_year AND a.r = tr.r1 - 1
-LEFT JOIN ip z ON z.vid = tr.vid AND z.rb_year = tr.rb_year AND z.r = tr.r2 + 1
-WHERE tr.r2 - tr.r1 + 1 >= ",
+tr AS (SELECT vid, rb_year, lab, min(r1) AS r1, max(r2) AS r2, min(time1) AS time1, max(time2) AS time2,
+              first(port_from ORDER BY r1) AS port_from, last(port_to ORDER BY r1) AS port_to
+       FROM lab GROUP BY vid, rb_year, lab)
+SELECT vid, ",
+    if (by_year) "rb_year AS year, " else "",
+    "CAST(lab AS DOUBLE) AS voyage_id, time1 AS T1, time2 AS T2, port_from, port_to, CAST(r2 - r1 + 1 AS DOUBLE) AS n_pings
+FROM tr
+WHERE r2 - r1 + 1 >= ",
     as.integer(min_pings)
   )
   out <- dplyr::tbl(con, dplyr::sql(sql))
