@@ -187,4 +187,20 @@ test_that("the port tag: data frame = lazy table, one row per ping, the smaller 
   r <- rb_flag_ping_port(e, h, lon = x, lat = y)
   expect_equal(names(r), c(names(e), "port_id"))
   expect_equal(r$port_id[order(r$time)], a$port_id[order(a$time)])
+  # two polygons of one area hold a ping: the lower port_id; a position shared by pings, and a missing one
+  h2 <- sf::st_sf(
+    port_id = c("b2", "a2", "small"),
+    geometry = sf::st_sfc(sq(0, 0, 1), sq(0, 0, 1), sq(0.2, 0.2, 0.1), crs = 4326)
+  )
+  d2 <- data.frame(
+    k = 1:5,
+    lon = c(0.8, 0.25, 0.25, NA, 3),
+    lat = c(0.8, 0.25, 0.25, 0.5, NA)
+  )
+  for (z in list(d2, as_lazy(d2))) {
+    r2 <- dplyr::collect(rb_flag_ping_port(z, h2))
+    r2 <- r2[order(r2$k), ]
+    expect_equal(nrow(r2), 5)
+    expect_equal(r2$port_id, c("a2", "small", "small", NA, NA))
+  }
 })

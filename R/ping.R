@@ -407,8 +407,11 @@ rb_flag_ping_impossible <- function(
 #'
 #' Step 0 of the fishing-activity flow: each ping gets the id of the port polygon that holds it
 #' (`port_id`, NA at sea). Port pings are labelled and stay; nothing is dropped. A ping inside two
-#' polygons gets the smaller one (the more specific port), so there is one row per ping. Runs in DuckDB
-#' (spatial extension): a data frame is registered and collected, a lazy table stays lazy.
+#' polygons gets the smaller one (the more specific port), then the lowest `port_id`, so there is one row per ping.
+#' Runs in DuckDB (spatial extension): a data frame is registered and collected, a lazy table stays lazy. A ping's port
+#' depends on its position alone, so each distinct position is joined to the polygons once and the pings take its port
+#' by an equality join: no window runs over the pings, and the memory grows with the positions in port, not with the
+#' pings' columns.
 #'
 #' @param pings A data frame or lazy DuckDB table with `lon`, `lat`.
 #' @param ports An sf object of port polygons with `port_id`.
@@ -446,18 +449,25 @@ rb_flag_ping_port <- function(pings, ports, keep = NULL, lon = lon, lat = lat) {
   )
   hw$rb_wkb <- lapply(sf::st_as_binary(sf::st_geometry(hb)), as.raw)
   nm <- .rb_register(con, hw, "rb_harb_")
-  kp <- if (length(keep)) {
-    paste0(", ", paste(sprintf('h."%s"', keep), collapse = ", "))
-  } else {
-    ""
-  }
+  kp <- paste0(
+    sprintf(
+      ', first(h."%s" ORDER BY h.rb_area, h.port_id) AS "%s"',
+      keep,
+      keep
+    ),
+    collapse = ""
+  )
+  # each position once against the polygons (the smallest, then the lowest port_id), the pings joined back on it; until
+  # 2026.10.28.3 a row number and a window over every ping and column did this, which took 15 GB for a year of 37
+  # million pings under DuckDB 2.0 (fishycode plan 049)
   sql <- sprintf(
     "
-WITH p AS (SELECT *, row_number() OVER () AS rb_rid FROM (%s)),
+WITH p AS NOT MATERIALIZED (%s),
 h AS (SELECT * EXCLUDE (rb_wkb), ST_GeomFromWKB(rb_wkb) AS rb_g FROM %s),
-j AS (SELECT p.*, h.port_id%s FROM p LEFT JOIN h ON ST_Intersects(h.rb_g, ST_Point(p.lon, p.lat))
-      QUALIFY row_number() OVER (PARTITION BY p.rb_rid ORDER BY h.rb_area NULLS LAST, h.port_id) = 1)
-SELECT * EXCLUDE (rb_rid) FROM j",
+q AS (SELECT DISTINCT lon, lat FROM p WHERE lon IS NOT NULL AND lat IS NOT NULL),
+m AS (SELECT q.lon AS rb_lon, q.lat AS rb_lat, first(h.port_id ORDER BY h.rb_area, h.port_id) AS port_id%s
+      FROM q JOIN h ON ST_Intersects(h.rb_g, ST_Point(q.lon, q.lat)) GROUP BY q.lon, q.lat)
+SELECT p.*, m.* EXCLUDE (rb_lon, rb_lat) FROM p LEFT JOIN m ON p.lon = m.rb_lon AND p.lat = m.rb_lat",
     .rb_sql(p),
     nm,
     kp

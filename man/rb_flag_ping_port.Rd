@@ -21,8 +21,11 @@ rb_flag_ping_port(pings, ports, keep = NULL, lon = lon, lat = lat)
 \description{
 Step 0 of the fishing-activity flow: each ping gets the id of the port polygon that holds it
 (\code{port_id}, NA at sea). Port pings are labelled and stay; nothing is dropped. A ping inside two
-polygons gets the smaller one (the more specific port), so there is one row per ping. Runs in DuckDB
-(spatial extension): a data frame is registered and collected, a lazy table stays lazy.
+polygons gets the smaller one (the more specific port), then the lowest \code{port_id}, so there is one row per ping.
+Runs in DuckDB (spatial extension): a data frame is registered and collected, a lazy table stays lazy. A ping's port
+depends on its position alone, so each distinct position is joined to the polygons once and the pings take its port
+by an equality join: no window runs over the pings, and the memory grows with the positions in port, not with the
+pings' columns.
 }
 \seealso{
 Other flag pings:

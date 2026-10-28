@@ -1,3 +1,11 @@
+# ramb 2026.10.28.3
+
+- `rb_flag_ping_port()` joins each distinct position to the port polygons once and the pings back on it, in place of a
+  row number and a window over every ping and column. The answer is the same: the smallest polygon holding the ping,
+  then the lowest `port_id`; none at sea or for a missing position. On fishycode's years of 37 to 72 million pings it is
+  the same to the row, under DuckDB 2.0.0 and 1.5.6, and takes 3-15 s and 1-4 GB where the window took 27-144 s and
+  15-23 GB (fishycode plan 049). A test adds two polygons of one area, a shared position and a missing one.
+
 # ramb 2026.10.28.2
 
 Runs on DuckDB 2.0 (fishycode decision 235). ramb's 225 tests pass under DuckDB 2.0.0 and 1.5.6 alike.
