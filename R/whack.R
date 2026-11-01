@@ -21,14 +21,9 @@
 # unconditionally when the time gap exceeds max_gap_h. A time step shorter
 # than min_dt_s counts as min_dt_s.
 #
-# Two options, both off by default (rb_flag_ping_impossible()):
-#   noise_m    with a `.rb_feed` column (an integer code per ping, NA unknown), a leg between pings of
-#              different feeds no longer than noise_m metres is never impossible.
-#   two_sided  a ping stays flagged only if the same scan run backwards in time (against the next
-#              retained ping) flags it too. The forward scan alone is one-sided evidence: locked on a
-#              wrong reference, it flags the right pings that follow (fishycode decision on the STK
-#              whacks: 99.7 % of the pings it removed where an independent receiver could judge were
-#              positions that receiver supports); a ping both scans reject is rejected from both sides.
+# One option, off by default (rb_flag_ping_impossible()): noise_m, with a `.rb_feed` column (an integer
+# code per ping, NA unknown): a leg between pings of different feeds no longer than noise_m metres is
+# never impossible.
 #
 # x: data frame with vid, lon, lat, time (POSIXct). Returns x sorted by
 # (vid, time) with a logical column whack2 (TRUE = flagged). Grouping on the
@@ -38,8 +33,7 @@
   kn_max = 25,
   max_gap_h = 4,
   min_dt_s = 10,
-  noise_m = 0,
-  two_sided = FALSE
+  noise_m = 0
 ) {
   ms_max <- kn_max * 0.514444
   max_gap_sec <- max_gap_h * 3600
@@ -50,7 +44,7 @@
   # NA). `time` is passed as seconds-since-epoch, which is POSIXct's own
   # underlying numeric representation, so no unit conversion is needed here.
   .fwd <- function(lon, lat, time, feed) {
-    f <- whack_forward_cpp(
+    whack_forward_cpp(
       lon,
       lat,
       as.numeric(time),
@@ -60,21 +54,6 @@
       feed,
       noise_m
     )
-    if (two_sided) {
-      # the same scan on the reversed track: time runs backwards, so the reference is the next retained ping
-      b <- whack_forward_cpp(
-        rev(lon),
-        rev(lat),
-        -as.numeric(time),
-        ms_max,
-        max_gap_sec,
-        min_dt_s,
-        rev(feed),
-        noise_m
-      )
-      f <- f & rev(b)
-    }
-    f
   }
 
   grp_vars <- dplyr::group_vars(x)
@@ -309,7 +288,7 @@
 # .rb_whack_forward on what stage 1 left (resolves runs and interleaved
 # streams). Labels, never removes.
 #
-# noise_m and two_sided are the two options of the stages (see .rb_whack_sda() and .rb_whack_forward()).
+# noise_m is the stages' one option (see .rb_whack_sda() and .rb_whack_forward()).
 #
 # Returns x sorted by (vid, time) with whack (logical) and whack_stage
 # (NA, "vmask", "spike" or "forward").
@@ -319,7 +298,6 @@
   max_gap_h = 4,
   min_dt_s = 10,
   noise_m = 0,
-  two_sided = FALSE,
   ...
 ) {
   grp_vars <- dplyr::group_vars(x)
@@ -336,8 +314,7 @@
     kn_max = kn_max,
     max_gap_h = max_gap_h,
     min_dt_s = min_dt_s,
-    noise_m = noise_m,
-    two_sided = two_sided
+    noise_m = noise_m
   )
   # .rb_whack_forward() re-sorts by vid, time, lon, lat; out[!s1, ] already is, so the order is the same
   stage <- out$whack_sda

@@ -264,18 +264,13 @@ rb_flag_ping_duplicate <- function(
 #' in `ping_flag` with the stage that caught it. Only rows not yet flagged are tested, so invalid and
 #' duplicate pings never serve as anchors. No row is dropped.
 #'
-#' Three opt-in arguments serve a track merged from several feeds (a national AIS network and a commercial
+#' Two opt-in arguments serve a track merged from several feeds (a national AIS network and a commercial
 #' one, terrestrial and satellite, AIS and VMS). Their defaults leave the rule as it was.
 #'
 #' * `feed` and `noise_nm`: two feeds that both report a vessel place it a few hundred metres apart, and a
 #'   few seconds apart that reads as an impossible speed. With `feed`, a leg between pings of *different*
 #'   feeds no longer than `noise_nm` is never impossible, at every stage; a leg inside one feed, or a
 #'   cross-feed leg beyond `noise_nm`, is judged as before.
-#' * `forward = "two_sided"`: the `"forward"` stage judges each ping against the last retained ping on one
-#'   side only, so a wrong reference flags the right pings that follow. Two-sided, a ping stays flagged only
-#'   if the same scan run backwards in time (against the next retained ping) rejects it too. A run of
-#'   consecutive bad pings is still caught; a ping with one bad side is not. `method = "sda"` has no
-#'   forward stage at all.
 #' * `evidence = TRUE`: the columns that let a flag be audited. For each ping this call flagged, the legs
 #'   to the nearest ping on each side that is *not* flagged (the track that is left, so a run of flagged
 #'   pings is judged against the pings that stay):
@@ -306,7 +301,6 @@ rb_flag_ping_duplicate <- function(
 #'   floor. A ping with no feed (`NA`) never takes part in it. For the methods `"clean"`, `"sda"` and
 #'   `"forward"`.
 #' @param noise_nm The noise floor between feeds, nautical miles (1852 m). Only with `feed`.
-#' @param forward `"one_sided"` (default) or `"two_sided"`, see Details. For `"clean"` and `"forward"`.
 #' @param evidence `TRUE` adds the evidence columns, see Details. Default `FALSE`.
 #' @param vid,time,lon,lat The columns, if named otherwise.
 #' @param batch_pings For a lazy table: pings per batch.
@@ -346,7 +340,6 @@ rb_flag_ping_impossible <- function(
   ...,
   feed = NULL,
   noise_nm = 0.3,
-  forward = c("one_sided", "two_sided"),
   evidence = FALSE,
   vid = vid,
   time = time,
@@ -369,18 +362,9 @@ rb_flag_ping_impossible <- function(
     types = c(time = "time", lon = "numeric", lat = "numeric")
   )
   method <- match.arg(method)
-  forward <- match.arg(forward)
   if (has_feed && !method %in% c("clean", "sda", "forward")) {
     stop(
       "`feed` (the noise floor between feeds) is used by the methods \"clean\", \"sda\" and \"forward\", not \"",
-      method,
-      "\".",
-      call. = FALSE
-    )
-  }
-  if (forward == "two_sided" && !method %in% c("clean", "forward")) {
-    stop(
-      "`forward = \"two_sided\"` is for the methods \"clean\" and \"forward\", which have a forward scan; not \"",
       method,
       "\".",
       call. = FALSE
@@ -437,8 +421,7 @@ rb_flag_ping_impossible <- function(
               kn_max = kn_max,
               max_gap_h = max_gap_h,
               min_dt_s = min_dt_s,
-              noise_m = noise_m,
-              two_sided = forward == "two_sided"
+              noise_m = noise_m
             ),
             dots
           )
@@ -461,8 +444,7 @@ rb_flag_ping_impossible <- function(
           kn_max = kn_max,
           max_gap_h = max_gap_h,
           min_dt_s = min_dt_s,
-          noise_m = noise_m,
-          two_sided = forward == "two_sided"
+          noise_m = noise_m
         )
         stats::setNames(ifelse(o$whack2, "forward", NA_character_), o$.rb_i)
       },

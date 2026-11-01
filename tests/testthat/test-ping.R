@@ -205,9 +205,9 @@ test_that("the port tag: data frame = lazy table, one row per ping, the smaller 
   }
 })
 
-# The noise floor between feeds, the two-sided forward scan and the evidence columns -------------------------
+# The noise floor between feeds and the evidence columns ------------------------------------------------------
 # (fishycode archive 2026-10-stk-trail-order, section 11: the false removals of the STK whacks are a cross-feed
-# offset, and the forward stage's removals are one-sided evidence)
+# offset)
 
 # a steady 60 s track of one vessel (feed "a"), 15 m a step, and a ping of feed "b" 5 s after ping 30, `off_m` metres
 # east of it (1 m is 1 / (111320 * cos(64 deg)) degrees of longitude)
@@ -227,7 +227,7 @@ two_feed_track <- function(off_m = 300, n = 60, k = 30) {
   d[order(d$time), ]
 }
 
-test_that("the defaults are the rule as it was: no feed, one-sided forward, no evidence columns", {
+test_that("the defaults are the rule as it was: no feed, no evidence columns", {
   d <- two_feed_track()
   a <- rb_flag_ping_impossible(d)
   expect_identical(
@@ -235,7 +235,6 @@ test_that("the defaults are the rule as it was: no feed, one-sided forward, no e
     rb_flag_ping_impossible(
       d,
       feed = NULL,
-      forward = "one_sided",
       evidence = FALSE
     )
   )
@@ -349,7 +348,7 @@ test_that("the floor reads each ping's own feed whatever the order of the rows",
   expect_identical(b$ping_flag[order(b$key)], a$ping_flag[order(a$key)])
 })
 
-test_that("feed, noise_nm and two-sided forward are refused where the method has no use for them", {
+test_that("feed and noise_nm are refused where the method has no use for them", {
   d <- two_feed_track()
   expect_error(
     rb_flag_ping_impossible(d, method = "fwdbwd", feed = feed),
@@ -360,80 +359,9 @@ test_that("feed, noise_nm and two-sided forward are refused where the method has
     "feed"
   )
   expect_error(
-    rb_flag_ping_impossible(d, method = "sda", forward = "two_sided"),
-    "two_sided"
-  )
-  expect_error(
-    rb_flag_ping_impossible(d, method = "fwdbwd", forward = "two_sided"),
-    "two_sided"
-  )
-  expect_error(
     rb_flag_ping_impossible(d, feed = feed, noise_nm = -1),
     "noise_nm"
   )
-  expect_error(rb_flag_ping_impossible(d, forward = "three_sided"))
-})
-
-test_that("two-sided forward: a ping that only one scan rejects stays, a run both reject goes", {
-  t0 <- as.POSIXct("2022-10-15", tz = "UTC")
-  mk <- function(n) {
-    data.frame(
-      vid = 1L,
-      time = t0 + 60 * (seq_len(n) - 1),
-      lon = -23 + 0.0003 * (seq_len(n) - 1),
-      lat = 64 + 0.0002 * (seq_len(n) - 1)
-    )
-  }
-  fw <- function(d, sides) {
-    which(
-      !is.na(
-        rb_flag_ping_impossible(
-          d,
-          method = "forward",
-          forward = sides
-        )$ping_flag
-      )
-    )
-  }
-  # a bad first ping is the reference of the forward scan, which flags the 14 right pings behind it;
-  # the backward scan rejects the bad ping alone, so the two scans agree on none
-  d <- mk(15)
-  d$lon[1] <- d$lon[1] + 6
-  expect_equal(fw(d, "one_sided"), 2:15)
-  expect_equal(fw(d, "two_sided"), integer(0))
-  # a bad last ping is flagged by the forward scan, but the backward scan starts on it and flags the right pings:
-  # the end of a track cannot be confirmed from a second side
-  d <- mk(15)
-  d$lon[15] <- d$lon[15] + 6
-  expect_equal(fw(d, "one_sided"), 15L)
-  expect_equal(fw(d, "two_sided"), integer(0))
-  # an isolated spike and a run of three bad pings in the middle: both scans reject them
-  d <- mk(40)
-  d$lon[10] <- d$lon[10] + 2
-  d$lon[25:27] <- d$lon[25:27] + 2
-  expect_equal(fw(d, "one_sided"), c(10L, 25:27))
-  expect_equal(fw(d, "two_sided"), c(10L, 25:27))
-  # in the clean recipe the option reaches the forward stage only: the first stage is two-sided already
-  e <- rb_flag_ping_impossible(d, forward = "two_sided")
-  expect_equal(
-    which(e$ping_flag %in% "vmask"),
-    which(rb_flag_ping_impossible(d)$ping_flag %in% "vmask")
-  )
-  expect_true(all(c(10L, 25:27) %in% which(!is.na(e$ping_flag))))
-  d <- mk(15)
-  d$lon[1] <- d$lon[1] + 6
-  stage <- function(sides) {
-    sum(rb_flag_ping_impossible(d, forward = sides)$ping_flag %in% "forward")
-  }
-  expect_equal(stage("one_sided"), 13L)
-  expect_equal(stage("two_sided"), 0L)
-  # the first stage is the same, and the second keeps a subset of its flags: on a real track the two-sided
-  # flags are among the one-sided ones
-  d <- whacks1[order(whacks1$vid, whacks1$time, whacks1$lon, whacks1$lat), ]
-  one <- !is.na(rb_flag_ping_impossible(d)$ping_flag)
-  two <- !is.na(rb_flag_ping_impossible(d, forward = "two_sided")$ping_flag)
-  expect_true(all(one[two]))
-  expect_lte(sum(two), sum(one))
 })
 
 test_that("the evidence columns give the legs to the pings that stay, and say which side is impossible", {
@@ -527,7 +455,6 @@ test_that("a lazy DuckDB table gives the same flags and evidence as a data frame
   for (args in list(
     list(),
     list(feed = quote(feed)),
-    list(feed = quote(feed), forward = "two_sided"),
     list(evidence = TRUE),
     list(feed = quote(feed), evidence = TRUE, noise_nm = 0.1)
   )) {
