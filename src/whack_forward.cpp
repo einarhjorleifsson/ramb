@@ -21,10 +21,14 @@ using namespace Rcpp;
 // [[Rcpp::export]]
 LogicalVector whack_forward_cpp(NumericVector lon, NumericVector lat,
                                  NumericVector time,
-                                 double ms_max, double max_gap_sec, double min_dt) {
+                                 double ms_max, double max_gap_sec, double min_dt,
+                                 IntegerVector feed = IntegerVector::create(),
+                                 double noise_m = 0) {
   int n = lon.size();
   LogicalVector flag(n, false);
   if (n < 2) return flag;
+  // no feed codes (the default) is no noise floor; otherwise one code per ping
+  const bool floor_on = noise_m > 0 && feed.size() == n;
 
   // Haversine, R = 6,371,000 m — the rb_calc_distance() sphere (R/track.R is the reference
   // of record); the same formula lives in whack_sda.cpp and in the SQL of .rb_whack_fwdbwd (R/whack.R).
@@ -59,6 +63,14 @@ LogicalVector whack_forward_cpp(NumericVector lon, NumericVector lat,
     // flagged a duplicate report in the same second, 0.4 m away).
     double dt2 = dt;
     if (dt2 < min_dt) dt2 = min_dt;
+
+    // The optional noise floor between feeds (rb_flag_ping_impossible(feed = , noise_nm = )): a leg between
+    // two pings of different known feeds (-1 = unknown) no longer than noise_m is never impossible, so the
+    // ping is good and becomes the reference. noise_m = 0 is off. A NaN distance is not a short one.
+    if (floor_on && feed[i] >= 0 && feed[prev] >= 0 && feed[i] != feed[prev] && d <= noise_m) {
+      prev = i;
+      continue;
+    }
 
     if (ISNAN(d) || d / dt2 > ms_max) {
       flag[i] = true;   // bad — do NOT advance prev

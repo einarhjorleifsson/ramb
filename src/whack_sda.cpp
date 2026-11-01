@@ -14,6 +14,11 @@
 //      are both longer than distlim[k] metres, or, where speedlim[k] > 0, both faster than
 //      speedlim[k] m/s (the time-aware form); repeat on the thinned track until none.
 //
+// Optional noise floor between feeds (rb_flag_ping_impossible(feed = , noise_nm = )): `feed` is an integer
+// code per ping (-1 = unknown) and noise_m a distance in metres. A leg between two pings of DIFFERENT feeds
+// that is no longer than noise_m is never impossible: its distance counts as 0 in every speed and distance
+// test below (vmask and spike alike). noise_m = 0 switches it off and the stages are exactly as before.
+//
 // Differences from the R package, all deliberate: haversine rather than acos (which gives
 // NaN or 0 under ~1 m); bearings from atan2; the vmask loop stops if a pass removes nothing
 // (the R loop can spin on a plateau); no Argos location-class argument; a time step shorter
@@ -57,10 +62,10 @@ inline double bearing_deg(double lat1, double lon1, double lat2, double lon2) {
 
 // One track, indices [a, b) into the full vectors. Writes a reason code into `removed`:
 // 1 = vmask peak, 2 = angle/distance (or speed) spike. Nothing is dropped here: the caller labels.
-void sda_track(const double* lat, const double* lon, const double* t, int a, int b,
+void sda_track(const double* lat, const double* lon, const double* t, const int* feed, int a, int b,
                double vmax, const std::vector<double>& ang, const std::vector<double>& distlim,
                const std::vector<double>& speedlim, double vmask_min_dist, double min_dt,
-               int* removed) {
+               double noise_m, int* removed) {
   const int N = b - a;
   if (N < 5) return;
 
@@ -70,6 +75,13 @@ void sda_track(const double* lat, const double* lon, const double* t, int a, int
   std::vector<char> vm(N, 0);
   std::vector<double> v, s1, s2;
   const Rad rd(lat, lon, a, b);
+  // a leg's distance, 0 where the noise floor applies: different known feeds and no longer than noise_m
+  // (p and q are indices into the full vectors)
+  auto leg = [&](int p, int q) -> double {
+    double d = rd.dist(p - a, q - a);
+    if (noise_m > 0 && feed[p] >= 0 && feed[q] >= 0 && feed[p] != feed[q] && d <= noise_m) return 0.0;
+    return d;
+  };
   while (true) {
     const int n = cur.size();
     if (n < 5) break;
@@ -78,8 +90,8 @@ void sda_track(const double* lat, const double* lon, const double* t, int a, int
     s1.assign(n, 0.0); s2.assign(n, 0.0); v.assign(n, 0.0);
     for (int i = 0; i + 1 < n; ++i) {
       int p = cur[i], q = cur[i + 1];
-      s1[i] = rd.dist(p - a, q - a) / std::max(std::fabs(t[p] - t[q]), min_dt);
-      if (i + 2 < n) { int r2 = cur[i + 2]; s2[i] = rd.dist(p - a, r2 - a) / std::max(std::fabs(t[p] - t[r2]), min_dt); }
+      s1[i] = leg(p, q) / std::max(std::fabs(t[p] - t[q]), min_dt);
+      if (i + 2 < n) { int r2 = cur[i + 2]; s2[i] = leg(p, r2) / std::max(std::fabs(t[p] - t[r2]), min_dt); }
     }
     for (int i = 2; i <= n - 3; ++i)
       v[i] = std::sqrt((s2[i - 2] * s2[i - 2] + s1[i - 1] * s1[i - 1] + s1[i] * s1[i] + s2[i] * s2[i]) / 4.0);
@@ -126,8 +138,8 @@ void sda_track(const double* lat, const double* lon, const double* t, int a, int
     std::vector<char> drop(n, 0); int ndrop = 0;
     for (int i = 1; i <= n - 2; ++i) {
       int p = keep[i - 1], c = keep[i], q = keep[i + 1];
-      double dprev = rd.dist(p - a, c - a);
-      double dnext = rd.dist(c - a, q - a);
+      double dprev = leg(p, c);
+      double dnext = leg(c, q);
       double an;
       if ((lat[c] == lat[q] && lon[c] == lon[q]) || (lat[c] == lat[p] && lon[c] == lon[p])) an = 180;
       else {
@@ -156,19 +168,26 @@ void sda_track(const double* lat, const double* lon, const double* t, int a, int
 
 // All vessels in one call. `grp` is an integer code per ping, sorted so each vessel is a
 // contiguous run, and `time` is sorted within it. Returns 0 (fine), 1 (vmask) or 2 (spike).
+// `feed` (an integer per ping, -1 unknown) and `noise_m` are the optional cross-feed noise floor
+// described at the top; noise_m = 0 is off.
 // [[Rcpp::export]]
 IntegerVector whack_sda_cpp(NumericVector lat, NumericVector lon, NumericVector time,
                             IntegerVector grp, double vmax, NumericVector ang,
                             NumericVector distlim, NumericVector speedlim,
-                            double vmask_min_dist, double min_dt) {
+                            double vmask_min_dist, double min_dt,
+                            IntegerVector feed = IntegerVector::create(),
+                            double noise_m = 0) {
   const int n = lat.size();
   std::vector<int> removed(n, 0);
   std::vector<double> A(ang.begin(), ang.end()), D(distlim.begin(), distlim.end()),
                       S(speedlim.begin(), speedlim.end());
+  // no feed codes (the default) is no noise floor: every ping gets -1, unknown
+  std::vector<int> F(feed.begin(), feed.end());
+  if ((int)F.size() != n) { F.assign(n, -1); noise_m = 0; }
   int start = 0;
   for (int i = 1; i <= n; ++i) {
     if (i == n || grp[i] != grp[start]) {
-      sda_track(&lat[0], &lon[0], &time[0], start, i, vmax, A, D, S, vmask_min_dist, min_dt, removed.data());
+      sda_track(&lat[0], &lon[0], &time[0], F.data(), start, i, vmax, A, D, S, vmask_min_dist, min_dt, noise_m, removed.data());
       start = i;
     }
   }

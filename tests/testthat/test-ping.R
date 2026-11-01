@@ -204,3 +204,345 @@ test_that("the port tag: data frame = lazy table, one row per ping, the smaller 
     expect_equal(r2$port_id, c("a2", "small", "small", NA, NA))
   }
 })
+
+# The noise floor between feeds, the two-sided forward scan and the evidence columns -------------------------
+# (fishycode archive 2026-10-stk-trail-order, section 11: the false removals of the STK whacks are a cross-feed
+# offset, and the forward stage's removals are one-sided evidence)
+
+# a steady 60 s track of one vessel (feed "a"), 15 m a step, and a ping of feed "b" 5 s after ping 30, `off_m` metres
+# east of it (1 m is 1 / (111320 * cos(64 deg)) degrees of longitude)
+two_feed_track <- function(off_m = 300, n = 60, k = 30) {
+  d <- data.frame(
+    vid = 1L,
+    time = as.POSIXct("2024-01-01", tz = "UTC") + 60 * (seq_len(n) - 1),
+    lon = -20 + 0.0003 * (seq_len(n) - 1),
+    lat = 64,
+    feed = "a"
+  )
+  b <- d[k, ]
+  b$time <- b$time + 5
+  b$lon <- b$lon + off_m / (111320 * cos(64 * pi / 180))
+  b$feed <- "b"
+  d <- rbind(d, b)
+  d[order(d$time), ]
+}
+
+test_that("the defaults are the rule as it was: no feed, one-sided forward, no evidence columns", {
+  d <- two_feed_track()
+  a <- rb_flag_ping_impossible(d)
+  expect_identical(
+    a,
+    rb_flag_ping_impossible(
+      d,
+      feed = NULL,
+      forward = "one_sided",
+      evidence = FALSE
+    )
+  )
+  expect_identical(names(a), c(names(d), "ping_flag"))
+  # the cross-feed ping 5 s after ping 30, 300 m away, is 58 knots on the step rule: flagged without a floor
+  expect_equal(sum(!is.na(a$ping_flag)), 1L)
+  expect_equal(a$feed[!is.na(a$ping_flag)], "b")
+})
+
+test_that("a cross-feed leg within noise_nm is never impossible, at every stage", {
+  d <- two_feed_track(300)
+  for (m in c("clean", "sda", "forward")) {
+    expect_equal(
+      sum(!is.na(rb_flag_ping_impossible(d, method = m)$ping_flag)),
+      1L,
+      info = m
+    )
+    expect_equal(
+      sum(
+        !is.na(rb_flag_ping_impossible(d, method = m, feed = feed)$ping_flag)
+      ),
+      0L,
+      info = m
+    )
+  }
+  # 0.3 nautical miles is 555.6 m: the floor is a parameter, and a leg beyond it is judged as before
+  expect_equal(
+    sum(
+      !is.na(
+        rb_flag_ping_impossible(two_feed_track(500), feed = feed)$ping_flag
+      )
+    ),
+    0L
+  )
+  expect_equal(
+    sum(
+      !is.na(
+        rb_flag_ping_impossible(two_feed_track(600), feed = feed)$ping_flag
+      )
+    ),
+    1L
+  )
+  expect_equal(
+    sum(
+      !is.na(
+        rb_flag_ping_impossible(
+          two_feed_track(300),
+          feed = feed,
+          noise_nm = 0.1
+        )$ping_flag
+      )
+    ),
+    1L
+  )
+  expect_equal(
+    sum(
+      !is.na(
+        rb_flag_ping_impossible(
+          two_feed_track(600),
+          feed = feed,
+          noise_nm = 0.35
+        )$ping_flag
+      )
+    ),
+    0L
+  )
+  # noise_nm = 0 is no floor
+  expect_identical(
+    rb_flag_ping_impossible(d, feed = feed, noise_nm = 0)$ping_flag,
+    rb_flag_ping_impossible(d)$ping_flag
+  )
+})
+
+test_that("the floor is between feeds only: the same offset inside one feed is flagged, an unknown feed has no floor", {
+  d <- two_feed_track(300)
+  d$feed[d$feed == "b"] <- "a"
+  expect_equal(
+    sum(!is.na(rb_flag_ping_impossible(d, feed = feed)$ping_flag)),
+    1L
+  )
+  e <- two_feed_track(300)
+  e$feed[e$feed == "b"] <- NA
+  expect_equal(
+    sum(!is.na(rb_flag_ping_impossible(e, feed = feed)$ping_flag)),
+    1L
+  )
+})
+
+test_that("the floor leaves a real jump alone and takes another column name", {
+  d <- two_feed_track(300)
+  d$lon[d$time == d$time[40]] <- d$lon[d$time == d$time[40]] + 1 # a jump of 49 km, feed "a"
+  r <- rb_flag_ping_impossible(
+    dplyr::rename(d, provider = feed),
+    feed = provider
+  )
+  expect_equal(sum(!is.na(r$ping_flag)), 1L)
+  expect_equal(which(!is.na(r$ping_flag)), 40L)
+  expect_true("provider" %in% names(r))
+  expect_error(
+    rb_flag_ping_impossible(d, feed = no_such_column),
+    "no_such_column"
+  )
+})
+
+test_that("the floor reads each ping's own feed whatever the order of the rows", {
+  set.seed(3)
+  d <- two_feed_track(300)
+  d$key <- seq_len(nrow(d))
+  a <- rb_flag_ping_impossible(d, feed = feed)
+  b <- rb_flag_ping_impossible(d[sample(nrow(d)), ], feed = feed)
+  expect_identical(b$ping_flag[order(b$key)], a$ping_flag[order(a$key)])
+})
+
+test_that("feed, noise_nm and two-sided forward are refused where the method has no use for them", {
+  d <- two_feed_track()
+  expect_error(
+    rb_flag_ping_impossible(d, method = "fwdbwd", feed = feed),
+    "feed"
+  )
+  expect_error(
+    rb_flag_ping_impossible(d, method = "sequential", feed = feed),
+    "feed"
+  )
+  expect_error(
+    rb_flag_ping_impossible(d, method = "sda", forward = "two_sided"),
+    "two_sided"
+  )
+  expect_error(
+    rb_flag_ping_impossible(d, method = "fwdbwd", forward = "two_sided"),
+    "two_sided"
+  )
+  expect_error(
+    rb_flag_ping_impossible(d, feed = feed, noise_nm = -1),
+    "noise_nm"
+  )
+  expect_error(rb_flag_ping_impossible(d, forward = "three_sided"))
+})
+
+test_that("two-sided forward: a ping that only one scan rejects stays, a run both reject goes", {
+  t0 <- as.POSIXct("2022-10-15", tz = "UTC")
+  mk <- function(n) {
+    data.frame(
+      vid = 1L,
+      time = t0 + 60 * (seq_len(n) - 1),
+      lon = -23 + 0.0003 * (seq_len(n) - 1),
+      lat = 64 + 0.0002 * (seq_len(n) - 1)
+    )
+  }
+  fw <- function(d, sides) {
+    which(
+      !is.na(
+        rb_flag_ping_impossible(
+          d,
+          method = "forward",
+          forward = sides
+        )$ping_flag
+      )
+    )
+  }
+  # a bad first ping is the reference of the forward scan, which flags the 14 right pings behind it;
+  # the backward scan rejects the bad ping alone, so the two scans agree on none
+  d <- mk(15)
+  d$lon[1] <- d$lon[1] + 6
+  expect_equal(fw(d, "one_sided"), 2:15)
+  expect_equal(fw(d, "two_sided"), integer(0))
+  # a bad last ping is flagged by the forward scan, but the backward scan starts on it and flags the right pings:
+  # the end of a track cannot be confirmed from a second side
+  d <- mk(15)
+  d$lon[15] <- d$lon[15] + 6
+  expect_equal(fw(d, "one_sided"), 15L)
+  expect_equal(fw(d, "two_sided"), integer(0))
+  # an isolated spike and a run of three bad pings in the middle: both scans reject them
+  d <- mk(40)
+  d$lon[10] <- d$lon[10] + 2
+  d$lon[25:27] <- d$lon[25:27] + 2
+  expect_equal(fw(d, "one_sided"), c(10L, 25:27))
+  expect_equal(fw(d, "two_sided"), c(10L, 25:27))
+  # in the clean recipe the option reaches the forward stage only: the first stage is two-sided already
+  e <- rb_flag_ping_impossible(d, forward = "two_sided")
+  expect_equal(
+    which(e$ping_flag %in% "vmask"),
+    which(rb_flag_ping_impossible(d)$ping_flag %in% "vmask")
+  )
+  expect_true(all(c(10L, 25:27) %in% which(!is.na(e$ping_flag))))
+  d <- mk(15)
+  d$lon[1] <- d$lon[1] + 6
+  stage <- function(sides) {
+    sum(rb_flag_ping_impossible(d, forward = sides)$ping_flag %in% "forward")
+  }
+  expect_equal(stage("one_sided"), 13L)
+  expect_equal(stage("two_sided"), 0L)
+  # the first stage is the same, and the second keeps a subset of its flags: on a real track the two-sided
+  # flags are among the one-sided ones
+  d <- whacks1[order(whacks1$vid, whacks1$time, whacks1$lon, whacks1$lat), ]
+  one <- !is.na(rb_flag_ping_impossible(d)$ping_flag)
+  two <- !is.na(rb_flag_ping_impossible(d, forward = "two_sided")$ping_flag)
+  expect_true(all(one[two]))
+  expect_lte(sum(two), sum(one))
+})
+
+test_that("the evidence columns give the legs to the pings that stay, and say which side is impossible", {
+  d <- two_feed_track(300)
+  r <- rb_flag_ping_impossible(d, evidence = TRUE)
+  ev <- c(
+    "ping_flag_side",
+    "ping_flag_prev_dt_s",
+    "ping_flag_prev_dist_m",
+    "ping_flag_next_dt_s",
+    "ping_flag_next_dist_m"
+  )
+  expect_true(all(ev %in% names(r)))
+  expect_false("ping_flag_prev_feed" %in% names(r)) # no feed given
+  expect_equal(nrow(r), nrow(d))
+  expect_true(all(is.na(r$ping_flag_side[is.na(r$ping_flag)])))
+  i <- which(!is.na(r$ping_flag))
+  expect_equal(r$ping_flag_side[i], "prev")
+  expect_equal(r$ping_flag_prev_dt_s[i], 5)
+  expect_equal(r$ping_flag_prev_dist_m[i], 300, tolerance = 0.02)
+  expect_equal(r$ping_flag_next_dt_s[i], 55)
+  # with a feed the neighbours' feeds are named; the cross-feed leg within the floor is no evidence
+  r2 <- rb_flag_ping_impossible(d, evidence = TRUE, feed = feed, noise_nm = 0.1)
+  j <- which(!is.na(r2$ping_flag))
+  expect_equal(r2$ping_flag_prev_feed[j], "a")
+  expect_equal(r2$ping_flag_next_feed[j], "a")
+  expect_equal(r2$ping_flag_side[j], "prev")
+  # a spike is too fast from both sides
+  s <- two_feed_track(0)
+  s$lon[s$time == s$time[40]] <- s$lon[s$time == s$time[40]] + 1
+  r3 <- rb_flag_ping_impossible(s, evidence = TRUE)
+  k <- which(!is.na(r3$ping_flag) & r3$ping_flag_side != "none")
+  expect_equal(r3$ping_flag_side[k], "both")
+  # a run of flagged pings is judged against the pings that stay, not against each other (the first stage also
+  # flags the pings beside the run, so the run's neighbours are the nearest pings that are not flagged)
+  rr <- two_feed_track(0, n = 40)
+  rr$lon[20:22] <- rr$lon[20:22] + 2
+  r4 <- rb_flag_ping_impossible(rr, evidence = TRUE)
+  expect_true(all(20:22 %in% which(!is.na(r4$ping_flag))))
+  expect_equal(r4$ping_flag_side[20:22], rep("both", 3))
+  kept <- which(is.na(r4$ping_flag))
+  prev <- vapply(20:22, function(i) max(kept[kept < i]), 1L)
+  nxt <- vapply(20:22, function(i) min(kept[kept > i]), 1L)
+  expect_equal(
+    r4$ping_flag_prev_dt_s[20:22],
+    as.numeric(r4$time[20:22] - r4$time[prev], units = "secs")
+  )
+  expect_equal(
+    r4$ping_flag_next_dt_s[20:22],
+    as.numeric(r4$time[nxt] - r4$time[20:22], units = "secs")
+  )
+  # a flag with no impossible leg to the pings that stay says so
+  expect_true("none" %in% r4$ping_flag_side)
+})
+
+test_that("the evidence is added to the flags of this call only, and a second call keeps the first's", {
+  d <- two_feed_track(300)
+  d$lon[d$time == d$time[40]] <- d$lon[d$time == d$time[40]] + 1
+  inv <- rb_flag_ping_invalid(d)
+  r1 <- rb_flag_ping_impossible(inv, evidence = TRUE, method = "sda")
+  r2 <- rb_flag_ping_impossible(
+    r1,
+    evidence = TRUE,
+    method = "forward",
+    feed = feed
+  )
+  expect_equal(
+    r2$ping_flag[!is.na(r1$ping_flag)],
+    r1$ping_flag[!is.na(r1$ping_flag)]
+  )
+  expect_equal(
+    r2$ping_flag_side[!is.na(r1$ping_flag)],
+    r1$ping_flag_side[!is.na(r1$ping_flag)]
+  )
+  # a track whose pings are all flagged already still gets the columns
+  all_flagged <- rb_flag_ping_impossible(
+    transform(d, ping_flag = "mine"),
+    evidence = TRUE
+  )
+  expect_true("ping_flag_side" %in% names(all_flagged))
+  expect_true(all(is.na(all_flagged$ping_flag_side)))
+})
+
+test_that("a lazy DuckDB table gives the same flags and evidence as a data frame, with a feed", {
+  skip_if_not_installed("duckdbfs")
+  set.seed(5)
+  d <- two_feed_track(300)
+  d$lon[d$time == d$time[40]] <- d$lon[d$time == d$time[40]] + 1
+  d$key <- seq_len(nrow(d))
+  d <- d[sample(nrow(d)), ]
+  for (args in list(
+    list(),
+    list(feed = quote(feed)),
+    list(feed = quote(feed), forward = "two_sided"),
+    list(evidence = TRUE),
+    list(feed = quote(feed), evidence = TRUE, noise_nm = 0.1)
+  )) {
+    a <- do.call(rb_flag_ping_impossible, c(list(d), args))
+    b <- dplyr::collect(do.call(
+      rb_flag_ping_impossible,
+      c(list(duckdbfs::as_dataset(d)), args)
+    ))
+    a <- as.data.frame(a[order(a$key), ])
+    b <- as.data.frame(b[order(b$key), names(a)])
+    expect_equal(
+      b,
+      a,
+      ignore_attr = TRUE,
+      info = paste(names(args), collapse = " ")
+    )
+  }
+})

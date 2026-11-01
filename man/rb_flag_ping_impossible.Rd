@@ -11,6 +11,10 @@ rb_flag_ping_impossible(
   min_dt_s = 10,
   max_gap_h = 4,
   ...,
+  feed = NULL,
+  noise_nm = 0.3,
+  forward = c("one_sided", "two_sided"),
+  evidence = FALSE,
   vid = vid,
   time = time,
   lon = lon,
@@ -44,17 +48,67 @@ the first too-fast segment and recomputes, in-memory only.
 
 \item{...}{Passed to the method (e.g. \code{ang}, \code{distlim} for \code{"sda"}).}
 
+\item{feed}{The column naming the feed of each ping, for the noise floor \code{noise_nm}. Default \code{NULL}: no
+floor. A ping with no feed (\code{NA}) never takes part in it. For the methods \code{"clean"}, \code{"sda"} and
+\code{"forward"}.}
+
+\item{noise_nm}{The noise floor between feeds, nautical miles (1852 m). Only with \code{feed}.}
+
+\item{forward}{\code{"one_sided"} (default) or \code{"two_sided"}, see Details. For \code{"clean"} and \code{"forward"}.}
+
+\item{evidence}{\code{TRUE} adds the evidence columns, see Details. Default \code{FALSE}.}
+
 \item{vid, time, lon, lat}{The columns, if named otherwise.}
 
 \item{batch_pings}{For a lazy table: pings per batch.}
 }
 \value{
-\code{x} with \code{ping_flag} added or updated: the same type, the same rows.
+\code{x} with \code{ping_flag} added or updated: the same type, the same rows; with \code{evidence = TRUE}, the
+evidence columns too.
 }
 \description{
 Step 0 of the fishing-activity flow. A position or jump that implies an impossible speed is flagged
 in \code{ping_flag} with the stage that caught it. Only rows not yet flagged are tested, so invalid and
 duplicate pings never serve as anchors. No row is dropped.
+}
+\details{
+Three opt-in arguments serve a track merged from several feeds (a national AIS network and a commercial
+one, terrestrial and satellite, AIS and VMS). Their defaults leave the rule as it was.
+\itemize{
+\item \code{feed} and \code{noise_nm}: two feeds that both report a vessel place it a few hundred metres apart, and a
+few seconds apart that reads as an impossible speed. With \code{feed}, a leg between pings of \emph{different}
+feeds no longer than \code{noise_nm} is never impossible, at every stage; a leg inside one feed, or a
+cross-feed leg beyond \code{noise_nm}, is judged as before.
+\item \code{forward = "two_sided"}: the \code{"forward"} stage judges each ping against the last retained ping on one
+side only, so a wrong reference flags the right pings that follow. Two-sided, a ping stays flagged only
+if the same scan run backwards in time (against the next retained ping) rejects it too. A run of
+consecutive bad pings is still caught; a ping with one bad side is not. \code{method = "sda"} has no
+forward stage at all.
+\item \code{evidence = TRUE}: the columns that let a flag be audited. For each ping this call flagged, the legs
+to the nearest ping on each side that is \emph{not} flagged (the track that is left, so a run of flagged
+pings is judged against the pings that stay):
+\code{ping_flag_prev_dt_s}, \code{ping_flag_prev_dist_m} and, with \code{feed}, \code{ping_flag_prev_feed}, and the same
+with \code{next}; and \code{ping_flag_side}, which of the two legs is impossible on the rule above (a leg
+within the noise floor, or longer than \code{max_gap_h}, is not): \code{"prev"}, \code{"next"}, \code{"both"}, or
+\code{"none"} when neither is (the flag came from the rms speed or the angle of the ping, or the ping has
+no neighbour on that side). The columns are \code{NA} for pings this call did not flag.
+}
+}
+\examples{
+t0 <- as.POSIXct("2024-01-01", tz = "UTC")
+# one vessel heard by two feeds: the second feed's ping is 219 m from the first's, 5 s later (85 knots,
+# if read as one track)
+d <- data.frame(
+  vid = 1,
+  time = t0 + c(0, 60, 120, 125, 180, 240, 300),
+  lon = -20 + c(0, 0.001, 0.002, 0.0065, 0.003, 0.004, 0.005),
+  lat = 64,
+  feed = c("a", "a", "a", "b", "a", "a", "a")
+)
+rb_flag_ping_impossible(d)$ping_flag
+# the cross-feed leg is within 0.3 nautical miles (556 m): not impossible
+rb_flag_ping_impossible(d, feed = feed)$ping_flag
+rb_flag_ping_impossible(d, evidence = TRUE)[4, ]
 }
 \references{
 For \code{"sda"}: Freitas, C., Lydersen, C., Fedak, M.A. and Kovacs,

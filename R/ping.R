@@ -51,14 +51,16 @@
 # collected, labelled in R by `fun` (a data-frame function that updates `ping_flag`), and its labels are
 # written to a temporary parquet file; the result is the input joined to those files, still lazy. A row is
 # found again by its number within its vessel, in `order_by` order, numbered the same way in DuckDB and
-# in the batch. The files live until the R session ends.
+# in the batch. The files live until the R session ends. `extra` names more columns that `fun` adds to
+# the batch (the evidence columns of rb_flag_ping_impossible()); they are joined back with the label.
 .rb_label_lazy <- function(
   x,
   fun,
   cols,
   order_by,
   batch_pings = 5e6,
-  what = "label"
+  what = "label",
+  extra = character(0)
 ) {
   con <- dbplyr::remote_con(x)
   ob <- rlang::syms(order_by)
@@ -88,7 +90,7 @@
       dplyr::ungroup() |>
       dplyr::collect() |>
       dplyr::arrange(vid, !!!ob)
-    lab <- fun(d)[, c("vid", ".rb_rn", "ping_flag")]
+    lab <- fun(d)[, c("vid", ".rb_rn", "ping_flag", extra)]
     lab$.rb_rn <- as.numeric(lab$.rb_rn)
     # Register, write with COPY on the same connection, release: a frame left registered in a loop
     # accumulates (fishycode R/write_parquet.R: 48 GB spilled before that was found).
@@ -262,6 +264,27 @@ rb_flag_ping_duplicate <- function(
 #' in `ping_flag` with the stage that caught it. Only rows not yet flagged are tested, so invalid and
 #' duplicate pings never serve as anchors. No row is dropped.
 #'
+#' Three opt-in arguments serve a track merged from several feeds (a national AIS network and a commercial
+#' one, terrestrial and satellite, AIS and VMS). Their defaults leave the rule as it was.
+#'
+#' * `feed` and `noise_nm`: two feeds that both report a vessel place it a few hundred metres apart, and a
+#'   few seconds apart that reads as an impossible speed. With `feed`, a leg between pings of *different*
+#'   feeds no longer than `noise_nm` is never impossible, at every stage; a leg inside one feed, or a
+#'   cross-feed leg beyond `noise_nm`, is judged as before.
+#' * `forward = "two_sided"`: the `"forward"` stage judges each ping against the last retained ping on one
+#'   side only, so a wrong reference flags the right pings that follow. Two-sided, a ping stays flagged only
+#'   if the same scan run backwards in time (against the next retained ping) rejects it too. A run of
+#'   consecutive bad pings is still caught; a ping with one bad side is not. `method = "sda"` has no
+#'   forward stage at all.
+#' * `evidence = TRUE`: the columns that let a flag be audited. For each ping this call flagged, the legs
+#'   to the nearest ping on each side that is *not* flagged (the track that is left, so a run of flagged
+#'   pings is judged against the pings that stay):
+#'   `ping_flag_prev_dt_s`, `ping_flag_prev_dist_m` and, with `feed`, `ping_flag_prev_feed`, and the same
+#'   with `next`; and `ping_flag_side`, which of the two legs is impossible on the rule above (a leg
+#'   within the noise floor, or longer than `max_gap_h`, is not): `"prev"`, `"next"`, `"both"`, or
+#'   `"none"` when neither is (the flag came from the rms speed or the angle of the ping, or the ping has
+#'   no neighbour on that side). The columns are `NA` for pings this call did not flag.
+#'
 #' @param x A data frame or a lazy DuckDB table with `vid`, `time`, `lon` and `lat`.
 #' @param method The rule:
 #'   * `"clean"` (default): the recommended two-stage filter: speed-distance-angle ("vmask", "spike"),
@@ -279,10 +302,17 @@ rb_flag_ping_duplicate <- function(
 #' @param min_dt_s A time step shorter than this counts as this many seconds.
 #' @param max_gap_h For `"clean"` and `"forward"`: after a gap longer than this the scan restarts.
 #' @param ... Passed to the method (e.g. `ang`, `distlim` for `"sda"`).
+#' @param feed The column naming the feed of each ping, for the noise floor `noise_nm`. Default `NULL`: no
+#'   floor. A ping with no feed (`NA`) never takes part in it. For the methods `"clean"`, `"sda"` and
+#'   `"forward"`.
+#' @param noise_nm The noise floor between feeds, nautical miles (1852 m). Only with `feed`.
+#' @param forward `"one_sided"` (default) or `"two_sided"`, see Details. For `"clean"` and `"forward"`.
+#' @param evidence `TRUE` adds the evidence columns, see Details. Default `FALSE`.
 #' @param vid,time,lon,lat The columns, if named otherwise.
 #' @param batch_pings For a lazy table: pings per batch.
 #'
-#' @return `x` with `ping_flag` added or updated: the same type, the same rows.
+#' @return `x` with `ping_flag` added or updated: the same type, the same rows; with `evidence = TRUE`, the
+#'   evidence columns too.
 #'
 #' @references For `"sda"`: Freitas, C., Lydersen, C., Fedak, M.A. and Kovacs,
 #'   K.M. (2008). "A simple new algorithm to filter marine mammal Argos
@@ -291,6 +321,22 @@ rb_flag_ping_duplicate <- function(
 #'   [argosfilter::sdafilter()], re-implemented in C++.
 #' @family flag pings
 #' @export
+#'
+#' @examples
+#' t0 <- as.POSIXct("2024-01-01", tz = "UTC")
+#' # one vessel heard by two feeds: the second feed's ping is 219 m from the first's, 5 s later (85 knots,
+#' # if read as one track)
+#' d <- data.frame(
+#'   vid = 1,
+#'   time = t0 + c(0, 60, 120, 125, 180, 240, 300),
+#'   lon = -20 + c(0, 0.001, 0.002, 0.0065, 0.003, 0.004, 0.005),
+#'   lat = 64,
+#'   feed = c("a", "a", "a", "b", "a", "a", "a")
+#' )
+#' rb_flag_ping_impossible(d)$ping_flag
+#' # the cross-feed leg is within 0.3 nautical miles (556 m): not impossible
+#' rb_flag_ping_impossible(d, feed = feed)$ping_flag
+#' rb_flag_ping_impossible(d, evidence = TRUE)[4, ]
 rb_flag_ping_impossible <- function(
   x,
   method = c("clean", "sda", "forward", "fwdbwd", "sequential"),
@@ -298,12 +344,18 @@ rb_flag_ping_impossible <- function(
   min_dt_s = 10,
   max_gap_h = 4,
   ...,
+  feed = NULL,
+  noise_nm = 0.3,
+  forward = c("one_sided", "two_sided"),
+  evidence = FALSE,
   vid = vid,
   time = time,
   lon = lon,
   lat = lat,
   batch_pings = 5e6
 ) {
+  feed_quo <- rlang::enquo(feed)
+  has_feed <- !rlang::quo_is_null(feed_quo)
   .rb_check_input(
     x,
     "rb_flag_ping_impossible",
@@ -313,24 +365,67 @@ rb_flag_ping_impossible <- function(
       lon = rlang::as_name(rlang::enquo(lon)),
       lat = rlang::as_name(rlang::enquo(lat))
     ),
+    also = if (has_feed) c(feed = rlang::as_name(feed_quo)) else character(0),
     types = c(time = "time", lon = "numeric", lat = "numeric")
   )
   method <- match.arg(method)
+  forward <- match.arg(forward)
+  if (has_feed && !method %in% c("clean", "sda", "forward")) {
+    stop(
+      "`feed` (the noise floor between feeds) is used by the methods \"clean\", \"sda\" and \"forward\", not \"",
+      method,
+      "\".",
+      call. = FALSE
+    )
+  }
+  if (forward == "two_sided" && !method %in% c("clean", "forward")) {
+    stop(
+      "`forward = \"two_sided\"` is for the methods \"clean\" and \"forward\", which have a forward scan; not \"",
+      method,
+      "\".",
+      call. = FALSE
+    )
+  }
+  if (has_feed) {
+    if (
+      !is.numeric(noise_nm) ||
+        length(noise_nm) != 1 ||
+        is.na(noise_nm) ||
+        noise_nm < 0
+    ) {
+      stop("`noise_nm` must be one number, 0 or more.", call. = FALSE)
+    }
+  }
+  noise_m <- if (has_feed) noise_nm * 1852 else 0
   map <- .rb_cols(
     vid = {{ vid }},
     time = {{ time }},
     lon = {{ lon }},
     lat = {{ lat }}
   )
+  if (has_feed) {
+    map <- c(map, feed = rlang::as_name(feed_quo))
+  }
   x <- .rb_flag_init(.rb_std_in(x, map))
   dots <- list(...)
+  ev_cols <- if (evidence) .rb_evidence_cols(has_feed) else character(0)
   fun <- function(d) {
+    if (evidence) {
+      d <- .rb_evidence_init(d, has_feed)
+    }
     i <- which(is.na(d$ping_flag))
     if (!length(i)) {
       return(d)
     }
-    s <- dplyr::ungroup(d[i, setdiff(names(d), "ping_flag"), drop = FALSE])
+    s <- dplyr::ungroup(d[
+      i,
+      setdiff(names(d), c("ping_flag", ev_cols)),
+      drop = FALSE
+    ])
     s$.rb_i <- i
+    if (has_feed) {
+      s$.rb_feed <- s$feed
+    }
     stage <- switch(
       method,
       clean = {
@@ -341,7 +436,9 @@ rb_flag_ping_impossible <- function(
               s,
               kn_max = kn_max,
               max_gap_h = max_gap_h,
-              min_dt_s = min_dt_s
+              min_dt_s = min_dt_s,
+              noise_m = noise_m,
+              two_sided = forward == "two_sided"
             ),
             dots
           )
@@ -351,7 +448,10 @@ rb_flag_ping_impossible <- function(
       sda = {
         o <- do.call(
           .rb_whack_sda,
-          c(list(s, kn_max = kn_max, min_dt_s = min_dt_s), dots)
+          c(
+            list(s, kn_max = kn_max, min_dt_s = min_dt_s, noise_m = noise_m),
+            dots
+          )
         )
         stats::setNames(o$whack_sda, o$.rb_i)
       },
@@ -360,7 +460,9 @@ rb_flag_ping_impossible <- function(
           s,
           kn_max = kn_max,
           max_gap_h = max_gap_h,
-          min_dt_s = min_dt_s
+          min_dt_s = min_dt_s,
+          noise_m = noise_m,
+          two_sided = forward == "two_sided"
         )
         stats::setNames(ifelse(o$whack2, "forward", NA_character_), o$.rb_i)
       },
@@ -386,21 +488,140 @@ rb_flag_ping_impossible <- function(
       }
     )
     d$ping_flag[as.integer(names(stage))] <- unname(stage)
+    if (evidence) {
+      new <- logical(nrow(d))
+      new[as.integer(names(stage))[!is.na(stage)]] <- TRUE
+      d <- .rb_flag_evidence(
+        d,
+        new,
+        kn_max = kn_max,
+        min_dt_s = min_dt_s,
+        max_gap_h = max_gap_h,
+        noise_m = noise_m,
+        has_feed = has_feed
+      )
+    }
     d
   }
   x <- if (inherits(x, "tbl_lazy")) {
     .rb_label_lazy(
       x,
       fun,
-      cols = c("time", "lon", "lat"),
-      order_by = c("time", "lon", "lat"),
+      cols = c("time", "lon", "lat", if (has_feed) "feed"),
+      order_by = c("time", "lon", "lat", if (has_feed) "feed"),
       batch_pings = batch_pings,
-      what = "rb_flag_ping_impossible()"
+      what = "rb_flag_ping_impossible()",
+      extra = ev_cols
     )
   } else {
     fun(x)
   }
   .rb_std_out(x, map)
+}
+
+# Evidence of a flag (rb_flag_ping_impossible(evidence = TRUE)) -------------------------
+# For each ping flagged in this call, the legs to the nearest ping on each side that is not flagged (by this
+# call or an earlier one: the track that is left), in the order the filters use, (vid, time, lon, lat).
+# The legs are the audit trail of a flag, and are measured on the track that is left, so a run of flagged
+# pings is judged against the pings that stay, not against each other. `ping_flag_side` names the side(s)
+# whose leg is impossible on the rule of the call: faster than kn_max on a step of at least min_dt_s, not
+# longer than max_gap_h (where the forward scan restarts), and not inside the noise floor between feeds.
+.rb_evidence_cols <- function(has_feed) {
+  c(
+    "ping_flag_side",
+    if (has_feed) "ping_flag_prev_feed",
+    "ping_flag_prev_dt_s",
+    "ping_flag_prev_dist_m",
+    if (has_feed) "ping_flag_next_feed",
+    "ping_flag_next_dt_s",
+    "ping_flag_next_dist_m"
+  )
+}
+.rb_evidence_init <- function(d, has_feed) {
+  for (nm in .rb_evidence_cols(has_feed)) {
+    if (!nm %in% names(d)) {
+      d[[nm]] <- if (grepl("_(side|feed)$", nm)) {
+        rep(NA_character_, nrow(d))
+      } else {
+        rep(NA_real_, nrow(d))
+      }
+    }
+  }
+  d
+}
+.rb_flag_evidence <- function(
+  d,
+  new,
+  kn_max,
+  min_dt_s,
+  max_gap_h,
+  noise_m,
+  has_feed
+) {
+  d <- .rb_evidence_init(d, has_feed)
+  if (!any(new)) {
+    return(d)
+  }
+  o <- order(d$vid, as.numeric(d$time), d$lon, d$lat)
+  n <- length(o)
+  idx <- seq_len(n)
+  v <- d$vid[o]
+  t <- as.numeric(d$time[o])
+  lo <- d$lon[o]
+  la <- d$lat[o]
+  fd <- if (has_feed) as.character(d$feed[o]) else NULL
+  kept <- is.na(d$ping_flag[o])
+  # the nearest kept ping before and after each row (0 / n + 1: none), then none if it is another vessel's
+  pk <- c(0L, cummax(ifelse(kept, idx, 0L)))[idx]
+  nk <- c(rev(cummin(rev(ifelse(kept, idx, n + 1L)))), n + 1L)[idx + 1L]
+  pk[pk == 0L | v[pmax(pk, 1L)] != v] <- NA_integer_
+  nk[nk > n | v[pmin(nk, n)] != v] <- NA_integer_
+  r <- which(new[o])
+  ms_max <- kn_max * 0.514444
+  leg <- function(j) {
+    # the leg from each flagged row r to its neighbour j (a row of the sorted track, NA: none)
+    ok <- !is.na(j)
+    dt <- dist <- rep(NA_real_, length(r))
+    fj <- rep(NA_character_, length(r))
+    if (any(ok)) {
+      jj <- j[ok]
+      rr <- r[ok]
+      dist[ok] <- rb_calc_distance(lo[rr], la[rr], lo[jj], la[jj])
+      dt[ok] <- abs(t[rr] - t[jj])
+      if (has_feed) {
+        fj[ok] <- fd[jj]
+      }
+    }
+    in_noise <- if (has_feed) {
+      !is.na(fj) & !is.na(fd[r]) & fj != fd[r] & dist <= noise_m
+    } else {
+      rep(FALSE, length(r))
+    }
+    bad <- ok &
+      !is.na(dist) &
+      dt <= max_gap_h * 3600 &
+      dist / pmax(dt, min_dt_s) > ms_max &
+      !in_noise
+    list(dt = dt, dist = dist, feed = fj, bad = bad)
+  }
+  p <- leg(pk[r])
+  q <- leg(nk[r])
+  side <- ifelse(
+    p$bad & q$bad,
+    "both",
+    ifelse(p$bad, "prev", ifelse(q$bad, "next", "none"))
+  )
+  rows <- o[r]
+  d$ping_flag_side[rows] <- side
+  d$ping_flag_prev_dt_s[rows] <- p$dt
+  d$ping_flag_prev_dist_m[rows] <- p$dist
+  d$ping_flag_next_dt_s[rows] <- q$dt
+  d$ping_flag_next_dist_m[rows] <- q$dist
+  if (has_feed) {
+    d$ping_flag_prev_feed[rows] <- p$feed
+    d$ping_flag_next_feed[rows] <- q$feed
+  }
+  d
 }
 
 #' Tag pings with the port polygon they lie in

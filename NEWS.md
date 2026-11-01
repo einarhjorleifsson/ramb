@@ -1,3 +1,13 @@
+# ramb (development version)
+
+## Impossible positions in a merged track: a noise floor between feeds, a two-sided forward scan, the evidence of a flag (fishycode, archive 2026-10-ramb-whack-prototype)
+
+`rb_flag_ping_impossible()` gains three opt-in arguments. Every default leaves the rule, the flags and the columns as they were; the compiled functions keep their old calls.
+
+- `feed` and `noise_nm` (default 0.3): with the column that names each ping's feed, a leg between pings of *different* feeds no longer than `noise_nm` nautical miles is never impossible, at every stage (vmask, spike and forward). Two feeds that both report a vessel place it a few hundred metres apart, a few seconds apart, which reads as an impossible speed. A leg inside one feed, and a cross-feed leg beyond the floor, are judged as before. A ping with no feed takes no part. For the methods `"clean"`, `"sda"` and `"forward"`; the others refuse `feed`.
+- `forward = "two_sided"`: the forward scan judges a ping against the last retained ping only, so a wrong reference flags the right pings that follow. Two-sided, a ping stays flagged only if the same scan run backwards in time rejects it too (`"clean"` and `"forward"`). A run of bad pings in the middle of a track is still caught; a ping with one bad side is not, which includes the first and the last ping of a track.
+- `evidence = TRUE`: for each ping this call flagged, the legs to the nearest ping on each side that is not flagged (`ping_flag_prev_dt_s`, `ping_flag_prev_dist_m`, `ping_flag_prev_feed`, and `next`), and `ping_flag_side`: which of the two legs is impossible on the rule of the call (`"prev"`, `"next"`, `"both"`), or `"none"` when neither is, as for a vmask flag that rests on the rms speed or the angle alone. Data frames and lazy DuckDB tables alike.
+
 # ramb 2026.11.01.1
 
 Port calls over the edge between two chunks are no longer cut (fishycode TODO 179). fishycode makes its port calls a
