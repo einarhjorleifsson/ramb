@@ -66,8 +66,10 @@
 #' | `rb_create_timestamp()` | [rb_add_timestamp()] (now the data with a column added) |
 #'
 #' @param ... Passed to the new function.
-#' @param pings,ports,radius_in,events,t_in_window,crs_m,voyages,by_year,vid,time,lon,lat As in the new
+#' @param pings,ports,radius_in,events,crs_m,voyages,by_year,vid,time,lon,lat As in the new
 #'   function.
+#' @param t_in_window Now `window`, which keeps the port calls that overlap it (since 2026.11.01.1), not only those
+#'   that begin in it.
 #' @param min_stay_h,min_stay Now `min_dwell_h` and `min_dwell` (with a column `min_dwell_h`).
 #' @param stays Now `port_calls`.
 #' @param stay Now `port_call`.
@@ -109,7 +111,7 @@ rb_find_trip_stays <- function(
     min_dwell = min_stay,
     radius_in = radius_in,
     events = events,
-    t_in_window = t_in_window,
+    window = t_in_window,
     crs_m = crs_m,
     vid = {{ vid }},
     time = {{ time }},

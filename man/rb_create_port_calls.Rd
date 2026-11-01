@@ -12,7 +12,7 @@ rb_create_port_calls(
   min_dwell = NULL,
   radius_in = 2000,
   events = NULL,
-  t_in_window = NULL,
+  window = NULL,
   crs_m = 3575,
   speed_kn = NULL,
   speed_fallback_kn = 6,
@@ -43,10 +43,15 @@ or \code{"valley"}, set from the data (above).}
 \item{events}{For \code{"dwell"}: optional data frame or lazy table of port events: \code{vid}, \code{time}, \code{io} (\code{"I"}
 arrival, \code{"U"} departure), \code{port_id}, \code{good} (logical).}
 
-\item{t_in_window}{Optional \code{c(from, to)} (POSIXct): keep only port calls that begin in \verb{[from, to)} (for
-\code{"dwell"}, applied before the port calls from pings and from events are merged). For processing a long
-series in chunks; the port calls are then numbered within the window, so renumber them once the chunks
-are bound.}
+\item{window}{Optional \code{c(from, to)} (POSIXct): keep only the port calls that overlap \verb{[from, to)}
+(\code{T_out >= from} and \code{T_in < to}; for \code{"dwell"}, once the port calls from pings and from events are merged).
+For processing a long series in chunks: pad each chunk's pings with every vessel's last ping before \code{from}
+and first ping after \code{to}, wherever they lie (a vessel silent through a whole chunk is then seen in port across
+it), so that both chunks see a port call over the edge between them, each as far as its pings reach, then bind
+the chunks' port calls with \code{\link[=rb_merge_port_calls]{rb_merge_port_calls()}}, which joins the two pieces and numbers the port calls of the
+whole series. Until ramb 2026.11.01.1 this was \code{t_in_window}, which kept only the
+port calls that begin in the window: the chunk after the edge dropped the rest of a port call begun before it,
+so every port call over an edge was cut at the next chunk's first ping while the vessel was heard in port.}
 
 \item{crs_m}{For \code{"dwell"}: a metric CRS for the buffers (EPSG code). The default, 3575, suits the North
 Atlantic.}
@@ -128,6 +133,7 @@ Other trip:
 \code{\link[=rb_add_trip_time]{rb_add_trip_time()}},
 \code{\link[=rb_add_voyages]{rb_add_voyages()}},
 \code{\link[=rb_create_voyages]{rb_create_voyages()}},
-\code{\link[=rb_link_trip_voyages]{rb_link_trip_voyages()}}
+\code{\link[=rb_link_trip_voyages]{rb_link_trip_voyages()}},
+\code{\link[=rb_merge_port_calls]{rb_merge_port_calls()}}
 }
 \concept{trip}

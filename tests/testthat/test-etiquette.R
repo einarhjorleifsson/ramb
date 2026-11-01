@@ -231,6 +231,34 @@ etiquette_cases <- local({
     dk_ports,
     min_dwell_h = 2
   )
+  # the same port calls made in two chunks, each padded with the other's edge ping, for rb_merge_port_calls()
+  dk_chunk_calls <- local({
+    d <- dk[names(dk) != ".rid"]
+    edge <- stats::median(d$time)
+    pad <- function(x, last) {
+      dplyr::slice(
+        dplyr::arrange(x, if (last) dplyr::desc(time) else time),
+        1,
+        .by = vid
+      )
+    }
+    a <- dplyr::bind_rows(d[d$time < edge, ], pad(d[d$time >= edge, ], FALSE))
+    b <- dplyr::bind_rows(pad(d[d$time < edge, ], TRUE), d[d$time >= edge, ])
+    add_rid(dplyr::bind_rows(
+      rb_create_port_calls(
+        a,
+        dk_ports,
+        min_dwell_h = 2,
+        window = c(min(d$time), edge)
+      ),
+      rb_create_port_calls(
+        b,
+        dk_ports,
+        min_dwell_h = 2,
+        window = c(edge, max(d$time) + 1)
+      )
+    ))
+  })
   dk_voyages <- rb_create_voyages(
     dk[names(dk) != ".rid"],
     dk_calls,
@@ -686,6 +714,15 @@ etiquette_cases <- local({
       lazy = TRUE,
       sf = TRUE,
       note = "dansk EX_1 and EX_4, every 2nd ping; `ports` is sf, cut to the ports near the tracks (all 942 take 7 s)."
+    ),
+    list(
+      fn = "rb_merge_port_calls",
+      main = "calls",
+      args = function() list(calls = fresh(dk_chunk_calls)),
+      shape = "new",
+      lazy = TRUE,
+      sf = FALSE,
+      note = "the Danish port calls made in two chunks at the median time."
     ),
     list(
       fn = "rb_create_voyages",

@@ -38,7 +38,7 @@ test_that("rows hang together: kinds, stages, inputs and the step before", {
   expect_true(all(verb[reg$kind == "step"] %in% c("add", "flag")))
   expect_true(all(
     verb[reg$kind == "builder"] %in%
-      c("create", "link", "share", "add", "limit")
+      c("create", "link", "share", "add", "limit", "merge")
   ))
   # the input is the function's first argument
   first <- vapply(
@@ -101,6 +101,7 @@ test_that("the misuse suite: every checked step function refuses a table without
     "rb_flag_ping_impossible",
     "rb_flag_ping_port",
     "rb_create_port_calls",
+    "rb_merge_port_calls",
     "rb_create_voyages",
     "rb_add_voyages",
     "rb_link_record_pings",

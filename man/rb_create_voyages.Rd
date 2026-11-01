@@ -146,6 +146,7 @@ Other trip:
 \code{\link[=rb_add_trip_time]{rb_add_trip_time()}},
 \code{\link[=rb_add_voyages]{rb_add_voyages()}},
 \code{\link[=rb_create_port_calls]{rb_create_port_calls()}},
-\code{\link[=rb_link_trip_voyages]{rb_link_trip_voyages()}}
+\code{\link[=rb_link_trip_voyages]{rb_link_trip_voyages()}},
+\code{\link[=rb_merge_port_calls]{rb_merge_port_calls()}}
 }
 \concept{trip}

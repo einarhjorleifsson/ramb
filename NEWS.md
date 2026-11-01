@@ -1,3 +1,25 @@
+# ramb 2026.11.01.1
+
+Port calls over the edge between two chunks are no longer cut (fishycode TODO 179). fishycode makes its port calls a
+year at a time; each year's run saw a vessel in port over New Year only up to its first ping of January, and the next
+year's run dropped the rest of the port call, since it began in December. The pings from there to the departure fell in
+no port call, and became the year's first voyage: 22.9 million pings of 2008-2026, 6 million in 2017.
+
+- `rb_create_port_calls()`: `t_in_window` is now `window`, and keeps the port calls that overlap it (`T_out >= from`,
+  `T_in < to`), not only those that begin in it; for `"dwell"` it is applied once the port calls from pings and from
+  events are merged. The old name stops with a message. A `Date` window is midnight UTC; a window must be two times in
+  order.
+- `rb_merge_port_calls()` (new) binds the port calls of chunks into those of the whole series: the port calls of one
+  vessel at one port that overlap or touch become one (the earliest `T_in`, the latest `T_out`, the strongest `rule`,
+  the union of `evidence`), numbered per vessel by `T_in`. It is idempotent on the port calls of one run. With each chunk
+  padded with every vessel's last ping before it and first after it, wherever they lie, the merged port calls are those
+  of a run on the whole series, but where the piece on one side of an edge is too short to be a port call there (the
+  merged call then begins or ends at the other chunk's edge ping, short by less than the minimum dwell), and an event
+  pair whose events no chunk is given together. On fishycode's 20 years run a year at a time, 1.6 million port calls:
+  4 short by under an hour, 77 with such an event pair, the rest equal.
+- A missing column now names the step before where that step makes it: `port_id` in port calls is
+  `rb_create_port_calls()`'s, not `rb_flag_ping_port()`'s.
+
 # ramb 2026.11.01
 
 Step 0 starts with the streams' clocks (fishycode plan 059, step 2): time is an observation with an error of its own,

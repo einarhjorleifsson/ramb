@@ -133,6 +133,11 @@ voyages, numbered per vessel:
 rb_create_port_calls(d, method = "jepol")
 ```
 
+A long series can be processed in chunks, a year at a time, say. Give each chunk its `window`, pad its pings with
+each vessel's last ping before it and first ping after it, and bind the chunks' port calls with
+[rb_merge_port_calls()](../reference/rb_merge_port_calls.html): a vessel in port over the edge between two chunks is
+seen by both, each as far as its pings reach, and the two pieces are merged into one port call.
+
 ## Putting the trip back on the pings
 
 [rb_add_voyages()](../reference/rb_add_voyages.html) joins the voyage table back onto the pings. Each

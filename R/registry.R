@@ -168,6 +168,16 @@
     ),
     after = "rb_flag_ping_port"
   ),
+  # the port calls of chunks (rb_create_port_calls(window = )) merged into those of the whole series
+  .rb_step(
+    "rb_merge_port_calls",
+    "trip",
+    "builder",
+    "calls",
+    c("vid", "port_id", "T_in", "T_out"),
+    character(0),
+    after = "rb_create_port_calls"
+  ),
   .rb_step(
     "rb_create_voyages",
     "trip",
@@ -530,9 +540,13 @@ names(.rb_steps) <- vapply(.rb_steps, `[[`, "", "fn")
   miss <- needs[!vapply(needs, function(g) user(g) %in% have, logical(1))]
   if (length(miss) > 0) {
     g <- miss[1]
-    # the grammar's own input columns are never "added by" a step, though a builder may make them anew
+    # the grammar's own input columns are never "added by" a step, though a builder may make them anew; a column the
+    # step before makes is named by it (rb_merge_port_calls() takes port calls, whose `port_id` is not the pings')
+    prev <- if (is.na(row$after)) NULL else .rb_steps[[row$after]]
     by <- if (g %in% c("vid", "time", "lon", "lat", "speed", "start", "end")) {
       character(0)
+    } else if (!is.null(prev) && g %in% prev$adds) {
+      row$after
     } else {
       .rb_added_by(g)
     }

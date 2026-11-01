@@ -195,10 +195,15 @@
 #' @param radius_in For `"dwell"`: the arrival radius, metres.
 #' @param events For `"dwell"`: optional data frame or lazy table of port events: `vid`, `time`, `io` (`"I"`
 #'   arrival, `"U"` departure), `port_id`, `good` (logical).
-#' @param t_in_window Optional `c(from, to)` (POSIXct): keep only port calls that begin in `[from, to)` (for
-#'   `"dwell"`, applied before the port calls from pings and from events are merged). For processing a long
-#'   series in chunks; the port calls are then numbered within the window, so renumber them once the chunks
-#'   are bound.
+#' @param window Optional `c(from, to)` (POSIXct): keep only the port calls that overlap `[from, to)`
+#'   (`T_out >= from` and `T_in < to`; for `"dwell"`, once the port calls from pings and from events are merged).
+#'   For processing a long series in chunks: pad each chunk's pings with every vessel's last ping before `from`
+#'   and first ping after `to`, wherever they lie (a vessel silent through a whole chunk is then seen in port across
+#'   it), so that both chunks see a port call over the edge between them, each as far as its pings reach, then bind
+#'   the chunks' port calls with [rb_merge_port_calls()], which joins the two pieces and numbers the port calls of the
+#'   whole series. Until ramb 2026.11.01.1 this was `t_in_window`, which kept only the
+#'   port calls that begin in the window: the chunk after the edge dropped the rest of a port call begun before it,
+#'   so every port call over an edge was cut at the next chunk's first ping while the vessel was heard in port.
 #' @param crs_m For `"dwell"`: a metric CRS for the buffers (EPSG code). The default, 3575, suits the North
 #'   Atlantic.
 #' @param ... For `"runs"`, `"jepol"`, `"cnr"` and `"iapesca"`: arguments of [rb_create_voyages()] (such as
@@ -220,7 +225,7 @@ rb_create_port_calls <- function(
   min_dwell = NULL,
   radius_in = 2000,
   events = NULL,
-  t_in_window = NULL,
+  window = NULL,
   crs_m = 3575,
   speed_kn = NULL,
   speed_fallback_kn = 6,
@@ -231,6 +236,14 @@ rb_create_port_calls <- function(
   lat = lat
 ) {
   method <- match.arg(method)
+  if ("t_in_window" %in% ...names()) {
+    stop(
+      "`t_in_window` is now `window`, and keeps the port calls that overlap it, not only those that begin in it. ",
+      "Bind the port calls of chunks with rb_merge_port_calls().",
+      call. = FALSE
+    )
+  }
+  window <- .rb_check_window(window)
   .rb_scope()
   if (method != "dwell") {
     v <- rb_create_voyages(
@@ -249,7 +262,7 @@ rb_create_port_calls <- function(
       inherits(pings, "tbl_lazy"),
       rlang::as_name(rlang::enquo(vid)),
       method,
-      t_in_window
+      window
     )
     return(.rb_as_given(out, pings))
   }
@@ -316,13 +329,6 @@ rb_create_port_calls <- function(
   }
   hg_nm <- .rb_register(con, hg, "rb_hg_")
 
-  win_p <- win_e <- "TRUE"
-  if (!is.null(t_in_window)) {
-    f <- format(t_in_window[1], "%Y-%m-%d %H:%M:%S", tz = "UTC")
-    t <- format(t_in_window[2], "%Y-%m-%d %H:%M:%S", tz = "UTC")
-    win_p <- sprintf("t_in >= TIMESTAMP '%s' AND t_in < TIMESTAMP '%s'", f, t)
-    win_e <- sprintf("time >= TIMESTAMP '%s' AND time < TIMESTAMP '%s'", f, t)
-  }
   ev_sql <- if (is.null(events)) {
     "SELECT NULL::INTEGER AS vid, NULL::TIMESTAMP AS time, NULL::VARCHAR AS io, NULL::VARCHAR AS port_id, NULL::BOOLEAN AS good WHERE false"
   } else {
@@ -489,8 +495,8 @@ ev AS (SELECT vid, time, io, port_id AS hid_pid, good,
 ecall AS (SELECT vid, hid_pid AS pid, time AS t_in, nt AS t_out, ['event_pair'] AS rules
           FROM ev LEFT JOIN hg ON hg.pid = ev.hid_pid
           WHERE io = 'I' AND nio = 'U' AND good AND ngood AND hid_pid IS NOT NULL AND nh = hid_pid
-            AND epoch(nt - time) >= coalesce(hg.g_h, %f) * 3600 AND %s),
-u AS (SELECT vid, pid, t_in, t_out, rules, 'ping' AS src FROM pcall WHERE %s
+            AND epoch(nt - time) >= coalesce(hg.g_h, %f) * 3600),
+u AS (SELECT vid, pid, t_in, t_out, rules, 'ping' AS src FROM pcall
       UNION ALL SELECT vid, pid, t_in, t_out, rules, 'ev' FROM ecall),
 m2 AS (SELECT *, max(t_out) OVER (PARTITION BY vid, pid ORDER BY t_in, t_out ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS pe FROM u),
 g2 AS (SELECT *, sum(CASE WHEN pe IS NULL OR t_in > pe THEN 1 ELSE 0 END) OVER (PARTITION BY vid, pid ORDER BY t_in, t_out) AS grp FROM m2),
@@ -508,7 +514,7 @@ SELECT vid, year(T_in) AS year, row_number() OVER (PARTITION BY vid ORDER BY T_i
             WHEN evidence LIKE '%%span_budget%%' THEN 'span_budget'
             ELSE 'gap_budget' END AS rule,
        evidence, T_in_ping, T_out_ping, T_in_ev, T_out_ev, 'reconstructed' AS basis
-FROM st",
+FROM st WHERE %s",
     pre,
     if (budget) budget_ctes(gmin) else "",
     G,
@@ -516,8 +522,7 @@ FROM st",
     budget_seeds,
     ev_sql,
     G,
-    win_e,
-    win_p
+    .rb_window_sql(window)
   )
   out <- dplyr::tbl(con, dplyr::sql(sql))
   out <- dplyr::rename(
@@ -566,18 +571,11 @@ FROM st",
 # end of one to the start of the next, at the port the first ended in, else the port the second began from. The
 # voyages come uncut at New Year (by_year = FALSE), so a New Year cut at sea makes no port call; a split at sea or
 # a silence with no port at either side makes none either, since neither voyage end has a port.
-.rb_calls_between <- function(voyages, lazy_in, vid_name, method, t_in_window) {
+.rb_calls_between <- function(voyages, lazy_in, vid_name, method, window) {
   con <- .rb_con_for(voyages)
   v <- .rb_as_lazy(voyages, con) |>
     dplyr::rename(!!!stats::setNames(rlang::syms(vid_name), "vid"))
-  win <- "TRUE"
-  if (!is.null(t_in_window)) {
-    win <- sprintf(
-      "T_in >= TIMESTAMP '%s' AND T_in < TIMESTAMP '%s'",
-      format(t_in_window[1], "%Y-%m-%d %H:%M:%S", tz = "UTC"),
-      format(t_in_window[2], "%Y-%m-%d %H:%M:%S", tz = "UTC")
-    )
-  }
+  win <- .rb_window_sql(window)
   sql <- sprintf(
     "
 WITH v AS (SELECT vid, T1, T2, port_from, port_to FROM (%s)),
@@ -602,6 +600,176 @@ FROM c",
   out <- dplyr::collect(out)
   .rb_unregister(con)
   out[order(out[[vid_name]], out$T_in), ]
+}
+
+# The window of rb_create_port_calls(): NULL, or two date-times in order; a Date is taken as midnight UTC.
+.rb_check_window <- function(window) {
+  if (is.null(window)) {
+    return(NULL)
+  }
+  if (inherits(window, "Date")) {
+    window <- as.POSIXct(format(window), tz = "UTC")
+  }
+  if (
+    !inherits(window, "POSIXct") ||
+      length(window) != 2 ||
+      anyNA(window) ||
+      window[1] >= window[2]
+  ) {
+    stop(
+      "`window` must be NULL or two date-times, `c(from, to)`, with `from` before `to`.",
+      call. = FALSE
+    )
+  }
+  window
+}
+# The port calls that overlap the window [from, to): a call that ends at `from` touches the chunk before and is kept,
+# so that rb_merge_port_calls() can join it to the piece that chunk saw.
+.rb_window_sql <- function(window) {
+  if (is.null(window)) {
+    return("TRUE")
+  }
+  sprintf(
+    "T_out >= TIMESTAMP '%s' AND T_in < TIMESTAMP '%s'",
+    format(window[1], "%Y-%m-%d %H:%M:%S", tz = "UTC"),
+    format(window[2], "%Y-%m-%d %H:%M:%S", tz = "UTC")
+  )
+}
+
+#' Merge the port calls of chunks into the port calls of the whole series
+#'
+#' A step-1 builder of the fishing-activity flow, for a long series processed in chunks: it binds the port calls
+#' that [rb_create_port_calls()] made chunk by chunk (with `window`) into those of the whole series. The port calls
+#' of one vessel at one port that overlap or touch become one, from the earliest `T_in` to the latest `T_out`, and
+#' the port calls are numbered per vessel by `T_in`.
+#'
+#' A chunk sees a port call only as far as its pings reach. A vessel in port over the edge between two chunks is seen
+#' by both, each padded with the other's edge ping: the chunk before ends the port call at the first ping after the
+#' edge, the chunk after begins it at the last ping before. With `window` both chunks keep their piece, the pieces
+#' overlap or touch, and they are merged here. Merging is idempotent: the port calls of one chunk at one port neither
+#' overlap nor touch (they are merged within the chunk), so the port calls of a single run come back as they are,
+#' renumbered.
+#'
+#' A piece too short to be a port call in its own chunk (under the minimum dwell, with no silence long enough) is not
+#' seen there, and the merged port call then begins (or ends) at the edge ping of the other chunk. A run on the whole
+#' series would extend it over the pings inside the port on the other side of the edge, at most the minimum dwell. An
+#' event pair is found only by a chunk given both its events. On fishycode's 20 years of Icelandic AIS run a year at a
+#' time (1.6 million port calls), the merged port calls were those of a run on each vessel's whole series but for 4
+#' short by under an hour at New Year and 77 with an event pair whose events lay in years no chunk was given together.
+#'
+#' @param calls A data frame or lazy DuckDB table of port calls, the chunks bound (`dplyr::bind_rows()`, or
+#'   `dplyr::union_all()` for lazy tables): `vid`, `port_id`, `T_in`, `T_out`, and any of `rule`, `evidence`,
+#'   `T_in_ping`, `T_out_ping`, `T_in_ev`, `T_out_ev` and `basis`. Other columns are dropped: their values cannot be
+#'   merged. `T_in` and `T_out` must not be missing.
+#' @param vid,port_id The columns, if named otherwise.
+#'
+#' @return One row per merged port call, in the columns of [rb_create_port_calls()] that `calls` has: `vid`, `year`
+#'   (of `T_in`), `port_call_id` (numbered per vessel by `T_in` over the whole series), `port_id`, `T_in`, `T_out`,
+#'   `dur_h`, then `rule` (the strongest of the merged port calls': event_pair > tag_then_gap > tag_span >
+#'   gap_near_port > span_budget > gap_budget, else the first by name), `evidence` (the union), `T_in_ping` and
+#'   `T_in_ev` (the earliest), `T_out_ping` and `T_out_ev` (the latest), and `basis`. A data frame for data frame
+#'   input, a lazy table for lazy input.
+#' @family trip
+#' @export
+#' @examples
+#' # a vessel in a port from 20 December to 10 January, pinged hourly, then at sea
+#' port <- sf::st_sf(
+#'   port_id = "A",
+#'   geometry = sf::st_sfc(sf::st_polygon(list(rbind(
+#'     c(-22, 64), c(-21.9, 64), c(-21.9, 64.1), c(-22, 64.1), c(-22, 64)
+#'   ))), crs = 4326)
+#' )
+#' t <- seq(as.POSIXct("2024-12-20", tz = "UTC"), as.POSIXct("2025-01-12", tz = "UTC"), by = "hour")
+#' pings <- data.frame(
+#'   vid = 1L, time = t, lat = 64.05,
+#'   lon = ifelse(t < as.POSIXct("2025-01-10", tz = "UTC"), -21.95, -21)
+#' )
+#' # two chunks at New Year, each padded with the other's edge ping
+#' edge <- as.POSIXct("2025-01-01", tz = "UTC")
+#' y1 <- pings[t < edge | t == min(t[t >= edge]), ]
+#' y2 <- pings[t >= edge | t == max(t[t < edge]), ]
+#' calls <- rbind(
+#'   rb_create_port_calls(y1, port, min_dwell_h = 2, window = c(min(t), edge)),
+#'   rb_create_port_calls(y2, port, min_dwell_h = 2, window = c(edge, max(t) + 1))
+#' )
+#' calls[, c("port_call_id", "T_in", "T_out")] # two pieces of one port call
+#' rb_merge_port_calls(calls)[, c("port_call_id", "T_in", "T_out")] # as a run on all the pings gives
+rb_merge_port_calls <- function(calls, vid = vid, port_id = port_id) {
+  map <- .rb_cols(vid = {{ vid }}, port_id = {{ port_id }})
+  .rb_check_input(
+    calls,
+    "rb_merge_port_calls",
+    cols = map,
+    types = c(T_in = "time", T_out = "time")
+  )
+  if (
+    is.data.frame(calls) && (anyNA(calls[["T_in"]]) || anyNA(calls[["T_out"]]))
+  ) {
+    stop(
+      "`calls` has port calls with no `T_in` or `T_out`; a port call is merged by its times.",
+      call. = FALSE
+    )
+  }
+  .rb_scope()
+  lazy_in <- inherits(calls, "tbl_lazy")
+  con <- .rb_con_for(calls)
+  x <- .rb_as_lazy(.rb_std_in(calls, map), con)
+  have <- colnames(x)
+  # the merged value of each optional column, in rb_create_port_calls()'s order
+  agg <- c(
+    rule = "CASE min(rk) WHEN 1 THEN 'event_pair' WHEN 2 THEN 'tag_then_gap' WHEN 3 THEN 'tag_span'
+                         WHEN 4 THEN 'gap_near_port' WHEN 5 THEN 'span_budget' WHEN 6 THEN 'gap_budget'
+                         ELSE min(rule) END",
+    evidence = "nullif(array_to_string(list_sort(list_distinct(flatten(list(string_split(evidence, '+'))))), '+'), '')",
+    T_in_ping = "min(T_in_ping)",
+    T_out_ping = "max(T_out_ping)",
+    T_in_ev = "min(T_in_ev)",
+    T_out_ev = "max(T_out_ev)",
+    basis = "min(basis)"
+  )
+  agg <- agg[names(agg) %in% have]
+  rk <- if ("rule" %in% have) {
+    ", CASE rule WHEN 'event_pair' THEN 1 WHEN 'tag_then_gap' THEN 2 WHEN 'tag_span' THEN 3
+               WHEN 'gap_near_port' THEN 4 WHEN 'span_budget' THEN 5 WHEN 'gap_budget' THEN 6 ELSE 99 END AS rk"
+  } else {
+    ""
+  }
+  keep <- c("vid", "port_id", "T_in", "T_out", names(agg))
+  # One order, numbered once, for both windows: two chunks often return the same call (an event pair over the edge),
+  # and two windows ordered by T_in, T_out alone may put such ties in different orders, which split a group in two.
+  sql <- sprintf(
+    "
+WITH x AS (SELECT %s%s FROM (%s)
+           WHERE CASE WHEN T_in IS NULL OR T_out IS NULL
+                      THEN error('`calls` has port calls with no `T_in` or `T_out`; a port call is merged by its times.')
+                      ELSE TRUE END),
+o AS (SELECT *, row_number() OVER (PARTITION BY vid, port_id ORDER BY T_in, T_out) AS rn FROM x),
+m AS (SELECT *, max(T_out) OVER (PARTITION BY vid, port_id ORDER BY rn
+                                 ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS pe FROM o),
+g AS (SELECT *, sum(CASE WHEN pe IS NULL OR T_in > pe THEN 1 ELSE 0 END)
+                  OVER (PARTITION BY vid, port_id ORDER BY rn ROWS UNBOUNDED PRECEDING) AS grp FROM m),
+st AS (SELECT vid, port_id, min(T_in) AS T_in, max(T_out) AS T_out%s FROM g GROUP BY vid, port_id, grp)
+SELECT vid, year(T_in) AS year, row_number() OVER (PARTITION BY vid ORDER BY T_in, T_out, port_id) AS port_call_id,
+       port_id, T_in, T_out, epoch(T_out - T_in) / 3600 AS dur_h%s
+FROM st",
+    paste(keep, collapse = ", "),
+    rk,
+    .rb_sql(x),
+    if (length(agg)) {
+      paste0(", ", agg, " AS ", names(agg), collapse = "")
+    } else {
+      ""
+    },
+    if (length(agg)) paste0(", ", names(agg), collapse = "") else ""
+  )
+  out <- dplyr::tbl(con, dplyr::sql(sql)) |> .rb_std_out(map)
+  if (lazy_in) {
+    return(.rb_hold(out))
+  }
+  out <- dplyr::collect(out)
+  .rb_unregister(con)
+  out <- out[order(out[[map[["vid"]]]], out$port_call_id), ]
+  .rb_as_given(out, calls)
 }
 
 # A Suggests package, checked where a function needs it.
@@ -1154,14 +1322,20 @@ rb_add_trip_time <- function(
 ) {
   .rb_check_input(trips, "rb_add_trip_time", also = stats::setNames(keys, keys))
   place <- !is.null(place_name)
-  .rb_need_cols(witnesses, "witnesses", c(keys, "witness", "time", if (place) "place"))
+  .rb_need_cols(
+    witnesses,
+    "witnesses",
+    c(keys, "witness", "time", if (place) "place")
+  )
   if (anyDuplicated(rank) || !length(rank)) {
     rlang::abort("`rank` must name each witness once, best first.")
   }
   added <- c(
     name,
     paste0(name, c("_from", "_basis", "_day", "_n", "_outcome", "_spread_s")),
-    if (place) c(place_name, paste0(place_name, c("_from", "_basis", "_n", "_outcome")))
+    if (place) {
+      c(place_name, paste0(place_name, c("_from", "_basis", "_n", "_outcome")))
+    }
   )
   have <- if (inherits(trips, "tbl_lazy")) colnames(trips) else names(trips)
   if (length(intersect(added, have))) {
@@ -1185,20 +1359,39 @@ rb_add_trip_time <- function(
   if (length(setdiff(seen, rank))) {
     rlang::abort(c(
       "Every witness must be ranked.",
-      x = sprintf("Not in `rank`: %s.", paste0("`", setdiff(seen, rank), "`", collapse = ", "))
+      x = sprintf(
+        "Not in `rank`: %s.",
+        paste0("`", setdiff(seen, rank), "`", collapse = ", ")
+      )
     ))
   }
   lit <- function(x) paste0("'", gsub("'", "''", x), "'")
-  rk <- sprintf("CASE witness %s END", paste(sprintf("WHEN %s THEN %d", lit(rank), seq_along(rank)), collapse = " "))
+  rk <- sprintf(
+    "CASE witness %s END",
+    paste(
+      sprintf("WHEN %s THEN %d", lit(rank), seq_along(rank)),
+      collapse = " "
+    )
+  )
   bs <- if (length(basis)) {
-    sprintf("CASE witness %s END", paste(sprintf("WHEN %s THEN %s", lit(names(basis)), lit(basis)), collapse = " "))
+    sprintf(
+      "CASE witness %s END",
+      paste(
+        sprintf("WHEN %s THEN %s", lit(names(basis)), lit(basis)),
+        collapse = " "
+      )
+    )
   } else {
     "NULL::VARCHAR"
   }
   kq <- paste(sprintf('"%s"', keys), collapse = ", ")
   q <- function(x) sprintf('"%s"', x)
   pl <- if (place) "place" else "NULL::VARCHAR"
-  wcols <- if (inherits(witnesses, "tbl_lazy")) colnames(witnesses) else names(witnesses)
+  wcols <- if (inherits(witnesses, "tbl_lazy")) {
+    colnames(witnesses)
+  } else {
+    names(witnesses)
+  }
   dy <- if ("day" %in% wcols) "coalesce(day, false)" else "false"
   w_sql <- .rb_sql(w)
   tr_sql <- .rb_sql(tr)

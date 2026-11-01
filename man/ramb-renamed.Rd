@@ -66,10 +66,13 @@ rb_build_catch_units(...)
 rb_create_timestamp(date, time, tz = "GMT", format = "\%d/\%m/\%Y \%H:\%M:\%S")
 }
 \arguments{
-\item{pings, ports, radius_in, events, t_in_window, crs_m, voyages, by_year, vid, time, lon, lat}{As in the new
+\item{pings, ports, radius_in, events, crs_m, voyages, by_year, vid, time, lon, lat}{As in the new
 function.}
 
 \item{min_stay_h, min_stay}{Now \code{min_dwell_h} and \code{min_dwell} (with a column \code{min_dwell_h}).}
+
+\item{t_in_window}{Now \code{window}, which keeps the port calls that overlap it (since 2026.11.01.1), not only those
+that begin in it.}
 
 \item{stays}{Now \code{port_calls}.}
 

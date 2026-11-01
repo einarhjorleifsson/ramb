@@ -34,6 +34,7 @@ reference:
 - title: "Trip (step 1)"
   contents:
   - rb_create_port_calls
+  - rb_merge_port_calls
   - rb_create_voyages
   - rb_add_voyages
   - rb_link_trip_voyages

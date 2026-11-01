@@ -48,19 +48,241 @@ test_that("a data frame and a lazy table give the same port calls", {
   ))
 })
 
-test_that("the window keeps only port calls that begin in it; a longer minimum gives fewer", {
+test_that("the window keeps the port calls that overlap it; a longer minimum gives fewer", {
   a <- rb_create_port_calls(pings, ports, min_dwell_h = 2)
   w <- range(a$T_in)
   w <- c(w[1], w[1] + (w[2] - w[1]) / 2)
-  b <- rb_create_port_calls(pings, ports, min_dwell_h = 2, t_in_window = w)
-  expect_true(all(b$T_in >= w[1] & b$T_in < w[2]))
+  b <- rb_create_port_calls(pings, ports, min_dwell_h = 2, window = w)
+  expect_true(all(b$T_out >= w[1] & b$T_in < w[2]))
+  overlap <- a[a$T_out >= w[1] & a$T_in < w[2], ]
+  expect_equal(nrow(b), nrow(overlap))
+  expect_equal(b$T_in, overlap$T_in)
   expect_lt(nrow(b), nrow(a))
+  # the call that holds the window's end is kept whole, not only the calls that begin in it
+  cut <- a[a$T_in < w[2] & a$T_out > w[2], ]
+  b2 <- rb_create_port_calls(
+    pings,
+    ports,
+    min_dwell_h = 2,
+    window = c(w[2], max(a$T_out) + 1)
+  )
+  expect_equal(nrow(cut), sum(b2$T_in < w[2]))
   ms <- data.frame(port_id = unique(a$port_id), min_dwell_h = 24)
   expect_lte(
     nrow(rb_create_port_calls(pings, ports, min_dwell_h = 2, min_dwell = ms)),
     nrow(a)
   )
+  # the window's old name says what changed; a window must be two times in order
+  expect_error(
+    rb_create_port_calls(pings, ports, t_in_window = w),
+    "now `window`.*rb_merge_port_calls"
+  )
+  expect_error(rb_create_port_calls(pings, ports, window = rev(w)), "`window`")
+  expect_error(rb_create_port_calls(pings, ports, window = w[1]), "`window`")
+  d <- as.Date(c("2024-01-01", "2024-02-01"))
+  expect_equal(
+    rb_create_port_calls(pings, ports, min_dwell_h = 2, window = d),
+    rb_create_port_calls(
+      pings,
+      ports,
+      min_dwell_h = 2,
+      window = as.POSIXct(d, tz = "UTC")
+    )
+  )
 })
+
+# rb_merge_port_calls(): a long series processed in chunks (fishycode curate/port_call.R runs a year at a time, and
+# lost the January part of every call begun in December while the vessel was heard in port, fishycode TODO 179).
+# Each chunk is padded with every vessel's last ping before it and first after it, as the window's help says.
+chunked <- function(p, ports, edges, ..., events = NULL, lazy = FALSE) {
+  edges <- c(min(p$time), edges, max(p$time) + 1)
+  out <- lapply(seq_len(length(edges) - 1), function(k) {
+    a <- edges[k]
+    b <- edges[k + 1]
+    inside <- p$time >= a & p$time < b
+    pad <- dplyr::bind_rows(
+      dplyr::slice_max(
+        p[p$time < a, ],
+        time,
+        n = 1,
+        by = vid,
+        with_ties = FALSE
+      ),
+      dplyr::slice_min(
+        p[p$time >= b, ],
+        time,
+        n = 1,
+        by = vid,
+        with_ties = FALSE
+      )
+    )
+    rb_create_port_calls(
+      dplyr::bind_rows(p[inside, ], pad),
+      ports,
+      ...,
+      events = events,
+      window = c(a, b)
+    )
+  })
+  out <- dplyr::bind_rows(out)
+  if (lazy) {
+    out <- as_lazy(out)
+  }
+  rb_merge_port_calls(out)
+}
+# a vessel in a square port, pinged every `step` minutes from `from` to `to`, at sea an hour before and after
+in_port <- function(from, to, step = 60, vid = 1L) {
+  from <- as.POSIXct(from, tz = "UTC")
+  to <- as.POSIXct(to, tz = "UTC")
+  t <- seq(from - 3600, to + 3600, by = step * 60)
+  data.frame(
+    vid = vid,
+    time = t,
+    lat = 64.05,
+    lon = ifelse(t >= from & t <= to, -21.95, -21)
+  )
+}
+sq <- sf::st_sf(
+  port_id = "A",
+  geometry = sf::st_sfc(
+    sf::st_polygon(list(rbind(
+      c(-22, 64),
+      c(-21.9, 64),
+      c(-21.9, 64.1),
+      c(-22, 64.1),
+      c(-22, 64)
+    ))),
+    crs = 4326
+  )
+)
+
+test_that("chunks merged give the port calls of the whole series: in port over New Year, events and silence", {
+  ny <- as.POSIXct("2025-01-01", tz = "UTC")
+  p <- in_port("2024-12-20", "2025-01-10")
+  whole <- rb_create_port_calls(p, sq, min_dwell_h = 2)
+  expect_equal(nrow(whole), 1)
+  by_year <- chunked(p, sq, ny, min_dwell_h = 2)
+  expect_equal(as.data.frame(by_year), as.data.frame(whole), ignore_attr = TRUE)
+  # a port call over two edges (laid up for a year), and the lazy route
+  p2 <- in_port("2024-06-01", "2025-08-01", step = 360, vid = 2L)
+  whole2 <- rb_create_port_calls(p2, sq, min_dwell_h = 2)
+  m2 <- chunked(p2, sq, ny + c(-90, 0, 90) * 86400, min_dwell_h = 2)
+  expect_equal(as.data.frame(m2), as.data.frame(whole2), ignore_attr = TRUE)
+  # silent through a whole chunk: the padding is the last ping before it and the first after, wherever they lie
+  p4 <- in_port("2023-12-20", "2025-02-10")
+  p4 <- p4[
+    p4$time < as.POSIXct("2023-12-23", tz = "UTC") |
+      p4$time > as.POSIXct("2025-02-01", tz = "UTC"),
+  ]
+  whole4 <- rb_create_port_calls(p4, sq, min_dwell_h = 2)
+  m4 <- chunked(
+    p4,
+    sq,
+    as.POSIXct(c("2024-01-01", "2025-01-01"), tz = "UTC"),
+    min_dwell_h = 2
+  )
+  expect_equal(nrow(whole4), 1)
+  expect_equal(as.data.frame(m4), as.data.frame(whole4), ignore_attr = TRUE)
+  l2 <- dplyr::collect(chunked(
+    p2,
+    sq,
+    ny + c(-90, 0, 90) * 86400,
+    min_dwell_h = 2,
+    lazy = TRUE
+  ))
+  expect_equal(as.data.frame(l2), as.data.frame(m2), ignore_attr = TRUE)
+  # an event pair over the edge, the vessel silent in port: ping evidence and event evidence merged alike
+  ev <- data.frame(
+    vid = 1L,
+    time = as.POSIXct(c("2024-12-20", "2025-01-10"), tz = "UTC"),
+    io = c("I", "U"),
+    port_id = "A",
+    good = TRUE
+  )
+  quiet <- p[
+    p$time < as.POSIXct("2024-12-21", tz = "UTC") |
+      p$time > as.POSIXct("2025-01-09", tz = "UTC"),
+  ]
+  whole3 <- rb_create_port_calls(quiet, sq, min_dwell_h = 2, events = ev)
+  m3 <- chunked(quiet, sq, ny, min_dwell_h = 2, events = ev)
+  expect_equal(as.data.frame(m3), as.data.frame(whole3), ignore_attr = TRUE)
+  expect_equal(m3$rule, "event_pair")
+  expect_equal(m3$evidence, "event_pair+tag_span+tag_then_gap")
+})
+
+test_that("the piece of a call too short for its own chunk is not seen there: under the minimum dwell", {
+  ny <- as.POSIXct("2025-01-01", tz = "UTC")
+  # in port from 23:10 every ten minutes: the chunk before sees 50 minutes, the chunk after begins at 23:50
+  p <- in_port("2024-12-31 23:10", "2025-01-03", step = 10)
+  whole <- rb_create_port_calls(p, sq, min_dwell_h = 2)
+  m <- chunked(p, sq, ny, min_dwell_h = 2)
+  expect_equal(nrow(m), 1)
+  expect_equal(m$T_out, whole$T_out)
+  expect_equal(m$T_in, as.POSIXct("2024-12-31 23:50", tz = "UTC"))
+  expect_lt(as.numeric(difftime(m$T_in, whole$T_in, units = "hours")), 2)
+})
+
+test_that("chunks of the Danish tracks merged give the port calls of one run", {
+  a <- rb_create_port_calls(pings, ports, min_dwell_h = 2)
+  edges <- as.POSIXct(
+    stats::quantile(as.numeric(pings$time), c(0.25, 0.5, 0.75)),
+    tz = "UTC"
+  )
+  m <- chunked(pings, ports, edges, min_dwell_h = 2)
+  expect_equal(as.data.frame(m), as.data.frame(a), ignore_attr = TRUE)
+})
+
+test_that("merging is idempotent, keeps the columns it has, and refuses calls with no times", {
+  a <- rb_create_port_calls(pings, ports, min_dwell_h = 2)
+  expect_equal(
+    as.data.frame(rb_merge_port_calls(a)),
+    as.data.frame(a),
+    ignore_attr = TRUE
+  )
+  twice <- rb_merge_port_calls(dplyr::bind_rows(a, a))
+  expect_equal(as.data.frame(twice), as.data.frame(a), ignore_attr = TRUE)
+  # many copies of every call, shuffled: ties in T_in and T_out are one call (fishycode's run of 2026-11-01 split
+  # them when the two windows ordered the ties differently)
+  many <- dplyr::bind_rows(rep(list(a), 50))
+  many <- many[withr::with_seed(1, sample(nrow(many))), ]
+  expect_equal(
+    as.data.frame(rb_merge_port_calls(many)),
+    as.data.frame(a),
+    ignore_attr = TRUE
+  )
+  lz <- dplyr::collect(rb_merge_port_calls(as_lazy(many)))
+  expect_equal(
+    as.data.frame(lz[order(lz$vid, lz$port_call_id), ]),
+    as.data.frame(a),
+    ignore_attr = TRUE
+  )
+  few <- rb_merge_port_calls(a[c("vid", "port_id", "T_in", "T_out", "rule")])
+  expect_equal(
+    names(few),
+    c(
+      "vid",
+      "year",
+      "port_call_id",
+      "port_id",
+      "T_in",
+      "T_out",
+      "dur_h",
+      "rule"
+    )
+  )
+  b <- dplyr::rename(a, boat = vid, pid = port_id)
+  expect_equal(
+    as.data.frame(rb_merge_port_calls(b, vid = boat, port_id = pid)),
+    as.data.frame(dplyr::rename(a, boat = vid, pid = port_id)),
+    ignore_attr = TRUE
+  )
+  expect_error(
+    rb_merge_port_calls(dplyr::mutate(a, T_out = T_out[c(NA, 2:dplyr::n())])),
+    "no `T_in` or `T_out`"
+  )
+  expect_error(rb_merge_port_calls(pings), "rb_create_port_calls")
+})
+
 # rb_create_voyages() and rb_add_voyages(): port of fishycode's curate/ais_trip.R (plan 013 phase 2). Exact on
 # the Icelandic data (1,372,656 voyages; 535,613,643 pings, every year's fingerprint equal); here: data frame =
 # lazy table, every ping kept, the minimum-pings rule.
@@ -906,7 +1128,10 @@ test_that("method iapesca ends a voyage at a stop of over an hour between pings 
   # the pings at sea, worked out here and not by the method: further from the port than `buf` metres, on the plane
   # of UTM zone 31N (the default CRS here)
   at_sea <- function(d, buf = 2000) {
-    x <- sf::st_transform(sf::st_as_sf(d, coords = c("lon", "lat"), crs = 4326), 32631)
+    x <- sf::st_transform(
+      sf::st_as_sf(d, coords = c("lon", "lat"), crs = 4326),
+      32631
+    )
     which(as.numeric(sf::st_distance(x, sf::st_transform(port, 32631))) > buf)
   }
   ia <- function(d) {
@@ -926,7 +1151,10 @@ test_that("method iapesca ends a voyage at a stop of over an hour between pings 
   expect_equal(b$n_pings, diff(range(s)) + 1)
   expect_gt(b$n_pings, length(s))
   # a ping at the same second as an earlier one is dropped, wherever it is
-  expect_equal(ia(rbind(d[1:30, ], transform(d[30, ], lon = 3.4), d[31:nrow(d), ])), b)
+  expect_equal(
+    ia(rbind(d[1:30, ], transform(d[30, ], lon = 3.4), d[31:nrow(d), ])),
+    b
+  )
   # never within 2 km of the port: the buffer grows by a fifth of its way to 2 nautical miles, rounded, to 2,341 m
   d <- track(3, 0.2, 5, 0.2, 3, lat = 50 + 2300 / 111200)
   g <- ia(d)
@@ -1038,9 +1266,14 @@ test_that("port calls of runs: a lazy table gives the data frame's, and dwell re
   expect_equal(as.data.frame(b), as.data.frame(a), ignore_attr = TRUE)
   w <- range(a$T_in)
   w <- c(w[1], w[1] + (w[2] - w[1]) / 2)
-  aw <- rb_create_port_calls(tagged, method = "runs", t_in_window = w)
-  expect_true(all(aw$T_in >= w[1] & aw$T_in < w[2]))
+  aw <- rb_create_port_calls(tagged, method = "runs", window = w)
+  expect_true(all(aw$T_out >= w[1] & aw$T_in < w[2]))
+  expect_equal(nrow(aw), sum(a$T_out >= w[1] & a$T_in < w[2]))
   expect_lt(nrow(aw), nrow(a))
+  expect_error(
+    rb_create_port_calls(tagged, method = "runs", t_in_window = w),
+    "now `window`"
+  )
   expect_error(rb_create_port_calls(pings, ports, min_pings = 3), "other than")
   expect_error(rb_create_port_calls(pings), "needs `ports`")
 })
@@ -1105,13 +1338,27 @@ test_that("rb_add_trip_time() takes each field from the best-ranked witness that
   expect_equal(r$pid1_from, c("track", "notice", NA, "track"))
   expect_equal(r$pid1_outcome, c("agree", "one", "none", "differ"))
   # a tighter tolerance, no basis given, other names
-  r2 <- rb_add_trip_time(trips, w, keys = "tid", rank = rk, tolerance = 60, name = "T2", place_name = "pid2")
+  r2 <- rb_add_trip_time(
+    trips,
+    w,
+    keys = "tid",
+    rank = rk,
+    tolerance = 60,
+    name = "T2",
+    place_name = "pid2"
+  )
   r2 <- r2[order(r2$tid), ]
   expect_equal(r2$T2_outcome, c("differ", "differ", "none", "one"))
   expect_equal(r2$T2_basis, c(NA, NA, "none", NA))
   expect_true(all(c("pid2", "pid2_from") %in% names(r2)))
   # without places
-  r3 <- rb_add_trip_time(trips, w[, c("tid", "witness", "time")], keys = "tid", rank = rk, place_name = NULL)
+  r3 <- rb_add_trip_time(
+    trips,
+    w[, c("tid", "witness", "time")],
+    keys = "tid",
+    rank = rk,
+    place_name = NULL
+  )
   expect_false("pid1" %in% names(r3))
 })
 
@@ -1136,9 +1383,17 @@ test_that("rb_add_trip_time() gives the same on lazy tables, and refuses an unra
   expect_s3_class(l, "tbl_lazy")
   l <- as.data.frame(dplyr::collect(l))
   expect_equal(l[order(l$tid), names(d)], d[order(d$tid), ], ignore_attr = TRUE)
-  expect_error(rb_add_trip_time(trips, w, keys = c("tid", "schema"), rank = "track"), "logbook")
   expect_error(
-    rb_add_trip_time(transform(trips, T1 = t0), w, keys = c("tid", "schema"), rank = rk),
+    rb_add_trip_time(trips, w, keys = c("tid", "schema"), rank = "track"),
+    "logbook"
+  )
+  expect_error(
+    rb_add_trip_time(
+      transform(trips, T1 = t0),
+      w,
+      keys = c("tid", "schema"),
+      rank = rk
+    ),
     "already has"
   )
 })
@@ -1153,7 +1408,14 @@ test_that("rb_add_trip_time(): a witness that knows only the day gives way to a 
     place = c("A", "A", "B", "C", "C"),
     day = c(TRUE, FALSE, TRUE, TRUE, FALSE)
   )
-  r <- rb_add_trip_time(trips, w, keys = "tid", rank = c("logbook", "notice"), name = "T2", place_name = "pid2")
+  r <- rb_add_trip_time(
+    trips,
+    w,
+    keys = "tid",
+    rank = c("logbook", "notice"),
+    name = "T2",
+    place_name = "pid2"
+  )
   r <- r[order(r$tid), ]
   # trip 1: the logbook's day, the notice's time on it; trip 2: the day alone; trip 3: the notice a day later
   expect_equal(r$T2, d0 + c(14 * 3600, 0, 0))
