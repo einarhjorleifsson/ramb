@@ -57,6 +57,62 @@
       "strong"
     )
   ),
+  # step 0: the streams' clocks (clock.R), before any speed or turn is derived across streams
+  .rb_step(
+    "rb_add_ping_stream",
+    "ping",
+    "step",
+    "x",
+    c("vid", "time"),
+    c(
+      "stream",
+      "stream_dt_s",
+      "stream_cadence_s",
+      "stream_phase_s",
+      "stream_off_grid",
+      "stream_crossed"
+    )
+  ),
+  .rb_step(
+    "rb_create_ping_lags",
+    "ping",
+    "builder",
+    "x",
+    c("vid", "time", "lon", "lat", "stream"),
+    c(
+      "reference",
+      "period",
+      "pings",
+      "pairs",
+      "lag_s",
+      "lag_q10_s",
+      "lag_q90_s",
+      "along_m",
+      "across_m",
+      "dist_zero_m",
+      "dist_lag_m",
+      "outcome"
+    ),
+    after = "rb_add_ping_stream"
+  ),
+  .rb_step(
+    "rb_add_ping_own_lag",
+    "ping",
+    "step",
+    "x",
+    c("vid", "time", "lon", "lat", "stream"),
+    c("lag_own_s", "lag_own_basis"),
+    after = "rb_add_ping_stream"
+  ),
+  .rb_step(
+    "rb_add_ping_time",
+    "ping",
+    "step",
+    "x",
+    c("vid", "time", "stream"),
+    c("time_delivered", "lag_s", "lag_basis"),
+    after = "rb_create_ping_lags"
+  ),
   # step 0: ping flags
   .rb_step(
     "rb_flag_ping_invalid",

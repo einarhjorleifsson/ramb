@@ -506,7 +506,85 @@ etiquette_cases <- local({
     add_rid(d)
   })
 
+  # Two streams of two vessels moving east, vessel 1's "b" clock 30 s late (test-clock.R's track) --------------------
+  clocks <- local({
+    m <- 6371000 * pi / 180
+    pos <- function(s) -20 + 10 * 1852 / 3600 * s / (m * cos(64 * pi / 180))
+    one <- function(vid, lag) {
+      ta <- seq(0, by = 60, length.out = 60)
+      tb <- seq(5, max(ta), by = 37)
+      rbind(
+        data.frame(
+          vid = vid,
+          time = utc("2024-03-01") + ta,
+          lon = pos(ta),
+          lat = 64,
+          speed = 10,
+          course = 90,
+          stream = "a"
+        ),
+        data.frame(
+          vid = vid,
+          time = utc("2024-03-01") + tb,
+          lon = pos(tb - lag),
+          lat = 64,
+          speed = 10,
+          course = 90,
+          stream = "b"
+        )
+      )
+    }
+    d <- rbind(one(1L, 30), one(2L, 0))
+    add_rid(tibble::as_tibble(d[order(d$vid, d$time), ]))
+  })
+  clock_lags <- rb_create_ping_lags(
+    clocks[names(clocks) != ".rid"],
+    reference = "a",
+    min_pairs = 10
+  )
+
   list(
+    # Step 0: the streams' clocks ------------------------------------------------------------------------------------
+    list(
+      fn = "rb_add_ping_stream",
+      main = "x",
+      args = function() list(x = fresh(clocks)),
+      shape = "same",
+      lazy = TRUE,
+      sf = TRUE,
+      note = "two streams of two vessels; per ping from their distinct keys, joined back."
+    ),
+    list(
+      fn = "rb_create_ping_lags",
+      main = "x",
+      args = function() {
+        list(x = fresh(clocks), reference = "a", min_pairs = 10)
+      },
+      shape = "new",
+      lazy = TRUE,
+      sf = TRUE,
+      note = "one row per vessel, stream and month, sorted by them."
+    ),
+    list(
+      fn = "rb_add_ping_own_lag",
+      main = "x",
+      args = function() {
+        list(x = fresh(clocks), reference = "a", method = c("copy", "residual"))
+      },
+      shape = "same",
+      lazy = TRUE,
+      sf = TRUE,
+      note = ""
+    ),
+    list(
+      fn = "rb_add_ping_time",
+      main = "x",
+      args = function() list(x = fresh(clocks), lags = fresh(clock_lags)),
+      shape = "same",
+      lazy = TRUE,
+      sf = TRUE,
+      note = "`lags` a data frame, registered on a lazy `x`'s connection."
+    ),
     # Step 0: flag pings ----------------------------------------------------------------------------------------------
     list(
       fn = "rb_flag_ping_invalid",

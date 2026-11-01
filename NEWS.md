@@ -1,3 +1,24 @@
+# ramb 2026.11.01
+
+Step 0 starts with the streams' clocks (fishycode plan 059, step 2): time is an observation with an error of its own,
+and a speed or turn derived across two feeds whose clocks differ breaks. Four new functions, before any speed is
+derived; nothing that was there changes.
+
+- `rb_add_ping_stream()`: the dt pattern of each stream (a column you name, e.g. the provider; else every ping one
+  stream): the interval to the stream's previous ping, its cadence per vessel and period, the phase, the pings off its
+  grid, and where the merged track crosses streams.
+- `rb_create_ping_lags()`: each stream's lag against a reference stream, per vessel and period, with every unit in one
+  outcome (`reference`, `one stream`, `no reference`, `not measurable`, `aligned`, `offset`, `unclear`).
+  `method = "interpolate"` for dense streams (the reference ping against the stream interpolated at its time,
+  `-along / v`), `"residual"` for a sparse one (the along-track residual pair by recorded speed and course). On
+  fishycode's union of 2016 and 2026 it gives the study's lag, pairs and outcome on every unit, its SQL run on ramb's
+  sphere.
+- `rb_add_ping_own_lag()`: a ping's own lag where it shows one: a copy of a reference report (within 2 m and 180 s of a
+  moving vessel's), or a ping displaced against its neighbours (the pair `-d`, `+d`; `dansk`'s 288 pings some 39 s
+  late).
+- `rb_add_ping_time()`: the harmonized time, the delivered time beside it, the lag and its basis: `copy`, `residual`,
+  `measured`, `none`, or `unmeasured` (not moved).
+
 # ramb 2026.10.28.3
 
 - `rb_flag_ping_port()` joins each distinct position to the port polygons once and the pings back on it, in place of a
