@@ -286,7 +286,7 @@ tables:
       **Licence:** MIT, Copyright (c) 2021 ICES Expert Groups, as dansk, from which it is made.
 
       **Changes:** dansk without the 369 pings a forward scan at 20 kn takes out (its own faults); one steaming hour of
-      eight vessels compressed to a true 30-40 kn; each track thinned to four rates, `vid` the vessel and the rate; nine
+      eight vessels compressed to a true 30-40 kn; each track thinned to four rates, `vid` the vessel and the rate; ten
       kinds of fault planted, two while fishing and two not per vessel and rate where the track allows
       (`data-raw/planted_faults.R`, a fixed seed). A track is one `vid`: filter one rate, or group by `vid`.
     source:
@@ -326,12 +326,12 @@ tables:
         type: number(quantity)
         units: degrees east
         description: Longitude, as delivered.
-        range: [2.72536533, 58.3585185]
+        range: [2.72536533, 58.3531815]
       - name: lat
         type: number(quantity)
         units: degrees north
         description: Latitude, as delivered.
-        range: [54.32297323, 58.50439318]
+        range: [53.9624276, 58.47610183]
       - name: speed
         type: number(quantity)
         units: knots
@@ -366,11 +366,12 @@ tables:
           summer_time: 6-12 pings again, from a second feed stamped an hour late
           near_copy: a ping again in its own feed, a second later and 1-5 m away (not wrong)
           tie: a second feed at the same second, 0.2-2 km away; the first ping carries the fault too, not wrong
+          first_after_gap: the track's first ping, or the first after a gap of over 4 h, moved 0.2-100 km
           fast: a stretch truly run at 30-40 kn (not wrong)
       - name: fault_id
         type: number(id)
         description: The planted fault, within its track.
-        examples: [1, 9, 18, 27, 36]
+        examples: [1, 10, 20, 30, 40]
       - name: wrong
         type: boolean
         description: TRUE where the ping's position or time is not the vessel's, the pings step 0 should take out.
@@ -378,12 +379,12 @@ tables:
         type: number(quantity)
         units: metres
         description: For a ping with a fault, how far it is from where the vessel was at its time.
-        range: [0, 3159654.118]
+        range: [0, 3171676.95]
       - name: planted_s
         type: number(quantity)
         units: seconds
         description: For a copy, how far its time is from the time of the ping it copies.
-        range: [-254753, 256730]
+        range: [-256294, 229224]
 
   - name: benthis_parameters
     label: BENTHIS gear groups, gear width and seabed contact

@@ -4,7 +4,7 @@
 \alias{dansk_planted}
 \title{Danish vessel tracks with planted faults}
 \format{
-A parquet file of 450,711 rows in the package's \code{extdata} folder, \code{dansk_planted.parquet}, with the columns:
+A parquet file of 450,581 rows in the package's \code{extdata} folder, \code{dansk_planted.parquet}, with the columns:
 \itemize{
 \item \code{.rid}: Row number, in the order of rate, vessel and time.
 \item \code{vid}: The track, the vessel at one rate.
@@ -18,7 +18,7 @@ A parquet file of 450,711 rows in the package's \code{extdata} folder, \code{dan
 \item \code{course}: Course over ground, recorded, as dansk gives it (with its values above 360). Unit: degrees.
 \item \code{gear}: The gear, as dansk gives it at the ping nearest in time (none where the vessel is not fishing). Values: \code{GN} gillnet, not specified; \code{GNS} set gillnet; \code{GTR} trammel net; \code{OTB} bottom otter trawl.
 \item \code{fishing}: The expert's label at the ping nearest in time; a copy takes the label of where it is stamped.
-\item \code{fault}: What was done to the ping; missing where nothing was. Values: \code{spike} one position moved 0.2-100 km; \code{run} 3-8 positions in a row moved together, 0.2-100 km; \code{detour} one position moved aside, both its legs under 25 kn, turning back under 60 degrees; \code{lon_eq_lat} the latitude written into the longitude; \code{shifted_copy} 6-12 positions of the same vessel from 12-72 h away, stamped between this stretch's pings; \code{clock_offset} 6-12 pings again, from a second feed whose clock runs 10-90 s late; \code{summer_time} 6-12 pings again, from a second feed stamped an hour late; \code{near_copy} a ping again in its own feed, a second later and 1-5 m away (not wrong); \code{tie} a second feed at the same second, 0.2-2 km away; the first ping carries the fault too, not wrong; \code{fast} a stretch truly run at 30-40 kn (not wrong).
+\item \code{fault}: What was done to the ping; missing where nothing was. Values: \code{spike} one position moved 0.2-100 km; \code{run} 3-8 positions in a row moved together, 0.2-100 km; \code{detour} one position moved aside, both its legs under 25 kn, turning back under 60 degrees; \code{lon_eq_lat} the latitude written into the longitude; \code{shifted_copy} 6-12 positions of the same vessel from 12-72 h away, stamped between this stretch's pings; \code{clock_offset} 6-12 pings again, from a second feed whose clock runs 10-90 s late; \code{summer_time} 6-12 pings again, from a second feed stamped an hour late; \code{near_copy} a ping again in its own feed, a second later and 1-5 m away (not wrong); \code{tie} a second feed at the same second, 0.2-2 km away; the first ping carries the fault too, not wrong; \code{first_after_gap} the track's first ping, or the first after a gap of over 4 h, moved 0.2-100 km; \code{fast} a stretch truly run at 30-40 kn (not wrong).
 \item \code{fault_id}: The planted fault, within its track.
 \item \code{wrong}: TRUE where the ping's position or time is not the vessel's, the pings step 0 should take out.
 \item \code{planted_m}: For a ping with a fault, how far it is from where the vessel was at its time. Unit: metres.
@@ -45,7 +45,7 @@ Licence: MIT, Copyright (c) 2021 ICES Expert Groups, as dansk, from which it is 
 Each row is a ping of one of dansk's 14 vessels, its track made clean and thinned to a ping every 10 s, 1 min, 6 min or 1 h, with faults planted in it: what step 0 of the flow must find, each ping labelled with its fault and whether it is wrong; for scoring the flaggers, \verb{rb_flag_ping_*()}, by fault, ping rate, gear and fishing. Read it with \code{rb_read_example("dansk_planted")}.
 }
 \details{
-dansk without the 369 pings a forward scan at 20 kn takes out (its own faults); one steaming hour of eight vessels compressed to a true 30-40 kn; each track thinned to four rates, \code{vid} the vessel and the rate; nine kinds of fault planted, two while fishing and two not per vessel and rate where the track allows (\code{data-raw/planted_faults.R}, a fixed seed). A track is one \code{vid}: filter one rate, or group by \code{vid}.
+dansk without the 369 pings a forward scan at 20 kn takes out (its own faults); one steaming hour of eight vessels compressed to a true 30-40 kn; each track thinned to four rates, \code{vid} the vessel and the rate; ten kinds of fault planted, two while fishing and two not per vessel and rate where the track allows (\code{data-raw/planted_faults.R}, a fixed seed). A track is one \code{vid}: filter one rate, or group by \code{vid}.
 }
 \seealso{
 \code{\link[=rb_read_example]{rb_read_example()}}; the data dictionary \code{data-dict.yaml} in the package's \code{extdata} folder.

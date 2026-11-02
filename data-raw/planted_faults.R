@@ -13,7 +13,8 @@
 #              move earlier by the time saved, and the recorded speed is scaled with it. Not a fault: a filter should
 #              keep it.
 #   Rates      10 s, 1 min, 6 min and 1 h: a ping is kept when the rate has passed since the last one kept.
-#   Faults     planted in each vessel's track at each rate, two while fishing and two not where the track allows, at
+#   Faults     planted in each vessel's track at each rate, two while fishing and two not where the track allows (a
+#              moved anchor four, whatever the fishing), at
 #              pings whose neighbours are within three steps, and at least 20 pings from another planted fault (10 at
 #              6 min, 5 at 1 h, where 20 pings are a day):
 #     spike         one position moved 0.2-100 km (log-uniform), in any direction
@@ -27,6 +28,8 @@
 #     summer_time   6-12 pings received again by a second feed stamped an hour late, in summer time
 #     near_copy     a ping repeated in its own feed a second later, 1-5 m away: not wrong, a copy
 #     tie           a second feed reporting the same second 0.2-2 km away: that one wrong, the first kept
+#     first_after_gap  the track's first ping, or the first after a gap of over 4 h, moved 0.2-100 km: the anchor a
+#                   forward scan starts from (rb_flag_ping_impossible()'s max_gap_h), whatever the fishing
 #
 # Every row's `fishing` and `gear` are the expert's for the vessel at the row's time (the base ping nearest in time),
 # so a copy stamped elsewhere takes the label of where it is stamped. `planted_m` is how far a wrong ping is from where
@@ -42,7 +45,8 @@ set.seed(20261102)
 KN_MAX <- 25
 KN <- 1.943844 # knots per m/s
 RATES <- c(10, 60, 360, 3600)
-FAULTS <- c("spike", "run", "detour", "lon_eq_lat", "shifted_copy", "clock_offset", "summer_time", "near_copy", "tie")
+FAULTS <- c("spike", "run", "detour", "lon_eq_lat", "shifted_copy", "clock_offset", "summer_time", "near_copy", "tie",
+            "first_after_gap")
 SPACING <- c(`10` = 20, `60` = 20, `360` = 10, `3600` = 5) # pings between two planted faults, by rate
 
 R_EARTH <- 6371008.8
@@ -169,6 +173,13 @@ plant <- function(v, rate) {
     cb <- c(0, cumsum(busy))
     free <- cb[pmin(n, i + len - 1 + sp) + 1] - cb[pmax(1, i - sp)] == 0
     cand <- i[cont & free & v$fishing[i] == want_fishing[k]]
+    if (f == "first_after_gap") {
+      # the first ping, or the first after over 4 h, with the next step within three steps
+      i <- seq_len(n - 1)
+      gap <- c(TRUE, diff(t) > 4 * 3600)[i]
+      free <- cb[pmin(n, i + sp) + 1] - cb[pmax(1, i - 1)] == 0
+      cand <- i[gap & step_ok[i + 1] & free]
+    }
     if (f == "shifted_copy") {
       # a source stretch of the same length, 12-72 h away and itself continuous
       j0 <- seq_len(n - len + 1)
@@ -213,7 +224,7 @@ plant <- function(v, rate) {
     if (f == "summer_time") {
       busy[max(1, findInterval(t[a] + 3600, t) - sp):min(n, findInterval(t[a + len - 1] + 3600, t) + 1 + sp)] <- TRUE
     }
-    if (f %in% c("spike", "run")) {
+    if (f %in% c("spike", "run", "first_after_gap")) {
       x <- dest(v$lon[s], v$lat[s], rlogunif(1, 200, 1e5), runif(1, 0, 360))
       v$lon[s] <- x$lon
       v$lat[s] <- x$lat
@@ -223,7 +234,7 @@ plant <- function(v, rate) {
     } else if (f == "lon_eq_lat") {
       v$lon[a] <- v$lat[a]
     }
-    if (f %in% c("spike", "run", "detour", "lon_eq_lat")) {
+    if (f %in% c("spike", "run", "detour", "lon_eq_lat", "first_after_gap")) {
       v$fault[s] <- f
       v$fault_id[s] <- id
       v$wrong[s] <- TRUE
@@ -337,8 +348,11 @@ stopifnot(all(leg_kn(u[-nrow(u), ], u[-1, ])[same] <= 20 + 1e-9))
 f <- x[x$fault %in% "fast" & x$rate_s == 10, ]
 fl <- leg_kn(f[-nrow(f), ], f[-1, ])[f$vid[-1] == f$vid[-nrow(f)]]
 stopifnot(stats::median(fl) > 28)
-# a spike or run is 0.2-100 km from where the vessel was
-stopifnot(all(dplyr::between(x$planted_m[x$fault %in% c("spike", "run")], 150, 1.01e5)))
+# a spike, run or moved anchor is 0.2-100 km from where the vessel was
+stopifnot(all(dplyr::between(x$planted_m[x$fault %in% c("spike", "run", "first_after_gap")], 150, 1.01e5)))
+# a moved anchor is the first ping of its track or the first after over 4 h
+g <- which(x$fault %in% "first_after_gap")
+stopifnot(all(g == 1 | x$vid[pmax(1, g - 1)] != x$vid[g] | as.numeric(x$time[g]) - as.numeric(x$time[pmax(1, g - 1)]) > 4 * 3600))
 cat(sprintf(
   "%d vessels with a fast stretch; detours %.0f-%.0f m; ties %d; spikes %.1f-%.1f km\n",
   length(unique(x$vessel[x$fault %in% "fast"])), min(x$planted_m[r]), max(x$planted_m[r]),

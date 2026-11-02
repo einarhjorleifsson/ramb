@@ -52,13 +52,13 @@ test_that("the planted faults: one track per vessel and rate, every fault at eve
   expect_setequal(unique(d$rate_s), c(10L, 60L, 360L, 3600L))
   expect_equal(d$vid, sprintf("%s_%ss", d$vessel, d$rate_s))
   faults <- c("spike", "run", "detour", "lon_eq_lat", "shifted_copy", "clock_offset", "summer_time", "near_copy",
-              "tie", "fast")
+              "tie", "first_after_gap", "fast")
   expect_setequal(stats::na.omit(unique(d$fault)), faults)
   expect_true(all(table(d$fault, d$rate_s) > 0))
   expect_false(any(d$wrong & is.na(d$fault)))
   expect_false(any(d$wrong & d$fault %in% c("near_copy", "fast")))
   expect_true(all(d$wrong[d$fault %in% c("spike", "run", "detour", "lon_eq_lat", "shifted_copy", "clock_offset",
-                                         "summer_time")]))
+                                         "summer_time", "first_after_gap")]))
   # a tie is two pings at one second, the planted one wrong
   tie <- d[d$fault %in% "tie", ]
   expect_true(all(table(paste(tie$vid, tie$fault_id)) == 2))
