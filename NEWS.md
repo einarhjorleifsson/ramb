@@ -1,3 +1,11 @@
+# ramb 2026.11.02.1
+
+- `rb_add_ping_own_lag(method = c("copy", "receipt"))`: a copy of a reference ping the receipt moves takes that lag
+  too, and lands on its original's harmonized time. Before, the copy kept its original's delivered time while the
+  original moved, and the duplicate flag no longer paired them: on Iceland's data, 732 copies of STK's VMS reports by
+  astd and emodnet reached fishycode's trail (plan 060). A copy of a ping moved later by its stream's lag, in
+  `rb_add_ping_time()`, still keeps the original's delivered time (one ping there).
+
 # ramb 2026.11.02
 
 ## A unit's clock from its receipt time, and a sparse stream on the reference's track (fishycode plan 060)

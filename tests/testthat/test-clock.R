@@ -363,6 +363,51 @@ test_that("rb_add_ping_own_lag() reads a unit's clock from its receipt, and tell
   )
 })
 
+test_that("a copy of a report the receipt moves follows its original", {
+  d <- clock_faults(days = 3)
+  d$receipt[d$stream == "ais"] <- NA
+  # a feed that delivers every third vms report again, 40 s later
+  k <- d[d$stream == "vms", ]
+  k <- k[seq(1, nrow(k), by = 3), ]
+  k$stream <- "copy"
+  k$time <- k$time + 40
+  k$receipt <- NA
+  x <- rbind(d, k)
+  o <- rb_add_ping_own_lag(
+    x,
+    reference = c("ais", "vms"),
+    method = c("copy", "receipt"),
+    streams = "copy",
+    unit = mid
+  )
+  cp <- o[o$stream == "copy", ]
+  vm <- o[o$stream == "vms", ]
+  orig <- match(
+    paste(cp$vid, as.numeric(cp$time) - 40),
+    paste(vm$vid, as.numeric(vm$time))
+  )
+  expect_false(anyNA(orig))
+  expect_equal(unique(cp$lag_own_basis), "copy")
+  # the fast clock (vid 6) moved by its receipt, its copies by the same and their 40 s
+  expect_true(all(abs(vm$lag_own_s[vm$vid == 6] - 300) < 2))
+  expect_equal(cp$lag_own_s, 40 + vm$lag_own_s[orig])
+  # harmonized, each copy on its original's time
+  h <- rb_add_ping_time(o)
+  expect_equal(
+    as.numeric(h$time[h$stream == "copy"]),
+    as.numeric(h$time[h$stream == "vms"][orig])
+  )
+  # without the receipt, the copy's lag is its gap alone
+  expect_equal(
+    rb_add_ping_own_lag(
+      x,
+      reference = c("ais", "vms"),
+      streams = "copy"
+    )$lag_own_s[x$stream == "copy"],
+    rep(40, nrow(k))
+  )
+})
+
 test_that("step 0's order is guarded: clocks before the flags, streams compared once harmonized", {
   d <- clock_faults()
   # a clock measured on flagged pings

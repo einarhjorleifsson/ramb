@@ -656,7 +656,9 @@ res AS (
 #'   alone, and 93 % of those on time (92 % left alone).
 #'
 #' With more than one, a copy comes first, then the receipt. A ping of a reference stream gets no copy or residual
-#' lag.
+#' lag. With `"copy"` and `"receipt"`, a copy of a reference ping the receipt moves takes that lag too, so it lands
+#' on its original's harmonized time and stays a duplicate of it. A copy of a ping moved later, by its stream's lag in
+#' [rb_add_ping_time()], keeps the original's delivered time.
 #'
 #' @param x A data frame or a lazy DuckDB table with `vid`, `time`, `lon`, `lat` and the stream column; `"copy"`
 #'   needs the recorded `speed` (knots), `"residual"` the recorded `speed` and `course` (degrees), `"receipt"` the
@@ -868,15 +870,12 @@ rb_cb AS MATERIALIZED (SELECT row_number() OVER () AS rb_i, * FROM (
   WHERE stream IN ({refs}) AND speed BETWEEN {lo} AND {hi} AND vid IS NOT NULL AND time IS NOT NULL)),
 rb_np AS ({near}),
 rb_cp AS (
-  SELECT rb_ib AS rb_i, dt_s AS lag_copy FROM rb_np
+  SELECT rb_ib AS rb_i, rb_ia, dt_s AS lag_copy FROM rb_np
   QUALIFY row_number() OVER (PARTITION BY rb_ib ORDER BY abs(dt_s), dt_s, d_m) = 1),
-rb_copy AS (SELECT rb_ck.vid, rb_ck.stream, rb_ck.time, rb_ck.lon, rb_ck.lat, rb_cp.lag_copy
-            FROM rb_cp JOIN rb_ck USING (rb_i))"
+rb_copy AS (SELECT rb_ck.vid, rb_ck.stream, rb_ck.time, rb_ck.lon, rb_ck.lat, rb_cp.lag_copy,
+                   rb_cb.time AS rb_otime, rb_cb.lon AS rb_olon, rb_cb.lat AS rb_olat
+            FROM rb_cp JOIN rb_ck USING (rb_i) JOIN rb_cb ON rb_cb.rb_i = rb_cp.rb_ia)"
       )
-    )
-    parts <- c(
-      parts,
-      sprintf("LEFT JOIN rb_copy ON %s", .rb_clock_on("x", "rb_copy", keys))
     )
   }
   if ("residual" %in% method) {
@@ -990,8 +989,32 @@ rb_rcp AS (
       sprintf("LEFT JOIN rb_rcp ON %s", .rb_clock_on("x", "rb_rcp", keys))
     )
   }
+  if ("copy" %in% method) {
+    # a copy follows its original's receipt lag (the reference row has no stream: where two streams hold the same
+    # report, the least lag)
+    copy_tab <- "rb_copy"
+    if (rcp) {
+      ctes <- c(
+        ctes,
+        "rb_cpr AS (
+  SELECT c.vid, c.stream, c.time, c.lon, c.lat, c.lag_copy + coalesce(o.lag_rcp, 0) AS lag_copy
+  FROM rb_copy c
+  LEFT JOIN (SELECT vid, time, lon, lat, min(lag_rcp) AS lag_rcp FROM rb_rcp GROUP BY ALL) o
+    ON o.vid = c.vid AND o.time = c.rb_otime AND o.lon = c.rb_olon AND o.lat = c.rb_olat)"
+      )
+      copy_tab <- "rb_cpr"
+    }
+    parts <- c(
+      sprintf(
+        "LEFT JOIN %s ON %s",
+        copy_tab,
+        .rb_clock_on("x", copy_tab, keys)
+      ),
+      parts
+    )
+  }
   nul <- "CAST(NULL AS DOUBLE)"
-  copy_col <- if ("copy" %in% method) "rb_copy.lag_copy" else nul
+  copy_col <- if ("copy" %in% method) paste0(copy_tab, ".lag_copy") else nul
   rcp_col <- if (rcp) "rb_rcp.lag_rcp" else nul
   res_col <- if ("residual" %in% method) "rb_res.lag_res" else nul
   sql <- sprintf(

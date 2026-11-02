@@ -113,7 +113,9 @@ alone, and 93 \% of those on time (92 \% left alone).
 }
 
 With more than one, a copy comes first, then the receipt. A ping of a reference stream gets no copy or residual
-lag.
+lag. With \code{"copy"} and \code{"receipt"}, a copy of a reference ping the receipt moves takes that lag too, so it lands
+on its original's harmonized time and stays a duplicate of it. A copy of a ping moved later, by its stream's lag in
+\code{\link[=rb_add_ping_time]{rb_add_ping_time()}}, keeps the original's delivered time.
 }
 \seealso{
 Other ping clocks:
