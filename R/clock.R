@@ -531,24 +531,53 @@ res AS (
 #'   The neighbours are the reference's pings, or with no `reference` the vessel's previous and next ping among
 #'   those judged (the merged track of `streams`): a single ping dropped late into a regular stream (ramb's `dansk`:
 #'   288 pings some 39 s late, one 39 s early).
+#' * `"receipt"`: the ping carries the time it was received (`receipt`), as a monitoring centre keeps it, and its
+#'   unit's clock is read from the gap `receipt - time` (fishycode plan 060). A ping stamped at its receipt (gap 0) has
+#'   the receipt's clock: `lag_at_receipt`. For the others, the unit's *level* is the `level_prob` quantile of its
+#'   own-stamped gaps within `level_window_s[1]` either side, gaps over `backlog_s` (a backlog delivered late) left out:
+#'   a late delivery raises the median, less the floor. The stream's *usual level* is the median level of its pings
+#'   in the `period`, since most clocks keep time. Where both the level and the level over `level_window_s[2]` depart
+#'   from the usual by more than `depart_s`, the unit's clock is off, and the lag is `lag_usual` less the departure;
+#'   elsewhere it is `lag_usual`, the stream's usual lag to the reference. A clock drifts for weeks; a slow day of
+#'   delivery does not. A ping whose unit has no level gets none. Near a clock that is set right, the week around the
+#'   ping reads it as on time, so the last days of a drift before the reset may be left unmoved: the price of telling
+#'   a drift from a slow week of delivery (on Iceland's VMS a week before or after, either one, put fewer pings
+#'   within 3 min of the track in all). The method judges every ping with a receipt,
+#'   whatever its stream: give the receipt only to the pings it should judge. On Iceland's VMS (2007-2026, against the
+#'   vessels' AIS tracks) it puts 93 % of the pings of units an hour off within 3 min of the track, against 1 % left
+#'   alone, and 93 % of those on time (92 % left alone).
 #'
-#' With both, a copy comes first. A ping of a reference stream gets none.
+#' With more than one, a copy comes first, then the receipt. A ping of a reference stream gets no copy or residual
+#' lag.
 #'
 #' @param x A data frame or a lazy DuckDB table with `vid`, `time`, `lon`, `lat` and the stream column; `"copy"`
-#'   needs the recorded `speed` (knots), `"residual"` the recorded `speed` and `course` (degrees).
+#'   needs the recorded `speed` (knots), `"residual"` the recorded `speed` and `course` (degrees), `"receipt"` the
+#'   receipt time.
 #' @param reference The reference stream or streams. Needed for `"copy"`; for `"residual"`, `NULL` takes the
 #'   neighbours in the merged track.
-#' @param method `"copy"`, `"residual"` or both.
-#' @param streams The streams whose pings are judged; `NULL`, every stream but the reference.
+#' @param method `"copy"`, `"residual"`, `"receipt"`, or more than one.
+#' @param streams The streams whose pings are judged by `"copy"` and `"residual"`; `NULL`, every stream but the
+#'   reference.
 #' @param stream The stream column ([rb_add_ping_stream()]).
 #' @param dist_m,max_dt_s For `"copy"`: metres and seconds apart.
 #' @param kn The moving vessel's speed range, knots.
 #' @param min_s,max_gap_s For `"residual"`: the least residual on each side, seconds; the longest interval to a
 #'   neighbour, seconds.
 #' @param vid,time,lon,lat,speed,course The columns, if named otherwise.
+#' @param receipt For `"receipt"`: the column of the time each ping was received (date-time).
+#' @param unit For `"receipt"`: the column naming the unit whose clock stamps the ping (a transponder, a mobile id);
+#'   `NULL`, each vessel's stream.
+#' @param level_window_s For `"receipt"`: the level's window either side, and the longer one that confirms it, seconds.
+#' @param level_prob,backlog_s For `"receipt"`: the level's quantile; the longest gap that counts in it, seconds.
+#' @param depart_s For `"receipt"`: the departure from the usual level that marks a clock off, seconds.
+#' @param lag_usual For `"receipt"`: the stream's usual lag to the reference, seconds (positive: later), one number,
+#'   or a table with the stream column, `period` and `lag_s` (a stream or period it lacks gets no receipt lag).
+#' @param lag_at_receipt For `"receipt"`: the lag of a ping stamped at its receipt: 0 where the reference is stamped
+#'   at its receipt too.
+#' @param period For `"receipt"`: the period of the usual level and `lag_usual` (as in [rb_create_ping_lags()]).
 #'
 #' @return `x` with `lag_own_s` (seconds; positive: the ping's time is later than its position's) and
-#'   `lag_own_basis` (`"copy"`, `"residual"`, or `NA`). The same type, the same rows.
+#'   `lag_own_basis` (`"copy"`, `"receipt"`, `"residual"`, or `NA`). The same type, the same rows.
 #' @family ping clocks
 #' @export
 rb_add_ping_own_lag <- function(
@@ -567,13 +596,25 @@ rb_add_ping_own_lag <- function(
   lon = lon,
   lat = lat,
   speed = speed,
-  course = course
+  course = course,
+  receipt = receipt,
+  unit = NULL,
+  level_window_s = c(86400, 604800),
+  level_prob = 0.25,
+  backlog_s = 10800,
+  depart_s = 120,
+  lag_usual = 0,
+  lag_at_receipt = 0,
+  period = "year"
 ) {
   method <- if (missing(method)) {
     "copy"
   } else {
-    match.arg(method, several.ok = TRUE)
+    match.arg(method, c("copy", "residual", "receipt"), several.ok = TRUE)
   }
+  rcp <- "receipt" %in% method
+  unit_q <- rlang::enquo(unit)
+  unit_col <- if (rlang::quo_is_null(unit_q)) NULL else rlang::as_name(unit_q)
   .rb_check_input(
     x,
     "rb_add_ping_own_lag",
@@ -585,19 +626,55 @@ rb_add_ping_own_lag <- function(
       stream = rlang::as_name(rlang::enquo(stream))
     ),
     also = c(
-      speed = rlang::as_name(rlang::enquo(speed)),
+      if (any(c("copy", "residual") %in% method)) {
+        c(speed = rlang::as_name(rlang::enquo(speed)))
+      },
       if ("residual" %in% method) {
         c(course = rlang::as_name(rlang::enquo(course)))
-      }
+      },
+      if (rcp) c(receipt = rlang::as_name(rlang::enquo(receipt))),
+      if (rcp && !is.null(unit_col)) c(unit = unit_col)
     ),
     types = c(
       time = "time",
       lon = "numeric",
       lat = "numeric",
-      speed = "numeric"
+      speed = "numeric",
+      receipt = "time"
     ),
     fresh = TRUE
   )
+  if (rcp) {
+    .rb_clock_check_period(period)
+    stopifnot(
+      is.numeric(level_window_s),
+      length(level_window_s) == 2,
+      all(level_window_s > 0),
+      level_window_s[2] >= level_window_s[1],
+      is.numeric(level_prob),
+      length(level_prob) == 1,
+      level_prob > 0,
+      level_prob < 1,
+      is.numeric(backlog_s),
+      length(backlog_s) == 1,
+      backlog_s > 0,
+      is.numeric(depart_s),
+      length(depart_s) == 1,
+      depart_s >= 0,
+      is.numeric(lag_at_receipt) ||
+        (length(lag_at_receipt) == 1 && is.na(lag_at_receipt)),
+      length(lag_at_receipt) == 1
+    )
+    if (
+      !(is.data.frame(lag_usual) || inherits(lag_usual, "tbl_lazy")) &&
+        !(is.numeric(lag_usual) && length(lag_usual) == 1 && !is.na(lag_usual))
+    ) {
+      rlang::abort(c(
+        "`lag_usual` must be one number of seconds, or a table of the stream column, `period` and `lag_s`.",
+        i = "It is the stream's usual lag to the reference: measured on the reference's track, or 0."
+      ))
+    }
+  }
   if (
     "copy" %in%
       method &&
@@ -638,13 +715,19 @@ rb_add_ping_own_lag <- function(
     time = {{ time }},
     lon = {{ lon }},
     lat = {{ lat }},
-    stream = {{ stream }},
-    speed = {{ speed }}
+    stream = {{ stream }}
   )
+  if (any(c("copy", "residual") %in% method)) {
+    map <- c(map, .rb_cols(speed = {{ speed }}))
+  }
   if ("residual" %in% method) {
     map <- c(map, .rb_cols(course = {{ course }}))
   }
-  con <- .rb_con_for(x)
+  if (rcp) {
+    map <- c(map, .rb_cols(receipt = {{ receipt }}))
+    if (!is.null(unit_col)) map <- c(map, c(unit = unit_col))
+  }
+  con <- .rb_con_for(x, if (rcp && !is.numeric(lag_usual)) lag_usual)
   .rb_scope()
   p <- .rb_clock_in(x, map, con)
   refs <- if (is.null(reference)) NULL else .rb_clock_strings(con, reference)
@@ -726,28 +809,97 @@ rb_rf AS (SELECT vid, time, lon, lat, speed, course FROM x
       sprintf("LEFT JOIN rb_res ON %s", .rb_clock_on("x", "rb_res", keys))
     )
   }
-  copy_col <- if ("copy" %in% method) {
-    "rb_copy.lag_copy"
-  } else {
-    "CAST(NULL AS DOUBLE)"
+  if (rcp) {
+    # each ping once, with its earliest receipt (a report received twice is one ping); its unit's levels over its own-
+    # stamped gaps within the backlog bound, by a window per unit; the stream's usual level per period, the median
+    num <- function(v) {
+      if (is.na(v)) "CAST(NULL AS DOUBLE)" else sprintf("%.17e", v)
+    }
+    part <- if (is.null(unit_col)) "vid, stream" else "rb_unit"
+    usel <- if (is.null(unit_col)) {
+      "CAST(NULL AS VARCHAR)"
+    } else {
+      "CAST(unit AS VARCHAR)"
+    }
+    per <- .rb_clock_period_sql(period, "time")
+    lvl <- sprintf(
+      "quantile_cont(rb_gap, %s) FILTER (WHERE rb_gap <> 0 AND abs(rb_gap) <= %s)",
+      num(level_prob),
+      num(backlog_s)
+    )
+    if (is.numeric(lag_usual)) {
+      usual <- num(lag_usual)
+      ujoin <- ""
+    } else {
+      lu <- .rb_as_lazy(.rb_std_in(lag_usual, map["stream"]), con)
+      miss <- setdiff(c("stream", "period", "lag_s"), colnames(lu))
+      if (length(miss)) {
+        rlang::abort(c(
+          sprintf(
+            "`lag_usual` must have the stream column `%s`, `period` and `lag_s`.",
+            map[["stream"]]
+          ),
+          x = sprintf("%s missing.", paste0("`", miss, "`", collapse = ", "))
+        ))
+      }
+      usual <- "rb_u.lag_s"
+      ujoin <- sprintf(
+        "LEFT JOIN (SELECT stream, CAST(period AS DATE) AS period, lag_s FROM (%s)) rb_u
+           ON rb_u.stream = r.stream AND rb_u.period IS NOT DISTINCT FROM r.rb_per",
+        .rb_sql(lu)
+      )
+    }
+    ctes <- c(
+      ctes,
+      .rb_fill(
+        "
+rb_rk AS MATERIALIZED (
+  SELECT {usel} AS rb_unit, vid, stream, time, lon, lat, {per} AS rb_per, min(epoch(receipt - time)) AS rb_gap
+  FROM x WHERE receipt IS NOT NULL AND vid IS NOT NULL AND time IS NOT NULL GROUP BY ALL),
+rb_rl AS (
+  SELECT *, {lvl} OVER rb_d AS rb_lvl, {lvl} OVER rb_w AS rb_lvlw FROM rb_rk
+  WINDOW rb_d AS (PARTITION BY {part} ORDER BY time
+                  RANGE BETWEEN INTERVAL '{level_window_s[1]} seconds' PRECEDING AND INTERVAL '{level_window_s[1]} seconds' FOLLOWING),
+         rb_w AS (PARTITION BY {part} ORDER BY time
+                  RANGE BETWEEN INTERVAL '{level_window_s[2]} seconds' PRECEDING AND INTERVAL '{level_window_s[2]} seconds' FOLLOWING)),
+rb_l0 AS (SELECT stream, rb_per, median(rb_lvl) AS rb_l0 FROM rb_rl WHERE rb_gap <> 0 GROUP BY ALL),
+rb_rcp AS (
+  SELECT r.vid, r.stream, r.time, r.lon, r.lat,
+         CASE WHEN r.rb_gap = 0 THEN {num(lag_at_receipt)}
+              WHEN r.rb_lvl IS NULL THEN NULL
+              WHEN abs(r.rb_lvl - l.rb_l0) > {num(depart_s)} AND abs(r.rb_lvlw - l.rb_l0) > {num(depart_s)}
+                THEN {usual} - (r.rb_lvl - l.rb_l0)
+              ELSE {usual} END AS lag_rcp
+  FROM rb_rl r
+  LEFT JOIN rb_l0 l ON l.stream IS NOT DISTINCT FROM r.stream AND l.rb_per IS NOT DISTINCT FROM r.rb_per
+  {ujoin}
+  QUALIFY row_number() OVER (PARTITION BY r.vid, r.stream, r.time, r.lon, r.lat ORDER BY r.rb_unit) = 1)"
+      )
+    )
+    parts <- c(
+      parts,
+      sprintf("LEFT JOIN rb_rcp ON %s", .rb_clock_on("x", "rb_rcp", keys))
+    )
   }
-  res_col <- if ("residual" %in% method) {
-    "rb_res.lag_res"
-  } else {
-    "CAST(NULL AS DOUBLE)"
-  }
+  nul <- "CAST(NULL AS DOUBLE)"
+  copy_col <- if ("copy" %in% method) "rb_copy.lag_copy" else nul
+  rcp_col <- if (rcp) "rb_rcp.lag_rcp" else nul
+  res_col <- if ("residual" %in% method) "rb_res.lag_res" else nul
   sql <- sprintf(
     "
 WITH x AS (%s),
 %s
-SELECT x.*, CAST(coalesce(%s, %s) AS DOUBLE) AS lag_own_s,
-       CASE WHEN %s IS NOT NULL THEN 'copy' WHEN %s IS NOT NULL THEN 'residual' END AS lag_own_basis
+SELECT x.*, CAST(coalesce(%s, %s, %s) AS DOUBLE) AS lag_own_s,
+       CASE WHEN %s IS NOT NULL THEN 'copy' WHEN %s IS NOT NULL THEN 'receipt' WHEN %s IS NOT NULL THEN 'residual'
+            END AS lag_own_basis
 FROM x %s",
     .rb_sql(p),
     paste(ctes, collapse = ",\n"),
     copy_col,
+    rcp_col,
     res_col,
     copy_col,
+    rcp_col,
     res_col,
     paste(parts, collapse = "\n")
   )
@@ -760,7 +912,7 @@ FROM x %s",
 #' every stream keeps the reference's clock, and the delivered time is kept beside it (fishycode plan 059 §3). The
 #' lag, first that applies:
 #'
-#' 1. the ping's own lag ([rb_add_ping_own_lag()]): basis `"copy"` or `"residual"`;
+#' 1. the ping's own lag ([rb_add_ping_own_lag()]): basis `"copy"`, `"receipt"` or `"residual"`;
 #' 2. its stream's lag where the unit's outcome is `"offset"` ([rb_create_ping_lags()]): `"measured"`;
 #' 3. none where the unit is the reference, `"aligned"` or `"one stream"`: `"none"`, lag 0;
 #' 4. else (no stream, or a unit `"not measurable"`, `"unclear"` or with `"no reference"`): `"unmeasured"`, the lag
@@ -770,6 +922,15 @@ FROM x %s",
 #' `"unmeasured"`.
 #'
 #' Derive speeds, turns and windows after this step, and within one stream (fishycode, AGENTS.md).
+#'
+#' **A ping can move into another period.** Its lag can carry it across midnight, a month or New Year (on Iceland's
+#' track, 53 pings moved back over New Year by 11-63 s). A table partitioned by the delivered time then holds pings of
+#' another year: partition the output, and join anything by period, on the harmonized `time`. The lags themselves are
+#' looked up by the delivered time's period, where they were measured.
+#'
+#' **The order of the pings** (the step 0 contract): before this step a track is sorted by its delivered time, which
+#' is wrong where a clock drifts and a receipt time would be wrong after a backlog is flushed; from this step on, by
+#' the harmonized `time`, with `time_delivered` beside it.
 #'
 #' @param x A data frame or a lazy DuckDB table with `vid`, `time` and the stream column, and `lag_own_s` and
 #'   `lag_own_basis` if [rb_add_ping_own_lag()] has been run.
@@ -887,14 +1048,14 @@ rb_add_ping_time <- function(
   }
   own_case <- if (own) {
     sprintf(
-      "WHEN x.lag_own_basis IN ('copy', 'residual') AND x.lag_own_s IS NOT NULL THEN %s",
+      "WHEN x.lag_own_basis IN ('copy', 'receipt', 'residual') AND x.lag_own_s IS NOT NULL THEN %s",
       rnd("x.lag_own_s")
     )
   } else {
     ""
   }
   own_basis <- if (own) {
-    "WHEN x.lag_own_basis IN ('copy', 'residual') AND x.lag_own_s IS NOT NULL THEN x.lag_own_basis"
+    "WHEN x.lag_own_basis IN ('copy', 'receipt', 'residual') AND x.lag_own_s IS NOT NULL THEN x.lag_own_basis"
   } else {
     ""
   }

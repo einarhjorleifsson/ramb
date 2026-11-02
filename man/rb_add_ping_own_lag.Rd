@@ -20,19 +20,30 @@ rb_add_ping_own_lag(
   lon = lon,
   lat = lat,
   speed = speed,
-  course = course
+  course = course,
+  receipt = receipt,
+  unit = NULL,
+  level_window_s = c(86400, 604800),
+  level_prob = 0.25,
+  backlog_s = 10800,
+  depart_s = 120,
+  lag_usual = 0,
+  lag_at_receipt = 0,
+  period = "year"
 )
 }
 \arguments{
 \item{x}{A data frame or a lazy DuckDB table with \code{vid}, \code{time}, \code{lon}, \code{lat} and the stream column; \code{"copy"}
-needs the recorded \code{speed} (knots), \code{"residual"} the recorded \code{speed} and \code{course} (degrees).}
+needs the recorded \code{speed} (knots), \code{"residual"} the recorded \code{speed} and \code{course} (degrees), \code{"receipt"} the
+receipt time.}
 
 \item{reference}{The reference stream or streams. Needed for \code{"copy"}; for \code{"residual"}, \code{NULL} takes the
 neighbours in the merged track.}
 
-\item{method}{\code{"copy"}, \code{"residual"} or both.}
+\item{method}{\code{"copy"}, \code{"residual"}, \code{"receipt"}, or more than one.}
 
-\item{streams}{The streams whose pings are judged; \code{NULL}, every stream but the reference.}
+\item{streams}{The streams whose pings are judged by \code{"copy"} and \code{"residual"}; \code{NULL}, every stream but the
+reference.}
 
 \item{stream}{The stream column (\code{\link[=rb_add_ping_stream]{rb_add_ping_stream()}}).}
 
@@ -44,10 +55,29 @@ neighbours in the merged track.}
 neighbour, seconds.}
 
 \item{vid, time, lon, lat, speed, course}{The columns, if named otherwise.}
+
+\item{receipt}{For \code{"receipt"}: the column of the time each ping was received (date-time).}
+
+\item{unit}{For \code{"receipt"}: the column naming the unit whose clock stamps the ping (a transponder, a mobile id);
+\code{NULL}, each vessel's stream.}
+
+\item{level_window_s}{For \code{"receipt"}: the level's window either side, and the longer one that confirms it, seconds.}
+
+\item{level_prob, backlog_s}{For \code{"receipt"}: the level's quantile; the longest gap that counts in it, seconds.}
+
+\item{depart_s}{For \code{"receipt"}: the departure from the usual level that marks a clock off, seconds.}
+
+\item{lag_usual}{For \code{"receipt"}: the stream's usual lag to the reference, seconds (positive: later), one number,
+or a table with the stream column, \code{period} and \code{lag_s} (a stream or period it lacks gets no receipt lag).}
+
+\item{lag_at_receipt}{For \code{"receipt"}: the lag of a ping stamped at its receipt: 0 where the reference is stamped
+at its receipt too.}
+
+\item{period}{For \code{"receipt"}: the period of the usual level and \code{lag_usual} (as in \code{\link[=rb_create_ping_lags]{rb_create_ping_lags()}}).}
 }
 \value{
 \code{x} with \code{lag_own_s} (seconds; positive: the ping's time is later than its position's) and
-\code{lag_own_basis} (\code{"copy"}, \code{"residual"}, or \code{NA}). The same type, the same rows.
+\code{lag_own_basis} (\code{"copy"}, \code{"receipt"}, \code{"residual"}, or \code{NA}). The same type, the same rows.
 }
 \description{
 Step 0 of the fishing-activity flow. A stream's lag per vessel and period (\code{\link[=rb_create_ping_lags]{rb_create_ping_lags()}}) is the bulk;
@@ -65,9 +95,25 @@ to the ping after, by at least \code{min_s} each (or the reverse, early). Its ow
 The neighbours are the reference's pings, or with no \code{reference} the vessel's previous and next ping among
 those judged (the merged track of \code{streams}): a single ping dropped late into a regular stream (ramb's \code{dansk}:
 288 pings some 39 s late, one 39 s early).
+\item \code{"receipt"}: the ping carries the time it was received (\code{receipt}), as a monitoring centre keeps it, and its
+unit's clock is read from the gap \code{receipt - time} (fishycode plan 060). A ping stamped at its receipt (gap 0) has
+the receipt's clock: \code{lag_at_receipt}. For the others, the unit's \emph{level} is the \code{level_prob} quantile of its
+own-stamped gaps within \code{level_window_s[1]} either side, gaps over \code{backlog_s} (a backlog delivered late) left out:
+a late delivery raises the median, less the floor. The stream's \emph{usual level} is the median level of its pings
+in the \code{period}, since most clocks keep time. Where both the level and the level over \code{level_window_s[2]} depart
+from the usual by more than \code{depart_s}, the unit's clock is off, and the lag is \code{lag_usual} less the departure;
+elsewhere it is \code{lag_usual}, the stream's usual lag to the reference. A clock drifts for weeks; a slow day of
+delivery does not. A ping whose unit has no level gets none. Near a clock that is set right, the week around the
+ping reads it as on time, so the last days of a drift before the reset may be left unmoved: the price of telling
+a drift from a slow week of delivery (on Iceland's VMS a week before or after, either one, put fewer pings
+within 3 min of the track in all). The method judges every ping with a receipt,
+whatever its stream: give the receipt only to the pings it should judge. On Iceland's VMS (2007-2026, against the
+vessels' AIS tracks) it puts 93 \% of the pings of units an hour off within 3 min of the track, against 1 \% left
+alone, and 93 \% of those on time (92 \% left alone).
 }
 
-With both, a copy comes first. A ping of a reference stream gets none.
+With more than one, a copy comes first, then the receipt. A ping of a reference stream gets no copy or residual
+lag.
 }
 \seealso{
 Other ping clocks:

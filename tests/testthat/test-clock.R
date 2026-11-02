@@ -227,6 +227,84 @@ test_that("rb_add_ping_own_lag() finds dansk's displaced pings", {
   expect_equal(unique(s$stream_cadence_s[s$vessel_id == "EX_10"]), 10)
 })
 
+test_that("rb_add_ping_own_lag() reads a unit's clock from its receipt, and tells a drift from a slow delivery", {
+  d <- clock_faults()
+  v <- d[d$stream == "vms", ]
+  o <- rb_add_ping_own_lag(v, method = "receipt", unit = mid)
+  expect_equal(unique(o$lag_own_basis), "receipt")
+  # on time, a slow day of delivery (vid 7, day 10) and a backlog held 30 h (day 20): no lag
+  expect_true(all(o$lag_own_s[o$vid %in% c(1:4, 7)] == 0))
+  # a fast clock, 300 s: its lag to within the delivery's wobble
+  expect_lt(max(abs(o$lag_own_s[o$vid == 6] - o$lag_true_s[o$vid == 6])), 2)
+  # the sawtooth: under the least departure (120 s) unmoved; beyond 5 min within 10 s, but for the 3.5 days before the
+  # clock is set right (days 26-29: the week around reads it as on time) and the series' last 2 pings
+  expect_true(all(o$lag_own_s[o$vid == 5 & abs(o$lag_true_s) <= 120] == 0))
+  s <- o[o$vid == 5 & abs(o$lag_true_s) > 300, ]
+  expect_equal(nrow(s), 1440)
+  expect_equal(sum(abs(s$lag_own_s - s$lag_true_s) > 10), 169)
+  # each vessel's stream as the unit, here one unit each: the same
+  expect_equal(
+    rb_add_ping_own_lag(v, method = "receipt")$lag_own_s,
+    o$lag_own_s
+  )
+  # the stream's usual lag, a number or a table by stream and period; a period the table lacks gets none
+  u <- rb_add_ping_own_lag(v, method = "receipt", unit = mid, lag_usual = -60)
+  expect_true(all(u$lag_own_s[u$vid %in% 1:4] == -60))
+  expect_equal(u$lag_own_s - o$lag_own_s, rep(-60, nrow(o)))
+  tb <- data.frame(stream = "vms", period = as.Date("2024-01-01"), lag_s = -60)
+  expect_equal(
+    rb_add_ping_own_lag(
+      v,
+      method = "receipt",
+      unit = mid,
+      lag_usual = tb
+    )$lag_own_s,
+    u$lag_own_s
+  )
+  tb$period <- as.Date("2023-01-01")
+  expect_true(all(is.na(
+    rb_add_ping_own_lag(
+      v,
+      method = "receipt",
+      unit = mid,
+      lag_usual = tb
+    )$lag_own_s
+  )))
+  # a ping stamped at its receipt takes lag_at_receipt; a ping with no receipt is not judged
+  a <- d[d$vid == 1, ]
+  a$receipt[a$stream == "vms"] <- NA
+  r <- rb_add_ping_own_lag(a, method = "receipt", lag_at_receipt = 5)
+  expect_true(all(r$lag_own_s[r$stream == "ais"] == 5))
+  expect_true(all(is.na(r$lag_own_basis[r$stream == "vms"])))
+  # harmonized (the lag rounded to the second): the fast clock's pings back on the true time
+  h <- rb_add_ping_time(o)
+  expect_equal(unique(h$lag_basis), "receipt")
+  expect_lte(
+    max(abs(
+      as.numeric(h$time[h$vid == 6]) - as.numeric(h$true_time[h$vid == 6])
+    )),
+    2
+  )
+  # lazy, the same lags; the rows as given
+  l <- dplyr::collect(rb_add_ping_own_lag(
+    as_lazy(v),
+    method = "receipt",
+    unit = mid
+  ))
+  l <- l[order(l$vid, l$time), ]
+  expect_equal(l$lag_own_s, o$lag_own_s[order(o$vid, o$time)])
+  expect_equal(as.numeric(o$time), as.numeric(v$time))
+  # guidance
+  expect_error(
+    rb_add_ping_own_lag(v[names(v) != "receipt"], method = "receipt"),
+    "receipt"
+  )
+  expect_error(
+    rb_add_ping_own_lag(v, method = "receipt", lag_usual = "a"),
+    "lag_usual"
+  )
+})
+
 test_that("rb_add_ping_time() harmonizes by the first lag that applies, and moves no unmeasured ping", {
   t0 <- as.POSIXct("2024-03-10", tz = "UTC")
   x <- data.frame(

@@ -40,7 +40,7 @@ lag, first that applies:
 }
 \details{
 \enumerate{
-\item the ping's own lag (\code{\link[=rb_add_ping_own_lag]{rb_add_ping_own_lag()}}): basis \code{"copy"} or \code{"residual"};
+\item the ping's own lag (\code{\link[=rb_add_ping_own_lag]{rb_add_ping_own_lag()}}): basis \code{"copy"}, \code{"receipt"} or \code{"residual"};
 \item its stream's lag where the unit's outcome is \code{"offset"} (\code{\link[=rb_create_ping_lags]{rb_create_ping_lags()}}): \code{"measured"};
 \item none where the unit is the reference, \code{"aligned"} or \code{"one stream"}: \code{"none"}, lag 0;
 \item else (no stream, or a unit \code{"not measurable"}, \code{"unclear"} or with \code{"no reference"}): \code{"unmeasured"}, the lag
@@ -51,6 +51,15 @@ Without \code{lags}, a ping with no own lag is \code{"none"} where its vessel ha
 \code{"unmeasured"}.
 
 Derive speeds, turns and windows after this step, and within one stream (fishycode, AGENTS.md).
+
+\strong{A ping can move into another period.} Its lag can carry it across midnight, a month or New Year (on Iceland's
+track, 53 pings moved back over New Year by 11-63 s). A table partitioned by the delivered time then holds pings of
+another year: partition the output, and join anything by period, on the harmonized \code{time}. The lags themselves are
+looked up by the delivered time's period, where they were measured.
+
+\strong{The order of the pings} (the step 0 contract): before this step a track is sorted by its delivered time, which
+is wrong where a clock drifts and a receipt time would be wrong after a backlog is flushed; from this step on, by
+the harmonized \code{time}, with \code{time_delivered} beside it.
 }
 \seealso{
 Other ping clocks:
