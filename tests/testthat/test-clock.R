@@ -363,6 +363,33 @@ test_that("rb_add_ping_own_lag() reads a unit's clock from its receipt, and tell
   )
 })
 
+test_that("a backlog the receiver flushes at once is no unit's clock", {
+  d <- clock_faults(days = 10)
+  v <- d[d$stream == "vms", ]
+  t0 <- as.POSIXct("2024-03-01", tz = "UTC")
+  s <- as.numeric(difftime(v$true_time, t0, units = "secs"))
+  # an outage: a day of every unit's reports held and received in one hour (day 6.5, 12:10-12:16)
+  out <- s >= 5.5 * 86400 & s < 6.5 * 86400
+  v$receipt[out] <- t0 + 6.5 * 86400 + 600 + seq_len(sum(out))
+  # vid 1, on time, stamps at its receipt but in the outage, and the first of its held reports are dated a day late:
+  # their gaps, within the backlog bound, are all its level has
+  one <- v$vid == 1
+  v$receipt[one & !out] <- v$time[one & !out]
+  late <- one & out & s < 5.6 * 86400
+  v$time[late] <- v$time[late] + 86400
+  o <- rb_add_ping_own_lag(v, method = "receipt", unit = mid)
+  expect_true(all(
+    is.na(o$lag_own_s[o$vid == 1]) | o$lag_own_s[o$vid == 1] == 0
+  ))
+  expect_true(all(o$lag_own_s[o$vid %in% c(2:4, 7)] == 0))
+  # the fast clock still found, in the outage from the gaps around it (fewer: within the delivery's wobble)
+  expect_lt(max(abs(o$lag_own_s[o$vid == 6] - 300)), 5)
+  # without the guard the flush moves the on-time unit by its misdated and held reports' gaps
+  n <- rb_add_ping_own_lag(v, method = "receipt", unit = mid, mass_share = NA)
+  expect_gt(max(abs(n$lag_own_s[n$vid == 1]), na.rm = TRUE), 600)
+  expect_error(rb_add_ping_own_lag(v, method = "receipt", mass_share = 2))
+})
+
 test_that("a copy of a report the receipt moves follows its original", {
   d <- clock_faults(days = 3)
   d$receipt[d$stream == "ais"] <- NA

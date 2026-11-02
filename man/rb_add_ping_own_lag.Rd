@@ -27,6 +27,7 @@ rb_add_ping_own_lag(
   level_prob = 0.25,
   backlog_s = 10800,
   depart_s = 120,
+  mass_share = 0.5,
   lag_usual = 0,
   lag_at_receipt = 0,
   period = "year"
@@ -67,6 +68,9 @@ neighbour, seconds.}
 
 \item{depart_s}{For \code{"receipt"}: the departure from the usual level that marks a clock off, seconds.}
 
+\item{mass_share}{For \code{"receipt"}: the share of a receipt hour's pings received over \code{backlog_s} late that marks
+the hour a backlog flushed at once, whose gaps count in no level; \code{NA}, none.}
+
 \item{lag_usual}{For \code{"receipt"}: the stream's usual lag to the reference, seconds (positive: later), one number,
 or a table with the stream column, \code{period} and \code{lag_s} (a stream or period it lacks gets no receipt lag).}
 
@@ -106,8 +110,11 @@ elsewhere it is \code{lag_usual}, the stream's usual lag to the reference. A clo
 delivery does not. A ping whose unit has no level gets none. Near a clock that is set right, the week around the
 ping reads it as on time, so the last days of a drift before the reset may be left unmoved: the price of telling
 a drift from a slow week of delivery (on Iceland's VMS a week before or after, either one, put fewer pings
-within 3 min of the track in all). The method judges every ping with a receipt,
-whatever its stream: give the receipt only to the pings it should judge. On Iceland's VMS (2007-2026, against the
+within 3 min of the track in all). A receipt hour in which \code{mass_share} or more of the stream's pings were
+received over \code{backlog_s} late is a backlog flushed at once, a fault of the receiver: no gap received in it counts
+in a level (on Iceland's VMS, STK's outages of 2026, when every unit's reports came in hours to two days late and
+some were dated a day late; those gaps alone moved on-time units by up to 85 min). The method judges every ping
+with a receipt, whatever its stream: give the receipt only to the pings it should judge. On Iceland's VMS (2007-2026, against the
 vessels' AIS tracks) it puts 93 \% of the pings of units an hour off within 3 min of the track, against 1 \% left
 alone, and 93 \% of those on time (92 \% left alone).
 }

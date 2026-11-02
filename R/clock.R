@@ -650,8 +650,11 @@ res AS (
 #'   delivery does not. A ping whose unit has no level gets none. Near a clock that is set right, the week around the
 #'   ping reads it as on time, so the last days of a drift before the reset may be left unmoved: the price of telling
 #'   a drift from a slow week of delivery (on Iceland's VMS a week before or after, either one, put fewer pings
-#'   within 3 min of the track in all). The method judges every ping with a receipt,
-#'   whatever its stream: give the receipt only to the pings it should judge. On Iceland's VMS (2007-2026, against the
+#'   within 3 min of the track in all). A receipt hour in which `mass_share` or more of the stream's pings were
+#'   received over `backlog_s` late is a backlog flushed at once, a fault of the receiver: no gap received in it counts
+#'   in a level (on Iceland's VMS, STK's outages of 2026, when every unit's reports came in hours to two days late and
+#'   some were dated a day late; those gaps alone moved on-time units by up to 85 min). The method judges every ping
+#'   with a receipt, whatever its stream: give the receipt only to the pings it should judge. On Iceland's VMS (2007-2026, against the
 #'   vessels' AIS tracks) it puts 93 % of the pings of units an hour off within 3 min of the track, against 1 % left
 #'   alone, and 93 % of those on time (92 % left alone).
 #'
@@ -680,6 +683,8 @@ res AS (
 #' @param level_window_s For `"receipt"`: the level's window either side, and the longer one that confirms it, seconds.
 #' @param level_prob,backlog_s For `"receipt"`: the level's quantile; the longest gap that counts in it, seconds.
 #' @param depart_s For `"receipt"`: the departure from the usual level that marks a clock off, seconds.
+#' @param mass_share For `"receipt"`: the share of a receipt hour's pings received over `backlog_s` late that marks
+#'   the hour a backlog flushed at once, whose gaps count in no level; `NA`, none.
 #' @param lag_usual For `"receipt"`: the stream's usual lag to the reference, seconds (positive: later), one number,
 #'   or a table with the stream column, `period` and `lag_s` (a stream or period it lacks gets no receipt lag).
 #' @param lag_at_receipt For `"receipt"`: the lag of a ping stamped at its receipt: 0 where the reference is stamped
@@ -713,6 +718,7 @@ rb_add_ping_own_lag <- function(
   level_prob = 0.25,
   backlog_s = 10800,
   depart_s = 120,
+  mass_share = 0.5,
   lag_usual = 0,
   lag_at_receipt = 0,
   period = "year"
@@ -772,6 +778,9 @@ rb_add_ping_own_lag <- function(
       is.numeric(depart_s),
       length(depart_s) == 1,
       depart_s >= 0,
+      length(mass_share) == 1,
+      is.na(mass_share) ||
+        (is.numeric(mass_share) && mass_share > 0 && mass_share <= 1),
       is.numeric(lag_at_receipt) ||
         (length(lag_at_receipt) == 1 && is.na(lag_at_receipt)),
       length(lag_at_receipt) == 1
@@ -931,10 +940,23 @@ rb_rf AS (SELECT vid, time, lon, lat, speed, course FROM x
     }
     per <- .rb_clock_period_sql(period, "time")
     lvl <- sprintf(
-      "quantile_cont(rb_gap, %s) FILTER (WHERE rb_gap <> 0 AND abs(rb_gap) <= %s)",
+      "quantile_cont(rb_gap, %s) FILTER (WHERE rb_gap <> 0 AND abs(rb_gap) <= %s AND NOT rb_mass)",
       num(level_prob),
       num(backlog_s)
     )
+    # the receipt hours that flushed a backlog: most of the stream's pings received in them over the backlog bound late
+    mass <- if (is.na(mass_share)) {
+      "rb_rm AS (SELECT *, false AS rb_mass FROM rb_rk)"
+    } else {
+      .rb_fill(
+        "rb_mh AS (
+  SELECT stream, rb_rh FROM rb_rk GROUP BY ALL
+  HAVING count(*) FILTER (WHERE rb_gap > {num(backlog_s)}) >= {num(mass_share)} * count(*)),
+rb_rm AS (
+  SELECT k.*, m.rb_rh IS NOT NULL AS rb_mass FROM rb_rk k
+  LEFT JOIN rb_mh m ON m.stream IS NOT DISTINCT FROM k.stream AND m.rb_rh = k.rb_rh)"
+      )
+    }
     if (is.numeric(lag_usual)) {
       usual <- num(lag_usual)
       ujoin <- ""
@@ -962,10 +984,12 @@ rb_rf AS (SELECT vid, time, lon, lat, speed, course FROM x
       .rb_fill(
         "
 rb_rk AS MATERIALIZED (
-  SELECT {usel} AS rb_unit, vid, stream, time, lon, lat, {per} AS rb_per, min(epoch(receipt - time)) AS rb_gap
+  SELECT {usel} AS rb_unit, vid, stream, time, lon, lat, {per} AS rb_per, min(epoch(receipt - time)) AS rb_gap,
+         date_trunc('hour', min(receipt)) AS rb_rh
   FROM x WHERE receipt IS NOT NULL AND vid IS NOT NULL AND time IS NOT NULL GROUP BY ALL),
+{mass},
 rb_rl AS (
-  SELECT *, {lvl} OVER rb_d AS rb_lvl, {lvl} OVER rb_w AS rb_lvlw FROM rb_rk
+  SELECT *, {lvl} OVER rb_d AS rb_lvl, {lvl} OVER rb_w AS rb_lvlw FROM rb_rm
   WINDOW rb_d AS (PARTITION BY {part} ORDER BY time
                   RANGE BETWEEN INTERVAL '{level_window_s[1]} seconds' PRECEDING AND INTERVAL '{level_window_s[1]} seconds' FOLLOWING),
          rb_w AS (PARTITION BY {part} ORDER BY time

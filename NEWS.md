@@ -1,3 +1,12 @@
+# ramb 2026.11.02.2
+
+- `rb_add_ping_own_lag(method = "receipt", mass_share = 0.5)` (new argument): a receipt hour in which half or more
+  of the stream's pings were received over `backlog_s` late is a backlog flushed at once, a fault of the receiver,
+  and no gap received in it counts in a unit's level. Before, the gaps such a flush leaves under `backlog_s` (the end
+  of the backlog, and reports dated a day late) were all an on-time unit's level had: in STK's outages of 2026 they
+  moved 1,911 of Iceland's VMS pings by over 20 min, up to 85 min, off a track PAME's astd heard on time (fishycode
+  plan 060). `mass_share = NA` turns the guard off.
+
 # ramb 2026.11.02.1
 
 - `rb_add_ping_own_lag(method = c("copy", "receipt"))`: a copy of a reference ping the receipt moves takes that lag
