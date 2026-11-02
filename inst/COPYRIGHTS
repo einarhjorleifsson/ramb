@@ -40,15 +40,17 @@ R/record.R (rb_link_record_sets())
   4.0, with this attribution.
 
 ramb also ships these third-party datasets in inst/extdata, as parquet, read
-with rb_read_example(); data-raw/labelled_tracks.R and data-raw/extdata.R make
-them from the sources. Their full citations, as BibTeX, are in REFERENCES.bib;
+with rb_read_example(); data-raw/labelled_tracks.R, data-raw/extdata.R and
+data-raw/planted_faults.R make them from the sources. Their full citations, as BibTeX, are in REFERENCES.bib;
 each dataset's help page and data dictionary entry (inst/extdata/data-dict.yaml)
 name them:
 
 inst/extdata/dansk.parquet
 inst/extdata/dansk_harbours.parquet
+inst/extdata/dansk_planted.parquet
   From example_data_AIS.csv and the harbours of the ICES Workshop WKSSFGEO,
-  https://github.com/ices-eg/WKSSFGEO.
+  https://github.com/ices-eg/WKSSFGEO; dansk_planted is dansk with faults
+  planted (data-raw/planted_faults.R).
   Copyright (c) 2021 ICES Expert Groups. License: MIT (text below).
 
 inst/extdata/creel.parquet

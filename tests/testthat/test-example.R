@@ -47,6 +47,26 @@ test_that("the labelled tracks are read lazily, in their columns", {
   expect_error(rb_read_example("nope"), "must be one of")
 })
 
+test_that("the planted faults: one track per vessel and rate, every fault at every rate, wrong only where planted", {
+  d <- dplyr::collect(rb_read_example("dansk_planted"))
+  expect_setequal(unique(d$rate_s), c(10L, 60L, 360L, 3600L))
+  expect_equal(d$vid, sprintf("%s_%ss", d$vessel, d$rate_s))
+  faults <- c("spike", "run", "detour", "lon_eq_lat", "shifted_copy", "clock_offset", "summer_time", "near_copy",
+              "tie", "fast")
+  expect_setequal(stats::na.omit(unique(d$fault)), faults)
+  expect_true(all(table(d$fault, d$rate_s) > 0))
+  expect_false(any(d$wrong & is.na(d$fault)))
+  expect_false(any(d$wrong & d$fault %in% c("near_copy", "fast")))
+  expect_true(all(d$wrong[d$fault %in% c("spike", "run", "detour", "lon_eq_lat", "shifted_copy", "clock_offset",
+                                         "summer_time")]))
+  # a tie is two pings at one second, the planted one wrong
+  tie <- d[d$fault %in% "tie", ]
+  expect_true(all(table(paste(tie$vid, tie$fault_id)) == 2))
+  expect_true(all(tapply(tie$wrong, paste(tie$vid, tie$fault_id), sum) == 1))
+  expect_equal(d$lon[d$fault %in% "lon_eq_lat"], d$lat[d$fault %in% "lon_eq_lat"])
+  expect_equal(d$.rid, seq_len(nrow(d)))
+})
+
 test_that("the data dictionary, the files and the references agree", {
   dir <- system.file("extdata", package = "ramb")
   dd_file <- file.path(dir, "data-dict.yaml")

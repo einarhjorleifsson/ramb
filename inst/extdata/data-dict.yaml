@@ -14,7 +14,7 @@ details: >
   file repeats both.
 origin: https://github.com/einarhjorleifsson/ramb/tree/main/data-raw
 version:
-  date: 2026-10-19
+  date: 2026-11-02
 
 tables:
   - name: dansk
@@ -273,6 +273,117 @@ tables:
       - name: whacks
         type: boolean
         description: TRUE where a speed filter should flag the position.
+
+  - name: dansk_planted
+    label: Danish vessel tracks with planted faults
+    description: >
+      Each row is a ping of one of dansk's 14 vessels, its track made clean and thinned to a ping every 10 s, 1 min,
+      6 min or 1 h, with faults planted in it: what step 0 of the flow must find, each ping labelled with its fault and
+      whether it is wrong; for scoring the flaggers, `rb_flag_ping_*()`, by fault, ping rate, gear and fishing.
+    details: |
+      **Cite:** [@ices2022wkssfgeo; @wkssfgeo_github; @ramb]
+
+      **Licence:** MIT, Copyright (c) 2021 ICES Expert Groups, as dansk, from which it is made.
+
+      **Changes:** dansk without the 369 pings a forward scan at 20 kn takes out (its own faults); one steaming hour of
+      eight vessels compressed to a true 30-40 kn; each track thinned to four rates, `vid` the vessel and the rate; nine
+      kinds of fault planted, two while fishing and two not per vessel and rate where the track allows
+      (`data-raw/planted_faults.R`, a fixed seed). A track is one `vid`: filter one rate, or group by `vid`.
+    source:
+      parquet: dansk_planted.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/planted_faults.R
+    columns:
+      - name: .rid
+        type: number(id)
+        constraints: [primary_key]
+        description: Row number, in the order of rate, vessel and time.
+        examples: [24388, 124413, 142643, 331730, 436523]
+      - name: vid
+        type: string
+        description: The track, the vessel at one rate.
+        examples: [EX_10_10s, EX_13_360s, EX_3_3600s, EX_7_10s, EX_9_60s]
+      - name: vessel
+        type: string
+        description: The vessel, dansk's `vessel_id`.
+        examples: [EX_1, EX_12, EX_3, EX_6, EX_9]
+      - name: rate_s
+        type: number(quantity)
+        units: seconds
+        description: The rate the track is thinned to, the least time between two of its pings.
+        examples: [10, 60, 360, 3600]
+      - name: feed
+        type: enum
+        description: The feed that delivered the ping.
+        values:
+          a: the vessel's own feed
+          b: a second feed (the faults clock_offset, summer_time and tie)
+      - name: time
+        type: datetime
+        time_zone: naive
+        description: Time of the ping, as delivered, whole seconds; dansk states no zone.
+        range: [2012-12-03T04:53:58, 2020-10-25T16:51:15]
+      - name: lon
+        type: number(quantity)
+        units: degrees east
+        description: Longitude, as delivered.
+        range: [2.72536533, 58.3585185]
+      - name: lat
+        type: number(quantity)
+        units: degrees north
+        description: Latitude, as delivered.
+        range: [54.32297323, 58.50439318]
+      - name: speed
+        type: number(quantity)
+        units: knots
+        description: Speed over ground, recorded, as dansk gives it; scaled with the time on the fast stretches.
+        range: [0, 42.23143787]
+      - name: course
+        type: number(quantity)
+        units: degrees
+        description: Course over ground, recorded, as dansk gives it (with its values above 360).
+        range: [0, 13102]
+      - name: gear
+        type: enum
+        description: The gear, as dansk gives it at the ping nearest in time (none where the vessel is not fishing).
+        values:
+          GN: gillnet, not specified
+          GNS: set gillnet
+          GTR: trammel net
+          OTB: bottom otter trawl
+      - name: fishing
+        type: boolean
+        description: The expert's label at the ping nearest in time; a copy takes the label of where it is stamped.
+      - name: fault
+        type: enum
+        description: What was done to the ping; missing where nothing was.
+        values:
+          spike: one position moved 0.2-100 km
+          run: 3-8 positions in a row moved together, 0.2-100 km
+          detour: one position moved aside, both its legs under 25 kn, turning back under 60 degrees
+          lon_eq_lat: the latitude written into the longitude
+          shifted_copy: 6-12 positions of the same vessel from 12-72 h away, stamped between this stretch's pings
+          clock_offset: 6-12 pings again, from a second feed whose clock runs 10-90 s late
+          summer_time: 6-12 pings again, from a second feed stamped an hour late
+          near_copy: a ping again in its own feed, a second later and 1-5 m away (not wrong)
+          tie: a second feed at the same second, 0.2-2 km away; the first ping carries the fault too, not wrong
+          fast: a stretch truly run at 30-40 kn (not wrong)
+      - name: fault_id
+        type: number(id)
+        description: The planted fault, within its track.
+        examples: [1, 9, 18, 27, 36]
+      - name: wrong
+        type: boolean
+        description: TRUE where the ping's position or time is not the vessel's, the pings step 0 should take out.
+      - name: planted_m
+        type: number(quantity)
+        units: metres
+        description: For a ping with a fault, how far it is from where the vessel was at its time.
+        range: [0, 3159654.118]
+      - name: planted_s
+        type: number(quantity)
+        units: seconds
+        description: For a copy, how far its time is from the time of the ping it copies.
+        range: [-254753, 256730]
 
   - name: benthis_parameters
     label: BENTHIS gear groups, gear width and seabed contact

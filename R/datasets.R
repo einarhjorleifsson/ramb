@@ -20,6 +20,9 @@ NULL
 #' @eval .rb_dataset_rd("whacks1")
 NULL
 
+#' @eval .rb_dataset_rd("dansk_planted")
+NULL
+
 #' @eval .rb_dataset_rd("benthis_parameters")
 NULL
 

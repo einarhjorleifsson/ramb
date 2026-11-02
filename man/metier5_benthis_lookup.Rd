@@ -35,6 +35,7 @@ Other example data:
 \code{\link{creel}},
 \code{\link{dansk}},
 \code{\link{dansk_harbours}},
+\code{\link{dansk_planted}},
 \code{\link{ird_mg_gillnet}},
 \code{\link{trawlsurvey}},
 \code{\link{trawlsurveytows}},

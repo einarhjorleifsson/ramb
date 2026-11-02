@@ -1,3 +1,12 @@
+# ramb 2026.11.02.3
+
+- `rb_read_example("dansk_planted")` (new example data): dansk's 14 tracks made clean, thinned to a ping every 10 s,
+  1 min, 6 min and 1 h, with nine kinds of fault planted (a spike, a run, an out-and-back under 25 kn, lon = lat, a
+  copy of another day's positions stamped in, a second feed 10-90 s late, a second feed an hour late, a near copy a
+  second later, a second feed at the same second elsewhere) and a stretch truly run at 30-40 kn. Each ping says what
+  was done to it and whether it is wrong, so that step 0's flaggers can be scored against the truth, by fault, rate,
+  gear and fishing (fishycode plan 062, step 2). Made by `data-raw/planted_faults.R`, with a fixed seed.
+
 # ramb 2026.11.02.2
 
 - `rb_add_ping_own_lag(method = "receipt", mass_share = 0.5)` (new argument): a receipt hour in which half or more
