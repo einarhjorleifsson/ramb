@@ -258,6 +258,12 @@ FROM x LEFT JOIN r ON {.rb_clock_on('x', 'r', keys)}"
 #'   most `max_gap_s` away), by the recorded speed and course of the two: `e = (along - v dt) / v`, how far ahead (+)
 #'   or behind (-) of its time the ping lies from each side. A ping `L` s late leaves the pair (`-L`, `+L`); each pair
 #'   gives `(e_next - e_prev) / 2`.
+#' * `"track"` (a sparse stream with no reliable speed, fishycode plan 060): each of the stream's pings placed on the
+#'   vessel's moving reference track by the shift that brings it nearest: projected onto every reference segment (two
+#'   consecutive reference pings at most `max_gap_s` apart, moving within `kn` by their positions) that starts within
+#'   `search_s` of it. A ping counts where the reference moves at its own stamp and the best shift puts it within
+#'   `max_dist_m` of the track; its lag is minus the shift. Needs no recorded speed or course, and finds lags up to
+#'   `search_s`: on Iceland's VMS, clocks an hour off that the other methods could not measure.
 #'
 #' A unit's lag is the median over its pairs, and every unit (vessel, stream, period) lands in one outcome:
 #' `"reference"`; `"one stream"` (nothing to compare: the vessel has one stream in the period); `"no reference"`;
@@ -268,30 +274,33 @@ FROM x LEFT JOIN r ON {.rb_clock_on('x', 'r', keys)}"
 #' the lags are relative to it, not to true UTC. Where a stream holds two pings of a vessel at one time, the first by
 #' `lon`, `lat` is taken as its position then, as the ping flags break ties.
 #'
-#' @param x A data frame or a lazy DuckDB table with `vid`, `time`, `lon`, `lat`, the stream column and the recorded
-#'   `speed` (knots); `"residual"` also needs the recorded `course` (degrees).
+#' @param x A data frame or a lazy DuckDB table with `vid`, `time`, `lon`, `lat`, the stream column and, but for
+#'   `"track"`, the recorded `speed` (knots); `"residual"` also needs the recorded `course` (degrees).
 #' @param reference The reference stream, a value of the stream column.
-#' @param method `"interpolate"` or `"residual"`.
+#' @param method `"interpolate"`, `"residual"` or `"track"`.
 #' @param stream The stream column ([rb_add_ping_stream()]).
 #' @param period The unit of a lag: `"day"`, `"week"`, `"month"`, `"quarter"`, `"year"`, or `NULL` for one.
 #' @param kn The moving vessel's speed range, knots.
 #' @param max_dkn For `"interpolate"`: the stream's segment speed within this of the reference's, knots.
 #' @param max_gap_s For `"interpolate"`, the longest segment of the stream; for `"residual"`, the longest interval to
-#'   a reference ping, seconds.
+#'   a reference ping; for `"track"`, the longest reference segment (default 1800), seconds.
 #' @param min_pairs,lag_min_s,better The outcome's rule (above).
 #' @param vid,time,lon,lat,speed,course The columns, if named otherwise.
+#' @param search_s,max_dist_m For `"track"`: how far in time a reference segment may start from the ping, seconds;
+#'   how close the best shift must bring it, metres.
 #'
 #' @return One row per vessel, stream and period, in the class of `x`: `reference`, `vid`, the stream column,
 #'   `period` (the period's first day), `pings`, `pairs`, `lag_s` (the median; positive: the stream's time is later
 #'   than the reference's for the same position), `lag_q10_s`, `lag_q90_s`, `along_m` (the median offset along the
-#'   track at no lag), `across_m` (the median absolute offset across it; `NA` for `"residual"`), `dist_zero_m` and
+#'   track at no lag), `across_m` (the median absolute offset across it; `NA` for `"residual"`; for `"track"`, the
+#'   distance from the track at the ping's best shift), `dist_zero_m` and
 #'   `dist_lag_m` (the median distance at no lag and at the lag), `outcome`. A lazy table for lazy input.
 #' @family ping clocks
 #' @export
 rb_create_ping_lags <- function(
   x,
   reference,
-  method = c("interpolate", "residual"),
+  method = c("interpolate", "residual", "track"),
   stream = stream,
   period = "month",
   kn = c(2, 25),
@@ -305,7 +314,9 @@ rb_create_ping_lags <- function(
   lon = lon,
   lat = lat,
   speed = speed,
-  course = course
+  course = course,
+  search_s = 7200,
+  max_dist_m = 300
 ) {
   method <- match.arg(method)
   .rb_check_input(
@@ -319,7 +330,7 @@ rb_create_ping_lags <- function(
       stream = rlang::as_name(rlang::enquo(stream))
     ),
     also = c(
-      speed = rlang::as_name(rlang::enquo(speed)),
+      if (method != "track") c(speed = rlang::as_name(rlang::enquo(speed))),
       if (method == "residual") c(course = rlang::as_name(rlang::enquo(course)))
     ),
     types = c(
@@ -328,6 +339,14 @@ rb_create_ping_lags <- function(
       lat = "numeric",
       speed = "numeric"
     )
+  )
+  stopifnot(
+    is.numeric(search_s),
+    length(search_s) == 1,
+    search_s > 0,
+    is.numeric(max_dist_m),
+    length(max_dist_m) == 1,
+    max_dist_m > 0
   )
   if (
     missing(reference) ||
@@ -341,16 +360,18 @@ rb_create_ping_lags <- function(
   .rb_clock_check_period(period)
   .rb_clock_check_kn(kn)
   if (is.null(max_gap_s)) {
-    max_gap_s <- if (method == "interpolate") 900 else 60
+    max_gap_s <- switch(method, interpolate = 900, residual = 60, track = 1800)
   }
   map <- .rb_cols(
     vid = {{ vid }},
     time = {{ time }},
     lon = {{ lon }},
     lat = {{ lat }},
-    stream = {{ stream }},
-    speed = {{ speed }}
+    stream = {{ stream }}
   )
+  if (method != "track") {
+    map <- c(map, .rb_cols(speed = {{ speed }}))
+  }
   if (method == "residual") {
     map <- c(map, .rb_cols(course = {{ course }}))
   }
@@ -364,8 +385,49 @@ rb_create_ping_lags <- function(
   MS <- sprintf("%.17e", .rb_clock_ms)
   lo <- kn[1]
   hi <- kn[2]
-  crs <- if (method == "residual") ", course" else ""
-  pairs <- if (method == "interpolate") {
+  crs <- switch(method, residual = ", speed, course", track = "", ", speed")
+  pairs <- if (method == "track") {
+    # the study's scan ($FISHYDATA/archive/2026-11-01-vms-clock-scan/scripts/01_scan.R), on ramb's sphere: the
+    # reference cut into moving segments; each ping projected onto every segment of its vessel that starts within
+    # search_s (buckets of search_s, so the join is on vessel and bucket), the nearest kept; the segment covering the
+    # ping's own stamp gives the distance at no shift and the speed there
+    .rb_fill(
+      "
+rk AS (SELECT vid, time, lon, lat FROM p WHERE stream = {ref}
+       QUALIFY row_number() OVER (PARTITION BY vid, time ORDER BY lon, lat) = 1),
+sg AS (SELECT vid, time AS t0, lead(time) OVER o AS t1, lon AS lon0, lat AS lat0, lead(lon) OVER o AS lon1,
+              lead(lat) OVER o AS lat1
+       FROM rk WINDOW o AS (PARTITION BY vid ORDER BY time)),
+seg AS (SELECT vid, t0, t1, lon0, lat0, lon1, lat1, epoch(t1) - epoch(t0) AS dt,
+               sqrt(pow((lon1 - lon0) * cos(radians(lat0)) * {M}, 2) + pow((lat1 - lat0) * {M}, 2)) / (epoch(t1) - epoch(t0)) AS v_ms,
+               CAST(floor(epoch(t0) / {search_s}) AS BIGINT) AS b
+        FROM sg WHERE t1 IS NOT NULL AND epoch(t1) - epoch(t0) > 0 AND epoch(t1) - epoch(t0) <= {max_gap_s}),
+sv AS (SELECT row_number() OVER () AS rb_i, * FROM (
+         SELECT DISTINCT vid, stream, period, time, lon, lat FROM p WHERE stream <> {ref}
+         QUALIFY row_number() OVER (PARTITION BY vid, stream, time ORDER BY lon, lat) = 1)),
+cand AS (
+  SELECT v.rb_i, epoch(s.t0) - epoch(v.time) AS s0, s.dt,
+         (s.lon0 - v.lon) * cos(radians(v.lat)) * {M} AS ax, (s.lat0 - v.lat) * {M} AS ay,
+         (s.lon1 - s.lon0) * cos(radians(v.lat)) * {M} AS ex, (s.lat1 - s.lat0) * {M} AS ey
+  FROM (SELECT sv.*, CAST(floor(epoch(time) / {search_s}) AS BIGINT) + k AS b FROM sv, range(-1, 2) r(k)) v
+  JOIN seg s ON s.vid = v.vid AND s.b = v.b
+  WHERE s.v_ms BETWEEN {lo} * {MS} AND {hi} * {MS} AND abs(epoch(s.t0) - epoch(v.time)) <= {search_s}),
+cu AS (SELECT rb_i, s0, dt, ax, ay, ex, ey,
+              CASE WHEN ex * ex + ey * ey > 0 THEN least(1, greatest(0, -(ax * ex + ay * ey) / (ex * ex + ey * ey))) END AS u
+       FROM cand),
+best AS (SELECT rb_i, arg_min(s0 + u * dt, sqrt(pow(ax + u * ex, 2) + pow(ay + u * ey, 2))) AS shift,
+                min(sqrt(pow(ax + u * ex, 2) + pow(ay + u * ey, 2))) AS d_best
+         FROM cu WHERE u IS NOT NULL GROUP BY rb_i),
+own AS (SELECT sv.rb_i, s.v_ms AS v0,
+               sqrt(pow((s.lon0 + (s.lon1 - s.lon0) * (epoch(sv.time) - epoch(s.t0)) / s.dt - sv.lon) * cos(radians(sv.lat)) * {M}, 2) +
+                    pow((s.lat0 + (s.lat1 - s.lat0) * (epoch(sv.time) - epoch(s.t0)) / s.dt - sv.lat) * {M}, 2)) AS d0
+        FROM sv ASOF JOIN seg s ON sv.vid = s.vid AND sv.time >= s.t0 WHERE sv.time <= s.t1),
+pr AS (SELECT sv.vid, sv.stream, sv.period, o.v0 AS v_ms, b.shift * o.v0 AS along, b.d_best AS across,
+              -b.shift AS lag_i, o.d0
+       FROM sv JOIN best b USING (rb_i) JOIN own o USING (rb_i)
+       WHERE o.v0 BETWEEN {lo} * {MS} AND {hi} * {MS} AND b.d_best <= {max_dist_m}),"
+    )
+  } else if (method == "interpolate") {
     .rb_fill(
       "
 r AS (SELECT vid, time, lon, lat, speed, period FROM p WHERE stream = {ref} AND speed BETWEEN {lo} AND {hi}),
@@ -407,7 +469,7 @@ pr AS (SELECT vid, stream, period, rb_v AS v_ms, -(e_next - e_prev) / 2 * rb_v A
   sql <- .rb_fill(
     "
 WITH p AS (
-  SELECT vid, time, lon, lat, speed{crs}, stream, {per} AS period FROM ({.rb_sql(p)})
+  SELECT vid, time, lon, lat{crs}, stream, {per} AS period FROM ({.rb_sql(p)})
   WHERE vid IS NOT NULL AND time IS NOT NULL AND lon IS NOT NULL AND lat IS NOT NULL AND stream IS NOT NULL),
 {pairs}
 u AS (SELECT vid, stream, period, count(*) AS pairs, median(lag_i) AS lag_s,

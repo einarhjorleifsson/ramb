@@ -7,7 +7,7 @@
 rb_create_ping_lags(
   x,
   reference,
-  method = c("interpolate", "residual"),
+  method = c("interpolate", "residual", "track"),
   stream = stream,
   period = "month",
   kn = c(2, 25),
@@ -21,16 +21,18 @@ rb_create_ping_lags(
   lon = lon,
   lat = lat,
   speed = speed,
-  course = course
+  course = course,
+  search_s = 7200,
+  max_dist_m = 300
 )
 }
 \arguments{
-\item{x}{A data frame or a lazy DuckDB table with \code{vid}, \code{time}, \code{lon}, \code{lat}, the stream column and the recorded
-\code{speed} (knots); \code{"residual"} also needs the recorded \code{course} (degrees).}
+\item{x}{A data frame or a lazy DuckDB table with \code{vid}, \code{time}, \code{lon}, \code{lat}, the stream column and, but for
+\code{"track"}, the recorded \code{speed} (knots); \code{"residual"} also needs the recorded \code{course} (degrees).}
 
 \item{reference}{The reference stream, a value of the stream column.}
 
-\item{method}{\code{"interpolate"} or \code{"residual"}.}
+\item{method}{\code{"interpolate"}, \code{"residual"} or \code{"track"}.}
 
 \item{stream}{The stream column (\code{\link[=rb_add_ping_stream]{rb_add_ping_stream()}}).}
 
@@ -41,17 +43,21 @@ rb_create_ping_lags(
 \item{max_dkn}{For \code{"interpolate"}: the stream's segment speed within this of the reference's, knots.}
 
 \item{max_gap_s}{For \code{"interpolate"}, the longest segment of the stream; for \code{"residual"}, the longest interval to
-a reference ping, seconds.}
+a reference ping; for \code{"track"}, the longest reference segment (default 1800), seconds.}
 
 \item{min_pairs, lag_min_s, better}{The outcome's rule (above).}
 
 \item{vid, time, lon, lat, speed, course}{The columns, if named otherwise.}
+
+\item{search_s, max_dist_m}{For \code{"track"}: how far in time a reference segment may start from the ping, seconds;
+how close the best shift must bring it, metres.}
 }
 \value{
 One row per vessel, stream and period, in the class of \code{x}: \code{reference}, \code{vid}, the stream column,
 \code{period} (the period's first day), \code{pings}, \code{pairs}, \code{lag_s} (the median; positive: the stream's time is later
 than the reference's for the same position), \code{lag_q10_s}, \code{lag_q90_s}, \code{along_m} (the median offset along the
-track at no lag), \code{across_m} (the median absolute offset across it; \code{NA} for \code{"residual"}), \code{dist_zero_m} and
+track at no lag), \code{across_m} (the median absolute offset across it; \code{NA} for \code{"residual"}; for \code{"track"}, the
+distance from the track at the ping's best shift), \code{dist_zero_m} and
 \code{dist_lag_m} (the median distance at no lag and at the lag), \code{outcome}. A lazy table for lazy input.
 }
 \description{
@@ -69,6 +75,12 @@ other stream's position at the same reported time, interpolated between its two 
 most \code{max_gap_s} away), by the recorded speed and course of the two: \verb{e = (along - v dt) / v}, how far ahead (+)
 or behind (-) of its time the ping lies from each side. A ping \code{L} s late leaves the pair (\code{-L}, \code{+L}); each pair
 gives \code{(e_next - e_prev) / 2}.
+\item \code{"track"} (a sparse stream with no reliable speed, fishycode plan 060): each of the stream's pings placed on the
+vessel's moving reference track by the shift that brings it nearest: projected onto every reference segment (two
+consecutive reference pings at most \code{max_gap_s} apart, moving within \code{kn} by their positions) that starts within
+\code{search_s} of it. A ping counts where the reference moves at its own stamp and the best shift puts it within
+\code{max_dist_m} of the track; its lag is minus the shift. Needs no recorded speed or course, and finds lags up to
+\code{search_s}: on Iceland's VMS, clocks an hour off that the other methods could not measure.
 }
 
 A unit's lag is the median over its pairs, and every unit (vessel, stream, period) lands in one outcome:

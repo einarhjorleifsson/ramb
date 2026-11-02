@@ -146,6 +146,64 @@ test_that("rb_create_ping_lags() finds a known lag, and every unit lands in one 
   )
 })
 
+test_that("rb_create_ping_lags(method = \"track\") places a sparse stream on the reference's track", {
+  d <- clock_faults()
+  l <- rb_create_ping_lags(
+    d,
+    reference = "ais",
+    method = "track",
+    period = "week",
+    min_pairs = 10
+  )
+  v <- l[l$stream == "vms", ]
+  # each week's lag is the median of its pings' true lags, here exactly: a straight track at a steady speed
+  tr <- d[d$stream == "vms", ]
+  tr$period <- as.Date(lubridate::floor_date(tr$time, "week", week_start = 1))
+  tr <- stats::aggregate(lag_true_s ~ vid + period, tr, stats::median)
+  m <- merge(v, tr, by = c("vid", "period"))
+  expect_equal(nrow(m), nrow(v))
+  expect_lt(max(abs(m$lag_s - m$lag_true_s)), 1e-6)
+  # the on-time units aligned, the drifting and the fast clock offset; no recorded speed is needed
+  expect_true(all(m$outcome[m$vid %in% c(1:4, 7)] == "aligned"))
+  expect_true(all(m$outcome[m$vid %in% 5:6] == "offset"))
+  expect_true(all(l$outcome[l$stream == "ais"] == "reference"))
+  s <- rb_create_ping_lags(
+    d[names(d) != "speed"],
+    reference = "ais",
+    method = "track",
+    period = "week",
+    min_pairs = 10
+  )
+  expect_equal(s$lag_s, l$lag_s)
+  # a lag beyond the search is not found: the pings find no segment near enough
+  far <- d
+  far$time[far$vid == 6 & far$stream == "vms"] <- far$time[
+    far$vid == 6 & far$stream == "vms"
+  ] +
+    3 * 3600
+  f <- rb_create_ping_lags(
+    far,
+    reference = "ais",
+    method = "track",
+    period = "week",
+    min_pairs = 10
+  )
+  expect_true(all(
+    f$outcome[f$vid == 6 & f$stream == "vms"] %in%
+      c("not measurable", "unclear")
+  ))
+  # lazy, the same table
+  ll <- dplyr::collect(rb_create_ping_lags(
+    as_lazy(d),
+    reference = "ais",
+    method = "track",
+    period = "week",
+    min_pairs = 10
+  ))
+  ll <- ll[order(ll$vid, ll$stream, ll$period), ]
+  expect_equal(as.data.frame(ll), as.data.frame(l), ignore_attr = TRUE)
+})
+
 test_that("rb_add_ping_own_lag() finds a copy of a reference report, and a displaced ping", {
   d <- clock_track(lag = 0, n_a = 30)
   d <- d[d$stream == "a", ]
