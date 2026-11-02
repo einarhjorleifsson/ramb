@@ -363,6 +363,54 @@ test_that("rb_add_ping_own_lag() reads a unit's clock from its receipt, and tell
   )
 })
 
+test_that("step 0's order is guarded: clocks before the flags, streams compared once harmonized", {
+  d <- clock_faults()
+  # a clock measured on flagged pings
+  f <- d
+  f$ping_flag <- NA_character_
+  expect_warning(
+    rb_create_ping_lags(
+      f,
+      reference = "ais",
+      method = "track",
+      period = "week",
+      min_pairs = 10
+    ),
+    class = "ramb_after_clean"
+  )
+  expect_warning(
+    rb_add_ping_own_lag(f[f$stream == "vms", ], method = "receipt", unit = mid),
+    class = "ramb_after_clean"
+  )
+  # two streams compared before harmonizing, and not once harmonized
+  x <- d[d$vid == 1, c("vid", "time", "lon", "lat", "stream")]
+  expect_warning(
+    rb_flag_ping_duplicate(x, priority = "ais", feed = stream),
+    class = "ramb_unharmonised"
+  )
+  expect_warning(rb_flag_ping_impossible(x), class = "ramb_unharmonised")
+  expect_warning(
+    rb_flag_ping_impossible(as_lazy(x)),
+    class = "ramb_unharmonised"
+  )
+  h <- rb_add_ping_time(rb_add_ping_own_lag(
+    d[d$vid == 1, ],
+    method = "receipt",
+    unit = mid
+  ))
+  expect_no_warning(rb_flag_ping_impossible(h[c(
+    "vid",
+    "time",
+    "lon",
+    "lat",
+    "stream",
+    "lag_basis"
+  )]))
+  # one stream, or no stream column: nothing to say
+  expect_no_warning(rb_flag_ping_impossible(x[x$stream == "ais", ]))
+  expect_no_warning(rb_flag_ping_impossible(x[names(x) != "stream"]))
+})
+
 test_that("rb_add_ping_time() harmonizes by the first lag that applies, and moves no unmeasured ping", {
   t0 <- as.POSIXct("2024-03-10", tz = "UTC")
   x <- data.frame(

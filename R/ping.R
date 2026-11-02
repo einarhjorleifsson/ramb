@@ -124,9 +124,14 @@
 #'
 #' @param x A data frame or a lazy DuckDB table with `lon` and `lat`.
 #' @param rules Which tests to apply: `"lon_eq_lat"` (longitude equal to latitude, which also catches
-#'   0, 0; a feed that wrote the latitude into the longitude) and `"out_of_range"` (|lon| > 180 or
-#'   |lat| > 90).
+#'   0, 0; a feed that wrote the latitude into the longitude), `"out_of_range"` (|lon| > 180 or
+#'   |lat| > 90), and, not by default, `"after_receipt"`: a ping cannot be received before it is made, so one
+#'   stamped more than `ahead_s` after its `receipt` comes from a clock that runs fast, flagged `"after receipt"`
+#'   (fishycode plan 060 §8; Iceland's STK holds 266 thousand pings of 2009 stamped over a minute after their
+#'   receipt). A clock a second or two fast is common and harmless.
 #' @param lon,lat The position columns, if not named `lon` and `lat`.
+#' @param time,receipt For `"after_receipt"`: the ping's time and the time it was received (date-times).
+#' @param ahead_s For `"after_receipt"`: seconds after the receipt that are tolerated.
 #'
 #' @return `x` with `ping_flag` added or updated: the same type, the same rows.
 #' @family flag pings
@@ -139,8 +144,17 @@ rb_flag_ping_invalid <- function(
   x,
   rules = c("lon_eq_lat", "out_of_range"),
   lon = lon,
-  lat = lat
+  lat = lat,
+  time = time,
+  receipt = receipt,
+  ahead_s = 60
 ) {
+  rules <- match.arg(
+    rules,
+    c("lon_eq_lat", "out_of_range", "after_receipt"),
+    several.ok = TRUE
+  )
+  aft <- "after_receipt" %in% rules
   .rb_check_input(
     x,
     "rb_flag_ping_invalid",
@@ -148,22 +162,49 @@ rb_flag_ping_invalid <- function(
       lon = rlang::as_name(rlang::enquo(lon)),
       lat = rlang::as_name(rlang::enquo(lat))
     ),
-    types = c(lon = "numeric", lat = "numeric")
+    also = if (aft) {
+      c(
+        time = rlang::as_name(rlang::enquo(time)),
+        receipt = rlang::as_name(rlang::enquo(receipt))
+      )
+    } else {
+      character(0)
+    },
+    types = c(
+      lon = "numeric",
+      lat = "numeric",
+      if (aft) c(time = "time", receipt = "time")
+    )
   )
-  rules <- match.arg(rules, several.ok = TRUE)
+  stopifnot(is.numeric(ahead_s), length(ahead_s) == 1, ahead_s >= 0)
   map <- .rb_cols(lon = {{ lon }}, lat = {{ lat }})
+  if (aft) {
+    map <- c(map, .rb_cols(time = {{ time }}, receipt = {{ receipt }}))
+  }
   x <- .rb_flag_init(.rb_std_in(x, map))
   eq <- "lon_eq_lat" %in% rules
   oor <- "out_of_range" %in% rules
+  # seconds after the receipt, in each engine's own arithmetic
+  if (aft) {
+    x <- if (inherits(x, "tbl_lazy")) {
+      dplyr::mutate(x, .rb_after = dplyr::sql("epoch(time) - epoch(receipt)"))
+    } else {
+      dplyr::mutate(x, .rb_after = as.numeric(time) - as.numeric(receipt))
+    }
+  } else {
+    x <- dplyr::mutate(x, .rb_after = NA_real_)
+  }
   x <- dplyr::mutate(
     x,
     ping_flag = dplyr::case_when(
       !is.na(ping_flag) ~ ping_flag,
       !!eq & lon == lat ~ "invalid",
       !!oor & (abs(lon) > 180 | abs(lat) > 90) ~ "invalid",
+      !!aft & !is.na(.rb_after) & .rb_after > !!ahead_s ~ "after receipt",
       TRUE ~ NA_character_
     )
   )
+  x <- dplyr::select(x, -".rb_after")
   .rb_std_out(x, map)
 }
 
@@ -211,6 +252,7 @@ rb_flag_ping_duplicate <- function(
     also = c(feed = rlang::as_name(rlang::enquo(feed))),
     types = c(time = "time", lon = "numeric", lat = "numeric")
   )
+  .rb_warn_unharmonised(x, "rb_flag_ping_duplicate")
   if (missing(priority)) {
     stop(
       "`priority` is required: the feeds, highest priority first.",
@@ -361,6 +403,7 @@ rb_flag_ping_impossible <- function(
     also = if (has_feed) c(feed = rlang::as_name(feed_quo)) else character(0),
     types = c(time = "time", lon = "numeric", lat = "numeric")
   )
+  .rb_warn_unharmonised(x, "rb_flag_ping_impossible")
   method <- match.arg(method)
   if (has_feed && !method %in% c("clean", "sda", "forward")) {
     stop(

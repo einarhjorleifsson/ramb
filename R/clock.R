@@ -83,6 +83,51 @@
 .rb_clock_strings <- function(con, x) {
   paste(as.character(DBI::dbQuoteString(con, x)), collapse = ", ")
 }
+# The order of step 0, as guards (fishycode plan 060 §8 item 3). A clock is measured before the pings are flagged: the
+# impossible-position filter removes the pings of a clock that is off, and the few it keeps look on time (fishycode
+# decision 271's first look at one VMS unit). And pings of two streams are compared only once their clocks are
+# harmonized (lag_basis): a lag between them reads as distance. Each warns, with its class, and goes on.
+.rb_warn_after_clean <- function(x, fn) {
+  if ("ping_flag" %in% colnames(x)) {
+    rlang::warn(
+      c(
+        sprintf(
+          "`x` carries `ping_flag`: %s() measures the clocks of pings already flagged.",
+          fn
+        ),
+        i = "Measure the clocks before the flags (step 0): a clock that is off has its pings removed as impossible, and the few kept look on time."
+      ),
+      class = "ramb_after_clean"
+    )
+  }
+  invisible(x)
+}
+.rb_warn_unharmonised <- function(x, fn) {
+  cn <- colnames(x)
+  if (!"stream" %in% cn || "lag_basis" %in% cn) {
+    return(invisible(x))
+  }
+  n <- if (inherits(x, "tbl_lazy")) {
+    dplyr::pull(dplyr::summarise(x, n = dplyr::n_distinct(.data$stream)), "n")
+  } else {
+    length(unique(stats::na.omit(x$stream)))
+  }
+  if (n >= 2) {
+    rlang::warn(
+      c(
+        sprintf(
+          "`x` holds %d streams whose clocks are not harmonized, and %s() compares pings across them.",
+          n,
+          fn
+        ),
+        i = "Harmonize them first (step 0): rb_create_ping_lags(), rb_add_ping_own_lag(), rb_add_ping_time(); a lag between two clocks reads as distance."
+      ),
+      class = "ramb_unharmonised"
+    )
+  }
+  invisible(x)
+}
+
 # The join back from a table of distinct keys to every ping, NULL-safe.
 .rb_clock_on <- function(a, b, cols) {
   paste(
@@ -340,6 +385,7 @@ rb_create_ping_lags <- function(
       speed = "numeric"
     )
   )
+  .rb_warn_after_clean(x, "rb_create_ping_lags")
   stopifnot(
     is.numeric(search_s),
     length(search_s) == 1,
@@ -706,6 +752,7 @@ rb_add_ping_own_lag <- function(
     ),
     fresh = TRUE
   )
+  .rb_warn_after_clean(x, "rb_add_ping_own_lag")
   if (rcp) {
     .rb_clock_check_period(period)
     stopifnot(

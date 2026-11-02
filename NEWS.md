@@ -1,3 +1,34 @@
+# ramb 2026.11.02
+
+## A unit's clock from its receipt time, and a sparse stream on the reference's track (fishycode plan 060)
+
+Some of Iceland's VMS units stamp their reports from a clock that drifts 15-25 s a day and is set right now and then,
+up to two hours off. Their monitoring centre keeps two times for each report: the unit's own and its receipt. Step 0
+reads the clock from them, and checks it against the vessel's AIS track.
+
+- `rb_add_ping_own_lag(method = "receipt")` (new method): a ping's lag from the gap between its receipt and its own
+  time. A unit's level is a low quantile of its gaps within a day, late deliveries (`backlog_s`) left out; the stream's
+  usual level is the median over its units. Only where the level departs from the usual by more than `depart_s` over
+  the day and over the week around is the clock off, and the lag is the stream's usual lag (`lag_usual`) less the
+  departure; elsewhere the usual lag. A ping stamped at its receipt takes `lag_at_receipt`. New arguments `receipt`,
+  `unit`, `level_window_s`, `level_prob`, `backlog_s`, `depart_s`, `lag_usual`, `lag_at_receipt` and `period`, at the
+  end; `speed` is needed only by `"copy"` and `"residual"`. On Iceland's VMS, 2007-2026, against the AIS tracks: 93 %
+  of the pings of units an hour off within 3 min of the track (1 % left alone), 93 % of those on time (92 %).
+- `rb_create_ping_lags(method = "track")` (new method): each ping of a sparse stream placed on the vessel's moving
+  reference track by the shift that brings it nearest, within `search_s`; no recorded speed or course needed. New
+  arguments `search_s` and `max_dist_m`, at the end.
+- `rb_add_ping_time()` takes the basis `"receipt"`. Its help says that a lag can carry a ping into another period
+  (partition and join on the harmonized time), and the order of the pings before and after it.
+- Step 0's order is guarded, with a warning that goes on: a clock measured on pings that carry `ping_flag`
+  (`rb_create_ping_lags()`, `rb_add_ping_own_lag()`; class `ramb_after_clean`), and pings of two or more streams
+  compared before their clocks are harmonized (a `stream` column and no `lag_basis`: `rb_flag_ping_duplicate()`,
+  `rb_flag_ping_impossible()`; class `ramb_unharmonised`).
+- `rb_flag_ping_invalid(rules = "after_receipt")`, not by default: a ping stamped more than `ahead_s` (60 s) after its
+  `receipt` comes from a clock that runs fast, and is flagged `"after receipt"`. New arguments `time`, `receipt` and
+  `ahead_s`; the defaults flag as before.
+- The tests carry a track with known clock faults (a drifting clock set right, a fast clock, a slow day of delivery, a
+  backlog), `tests/testthat/helper-clock-faults.R`.
+
 # ramb 2026.11.01.2
 
 ## Impossible positions in a merged track: a noise floor between feeds and the evidence of a flag (fishycode TODO 88, plan 059 step 6)

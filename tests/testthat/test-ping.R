@@ -190,7 +190,12 @@ test_that("the port tag: data frame = lazy table, one row per ping, the smaller 
   # two polygons of one area hold a ping: the lower port_id; a position shared by pings, and a missing one
   h2 <- sf::st_sf(
     port_id = c("b2", "a2", "small"),
-    geometry = sf::st_sfc(sq(0, 0, 1), sq(0, 0, 1), sq(0.2, 0.2, 0.1), crs = 4326)
+    geometry = sf::st_sfc(
+      sq(0, 0, 1),
+      sq(0, 0, 1),
+      sq(0.2, 0.2, 0.1),
+      crs = 4326
+    )
   )
   d2 <- data.frame(
     k = 1:5,
@@ -472,4 +477,36 @@ test_that("a lazy DuckDB table gives the same flags and evidence as a data frame
       info = paste(names(args), collapse = " ")
     )
   }
+})
+
+test_that("rb_flag_ping_invalid() flags a ping stamped after its receipt, only when asked", {
+  t0 <- as.POSIXct("2024-03-01", tz = "UTC")
+  d <- data.frame(
+    lon = c(-20, -20.1, -20.2, -20.3, 64.1),
+    lat = c(64, 64, 64, 64, 64.1),
+    time = t0 + c(0, 600, 1200, 1800, 2400),
+    receipt = t0 + c(90, 598, 1100, 1800, NA)
+  )
+  # by default as before: no receipt needed, none flagged for it
+  expect_equal(rb_flag_ping_invalid(d)$ping_flag, c(NA, NA, NA, NA, "invalid"))
+  expect_equal(
+    rb_flag_ping_invalid(d[names(d) != "receipt"])$ping_flag,
+    c(NA, NA, NA, NA, "invalid")
+  )
+  # 2 s after its receipt is tolerated, 100 s is not; a ping with no receipt is not judged; an earlier flag stays
+  a <- rb_flag_ping_invalid(d, rules = c("lon_eq_lat", "after_receipt"))
+  expect_equal(a$ping_flag, c(NA, NA, "after receipt", NA, "invalid"))
+  expect_equal(
+    rb_flag_ping_invalid(d, rules = "after_receipt", ahead_s = 120)$ping_flag,
+    rep(NA_character_, 5)
+  )
+  l <- dplyr::collect(rb_flag_ping_invalid(
+    as_lazy(d),
+    rules = c("lon_eq_lat", "after_receipt")
+  ))
+  expect_equal(l$ping_flag[order(l$time)], a$ping_flag)
+  expect_error(
+    rb_flag_ping_invalid(d[names(d) != "receipt"], rules = "after_receipt"),
+    "receipt"
+  )
 })

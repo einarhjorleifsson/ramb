@@ -8,17 +8,27 @@ rb_flag_ping_invalid(
   x,
   rules = c("lon_eq_lat", "out_of_range"),
   lon = lon,
-  lat = lat
+  lat = lat,
+  time = time,
+  receipt = receipt,
+  ahead_s = 60
 )
 }
 \arguments{
 \item{x}{A data frame or a lazy DuckDB table with \code{lon} and \code{lat}.}
 
 \item{rules}{Which tests to apply: \code{"lon_eq_lat"} (longitude equal to latitude, which also catches
-0, 0; a feed that wrote the latitude into the longitude) and \code{"out_of_range"} (|lon| > 180 or
-|lat| > 90).}
+0, 0; a feed that wrote the latitude into the longitude), \code{"out_of_range"} (|lon| > 180 or
+|lat| > 90), and, not by default, \code{"after_receipt"}: a ping cannot be received before it is made, so one
+stamped more than \code{ahead_s} after its \code{receipt} comes from a clock that runs fast, flagged \code{"after receipt"}
+(fishycode plan 060 §8; Iceland's STK holds 266 thousand pings of 2009 stamped over a minute after their
+receipt). A clock a second or two fast is common and harmless.}
 
 \item{lon, lat}{The position columns, if not named \code{lon} and \code{lat}.}
+
+\item{time, receipt}{For \code{"after_receipt"}: the ping's time and the time it was received (date-times).}
+
+\item{ahead_s}{For \code{"after_receipt"}: seconds after the receipt that are tolerated.}
 }
 \value{
 \code{x} with \code{ping_flag} added or updated: the same type, the same rows.
