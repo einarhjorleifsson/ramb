@@ -1,3 +1,11 @@
+# ramb 2026.11.03.6
+
+- A contour layer's levels from the view (`contours$fit`, as a colour's, returning the values' quantiles in view;
+  `contours$auto`, on by default): about a dozen lines at round values near the view's quantiles, so they fall where
+  the area is, made at a step of 1, 2 or 5 times a power of ten that makes some 40 of the view's range, and fitted
+  again each time the map settles; unticked, the layer's thresholds and its style's filters. `<id>_auto` in the
+  address. First used by fishycode's bathymetry map (plan 063, point 8(b)).
+
 # ramb 2026.11.03.5
 
 - A dem layer's colours in equal shares (`colour$scale = "equal"`, offered where the layer has a `fit`): the fit may

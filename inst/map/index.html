@@ -122,7 +122,8 @@ const ENGINE_TEXTS = {
   cScale: "Scale", cLog: "log", cLinear: "linear", cMode: "Colours as", cRamp: "a ramp", cBands: "bands",
   cCut: "Shallower than", cNone: "none", cCutAs: "drawn", cClear: "clear", cGrey: "grey",
   cFitTip: "Floor and cap at the 2nd and 98th percentiles of the values in view", cFitNone: "no values in view to fit to",
-  cEqual: "equal shares", cAuto: "follow the view", cAutoTip: "Fit the floor and cap to the view each time it settles; setting either by hand stops it",
+  cEqual: "equal shares", cAuto: "follow the view", kAuto: "levels from the view",
+  kAutoTip: "About a dozen lines at round values near the view's quantiles, so they fall where the area is; unticked, the fixed spacing", cAutoTip: "Fit the floor and cap to the view each time it settles; setting either by hand stops it",
   loading: "loading tiles…", zoom: "zoom", refused: "the server refused tiles (HTTP {1})",
   older: "the server is an older version ({1}) than this page ({2}): restart it", colour: "Colour",
   colours: "Colours", stretch: "Stretch", stretchTip: "How the colours are spread between floor and cap",
@@ -365,6 +366,36 @@ async function fitColour(l, quiet = false, keep = false) {
     setTimeout(() => { $("status").textContent = tileError || zoomText(); }, 2500);
   }
 }
+// A contour layer's levels from the view: every other of the view's quantiles rounded to a step of 1, 2 or 5 times a
+// power of ten that makes some 40 of its range; the lines are made at that step and kept at those levels. Unticked, the
+// layer's own thresholds and filters
+const contourDem = {}, contourTimers = {};
+const contourFollowing = l => !!l.contours?.fit && !!$(`${l.id}-kauto`)?.checked;
+function contourLevels(q) {
+  const nice = x => { const p = 10 ** Math.floor(Math.log10(x)); return [5, 2, 1].map(m => m * p).find(v => v <= x) ?? p; };
+  const step = Math.max(1, nice(Math.max(q[q.length - 1] - q[0], 1) / 40));
+  const levels = [...new Set(q.filter((_, i) => i % 2 === 0).map(x => Math.round(x / step) * step))].filter(x => x > 0).sort((a, b) => a - b);
+  return { step, levels };
+}
+function setContourLevels(l, step = null, levels = null) {
+  const dem = contourDem[l.id], src = map.getSource(l.id);
+  if (!dem || !src) return;
+  src.setTiles([dem.contourProtocolUrl({ multiplier: l.contours.multiplier ?? 1, thresholds: step ? { 0: [step] } : l.contours.thresholds,
+                                         contourLayer: "contours", elevationKey: "ele", levelKey: "level" })]);
+  for (const st of l.style) if (map.getLayer(st.id))
+    map.setFilter(st.id, levels ? ["in", ["get", "ele"], ["literal", levels]] : st.filter ?? null);
+}
+async function followContours(l) {
+  const b = map.getBounds(), box = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map(v => v.toFixed(4)).join(",");
+  try {
+    const r = await fetch(`/fit/${l.id}?bbox=${box}`);
+    if (!r.ok) return;
+    const f = await r.json();
+    if (!f.q?.length || !contourFollowing(l)) return;
+    const { step, levels } = contourLevels(f.q);
+    setContourLevels(l, step, levels);
+  } catch (e) { /* the view keeps its lines */ }
+}
 function readColour(l, q) {
   const k = x => `${l.id}_${x}`, set = (x, v) => { $(`${l.id}-c${x}`).value = v; };
   if (PALETTES.some(p => p.id === q.get(k("pal")))) set("pal", q.get(k("pal")));
@@ -393,6 +424,8 @@ function layerRow(l) {
     row.append(box);
   }
   if (l.colour) row.insertAdjacentHTML("beforeend", colourHtml(l));
+  if (l.contours?.fit) row.insertAdjacentHTML("beforeend", `<div class="when-on"><div class="row"><label class="auto">` +
+    `<input type="checkbox" id="${l.id}-kauto"${l.contours.auto === false ? "" : " checked"}><span data-t="kAuto" data-tt="kAutoTip"></span></label></div></div>`);
   if (l.shade) row.insertAdjacentHTML("beforeend", shadeHtml(l));
   // the styles to choose between (a vector or geojson layer's variants), and the legend, which a variant may replace
   if (l.variants) row.insertAdjacentHTML("beforeend", `<div class="when-on"><div class="row">` +
@@ -652,6 +685,7 @@ Promise.all([fetch("/meta").then(r => r.json()), styleLoaded]).then(([meta]) => 
   for (const l of OTHER) if (l.variants && l.variants.options.some(o => o.value === q.get(l.id + "_by"))) $(l.id + "-by").value = q.get(l.id + "_by");
   for (const l of OTHER) if (l.shade) readShade(l, q);
   for (const l of OTHER) if (l.colour) readColour(l, q);
+  for (const l of OTHER) if (l.contours?.fit && ["0", "1"].includes(q.get(l.id + "_auto"))) $(`${l.id}-kauto`).checked = q.get(l.id + "_auto") === "1";
   CHOOSE.forEach((f, i) => {
     const vals = (q.get(f.field) ?? "").split(",").filter(v => f.options.some(o => o.value === v));
     if (vals.length) setChosen(i, f.multi ? vals : vals.slice(0, 1));
@@ -709,6 +743,7 @@ function addressNow() {
     if (l.colour.fit) put(`${l.id}_auto`, following(l) ? "1" : "0", l.colour.auto === false ? "0" : "1");
     put(`${l.id}_cut`, String(v.cut), String(d.cut)); put(`${l.id}_cop`, String(v.op), String(d.op));
   }
+  for (const l of OTHER) if (l.contours?.fit) put(`${l.id}_auto`, contourFollowing(l) ? "1" : "0", l.contours.auto === false ? "0" : "1");
   CHOOSE.forEach((f, i) => put(f.field, chosen(i)?.join(",") ?? "", ""));
   put("base", document.querySelector("#bases input:checked")?.value, BASEMAPS[0].id);
   put("lang", LANG, LANGS.includes(CONFIG.language) ? CONFIG.language : LANGS.includes("en") ? "en" : LANGS[0]);
@@ -764,10 +799,12 @@ function addLayer(l, meta) {
         encoding: l.encoding ?? "terrarium", maxzoom: l.maxzoom ?? 12, worker: true
       });
       dem.setupMaplibre(maplibregl);
+      contourDem[l.id] = dem;
       map.addSource(l.id, { type: "vector", maxzoom: 15, ...(l.bounds ? { bounds: l.bounds } : {}),
                             tiles: [dem.contourProtocolUrl({ multiplier: l.contours.multiplier ?? 1, thresholds: l.contours.thresholds,
                                                              contourLayer: "contours", elevationKey: "ele", levelKey: "level" })] });
       draw();
+      if (contourFollowing(l)) followContours(l);
     }).catch(() => missing(l));
   } else if (l.kind === "geojson") {
     fetch(`/data/${l.id}.geojson`).then(r => r.ok ? r.json() : Promise.reject(r.status)).then(data => {
@@ -808,6 +845,8 @@ for (const l of OTHER) if (l.variants) $(l.id + "-by").addEventListener("change"
 for (const l of OTHER) if (l.shade)
   for (const x of ["method", ...Object.keys(SHADE_RANGES), "shadow", "light"]) $(l.id + "-" + x).addEventListener("input", () => applyShade(l));
 for (const l of OTHER) if (l.colour) for (const x of COLOUR_KEYS) $(`${l.id}-c${x}`).addEventListener("input", () => applyColour(l));
+for (const l of OTHER) if (l.contours?.fit)
+  $(`${l.id}-kauto`).addEventListener("change", () => { if (contourFollowing(l)) followContours(l); else setContourLevels(l); });
 for (const l of OTHER) if (l.colour?.fit) {
   $(`${l.id}-cfit`).addEventListener("click", () => fitColour(l));
   // a floor or cap set by hand is kept: the view is no longer followed
@@ -936,10 +975,13 @@ $("menu").addEventListener("click", () => document.body.classList.add("side-open
 $("close").addEventListener("click", () => document.body.classList.remove("side-open"));
 
 map.on("dataloading", () => { $("status").textContent = tr("loading"); });
-// a dem layer's colours following the view are fitted again each time the map settles
+// a dem layer's colours, and a contour layer's levels, following the view are fitted again each time the map settles
 map.on("moveend", () => {
   for (const l of OTHER) if (following(l) && map.getLayer(l.style[0].id)) {
     clearTimeout(fitTimers[l.id]); fitTimers[l.id] = setTimeout(() => fitColour(l, true), 300);
+  }
+  for (const l of OTHER) if (contourFollowing(l) && map.getSource(l.id)) {
+    clearTimeout(contourTimers[l.id]); contourTimers[l.id] = setTimeout(() => followContours(l), 300);
   }
 });
 // a refused tile would otherwise leave the map blank without a word

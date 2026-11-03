@@ -119,7 +119,11 @@ where the floor and cap are left out while it follows).}
 
 \item{contours}{For a contour layer: \code{thresholds}, a named list by zoom of the minor and the major interval from that
 zoom on (\code{list("6" = c(500, 1000), "9" = c(50, 200))}; a major line has \code{level} 1), and \code{multiplier}, by which the
-elevations are multiplied before the lines are drawn (-1 for depths, 1 by default).}
+elevations are multiplied before the lines are drawn (-1 for depths, 1 by default). With \code{fit}, a function as a
+colour's \code{fit} returning a list with the \code{quantiles} of the values in view, the lines can follow the view (\code{auto},
+\code{TRUE} by default; \verb{<id>_auto} in the address): about a dozen levels at round values near the view's quantiles,
+so the lines fall where the area is, drawn at a step of 1, 2 or 5 times a power of ten that makes some 40 of the
+view's range; unticked, the \code{thresholds} and the style's filters.}
 }
 \value{
 An \code{rb_map_layer}, for \code{\link[=rb_map_group]{rb_map_group()}}.

@@ -958,3 +958,29 @@ test_that("a fit may give the values' quantiles in view, for colours in equal sh
   expect_error(rb_map_layer("depth", "dem", tiles = dem, style = colour_style, colour = list(scale = "equal")),
                "needs `colour\\$fit`")
 })
+
+test_that("a contour layer's levels from the view: its fit kept on the server, following by default, its name taken", {
+  skip_if_not_installed("jsonlite")
+  tiles <- structure(function(z, x, y) NULL, format = "png")
+  lines <- list(list(id = "contours-line", type = "line", "source-layer" = "contours"))
+  fit <- function(west, south, east, north) list(floor = 3, cap = 80, quantiles = c(3, 20, 40, 80))
+  l <- rb_map_layer("contours", "contour", tiles = tiles, style = lines,
+                    contours = list(thresholds = list("5" = 100), multiplier = -1, fit = fit))
+  expect_true(l$config$contours$fit)
+  expect_true(l$config$contours$auto)
+  expect_true(is.function(l$fit))
+  app <- .rb_map_app(rb_map(rb_map_group("g", "G", list(l))))
+  expect_equal(jsonlite::fromJSON(get(app, "/fit/contours", "bbox=-25,63,-20,65")$body)$q, c(3, 20, 40, 80))
+  expect_false(rb_map_layer("contours", "contour", tiles = tiles, style = lines,
+                            contours = list(thresholds = list("5" = 100), auto = FALSE))$config$contours$auto)
+  expect_null(rb_map_layer("contours", "contour", tiles = tiles, style = lines,
+                           contours = list(thresholds = list("5" = 100)))$config$contours$fit)
+  expect_error(rb_map_layer("contours", "contour", tiles = tiles, style = lines,
+                            contours = list(thresholds = list("5" = 100), fit = 1)), "a function")
+  expect_error(
+    rb_map(rb_map_group("g", "G", list(l)),
+           choose = list(fields = list(list(field = "contours_auto", options = list(list(value = "a", match = "a")),
+                                            layers = "contours")))),
+    "contours_auto"
+  )
+})

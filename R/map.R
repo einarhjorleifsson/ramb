@@ -105,7 +105,11 @@
 #'   where the floor and cap are left out while it follows).
 #' @param contours For a contour layer: `thresholds`, a named list by zoom of the minor and the major interval from that
 #'   zoom on (`list("6" = c(500, 1000), "9" = c(50, 200))`; a major line has `level` 1), and `multiplier`, by which the
-#'   elevations are multiplied before the lines are drawn (-1 for depths, 1 by default).
+#'   elevations are multiplied before the lines are drawn (-1 for depths, 1 by default). With `fit`, a function as a
+#'   colour's `fit` returning a list with the `quantiles` of the values in view, the lines can follow the view (`auto`,
+#'   `TRUE` by default; `<id>_auto` in the address): about a dozen levels at round values near the view's quantiles,
+#'   so the lines fall where the area is, drawn at a step of 1, 2 or 5 times a power of ten that makes some 40 of the
+#'   view's range; unticked, the `thresholds` and the style's filters.
 #' @return An `rb_map_layer`, for [rb_map_group()].
 #' @seealso [rb_map()], [rb_map_tiles_table()]
 #' @export
@@ -299,15 +303,25 @@ rb_map_layer <- function(
   } else if (!is.null(encoding) || !is.null(tile_size) || !is.null(bounds)) {
     stop("`encoding`, `tile_size` and `bounds` are for a dem or contour layer.", call. = FALSE)
   }
+  fit <- NULL # a colour's or the contours' fit: kept on the server, the page told only that there is one
   if (kind == "contour") {
+    if (is.list(contours) && !is.null(contours$fit)) {
+      if (!is.function(contours$fit)) {
+        stop("`contours$fit` is a function of west, south, east and north.", call. = FALSE)
+      }
+      fit <- contours$fit
+      contours$fit <- NULL
+    }
     contours <- .rb_map_contours(contours)
+    if (!is.null(fit)) {
+      contours$fit <- TRUE
+    }
   } else if (!is.null(contours)) {
     stop("`contours` is for a contour layer.", call. = FALSE)
   }
   if (!is.null(shade)) {
     shade <- .rb_map_shade(shade, kind, style)
   }
-  fit <- NULL
   if (!is.null(colour)) {
     if (is.list(colour) && !is.null(colour$fit)) {
       if (!is.function(colour$fit)) {
@@ -515,6 +529,9 @@ rb_map <- function(
           },
           if (!is.null(l$config$colour)) {
             paste0(l$config$id, "_", c("pal", "lo", "hi", "scale", "mode", "cut", "cutas", "cop", "auto"))
+          },
+          if (isTRUE(l$config$contours$fit)) {
+            paste0(l$config$id, "_auto")
           }
         )
       }))
@@ -1122,7 +1139,7 @@ rb_map_tiles_table <- function(
   z <- suppressWarnings(as.numeric(names(t)))
   one <- function(x) is.numeric(x) && length(x) %in% 1:2 && !anyNA(x) && all(x > 0) && !is.unsorted(x)
   if (
-    !is.list(contours) || !all(names(contours) %in% c("thresholds", "multiplier")) || !is.list(t) || !length(t) ||
+    !is.list(contours) || !all(names(contours) %in% c("thresholds", "multiplier", "auto")) || !is.list(t) || !length(t) ||
       anyNA(z) || any(z < 0 | z > 24 | z != round(z)) || anyDuplicated(z) || !all(vapply(t, one, logical(1)))
   ) {
     stop(
@@ -1134,7 +1151,11 @@ rb_map_tiles_table <- function(
   if (!is.numeric(m) || length(m) != 1 || is.na(m) || m == 0) {
     stop("`contours$multiplier` is a number other than 0.", call. = FALSE)
   }
-  list(thresholds = lapply(t[order(z)], as.list), multiplier = m)
+  a <- if (is.null(contours$auto)) TRUE else contours$auto
+  if (!is.logical(a) || length(a) != 1 || is.na(a)) {
+    stop("`contours$auto` is TRUE or FALSE.", call. = FALSE)
+  }
+  list(thresholds = lapply(t[order(z)], as.list), multiplier = m, auto = a)
 }
 
 # A dem layer's colour controls: the defaults for what is not given, each value checked
