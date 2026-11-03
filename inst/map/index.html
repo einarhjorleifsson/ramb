@@ -123,7 +123,8 @@ const ENGINE_TEXTS = {
   cCut: "Shallower than", cNone: "none", cCutAs: "drawn", cClear: "clear", cGrey: "grey",
   cFitTip: "Floor and cap at the 2nd and 98th percentiles of the values in view", cFitNone: "no values in view to fit to",
   cEqual: "equal shares", cAuto: "follow the view", kAuto: "levels from the view",
-  kAutoTip: "About a dozen lines at round values near the view's quantiles, so they fall where the area is; unticked, the fixed spacing", cAutoTip: "Fit the floor and cap to the view each time it settles; setting either by hand stops it",
+  kAutoTip: "About a dozen lines at round values near the view's quantiles, so they fall where the area is; unticked, the fixed spacing",
+  sAuto: "intensity from the view", sAutoTip: "The intensity fitted to the view's relief each time the map settles: stronger where the seabed is gentle; setting it by hand stops it", cAutoTip: "Fit the floor and cap to the view each time it settles; setting either by hand stops it",
   loading: "loading tiles…", zoom: "zoom", refused: "the server refused tiles (HTTP {1})",
   older: "the server is an older version ({1}) than this page ({2}): restart it", colour: "Colour",
   colours: "Colours", stretch: "Stretch", stretchTip: "How the colours are spread between floor and cap",
@@ -211,7 +212,9 @@ function shadeHtml(l) {
       `<div class="row range"><label for="${id(k)}" data-t="${t}"></label><input id="${id(k)}" type="range" min="${lo}" max="${hi}" ` +
       `step="${step}" value="${d[k]}"><span class="val" id="${id(k)}val"></span></div>`).join("") +
     `<div class="row colours"><label for="${id("shadow")}" data-t="shShadow"></label><input id="${id("shadow")}" type="color" value="${d.shadow}">` +
-    `<label for="${id("light")}" data-t="shHighlight"></label><input id="${id("light")}" type="color" value="${d.light}"></div></div>`;
+    `<label for="${id("light")}" data-t="shHighlight"></label><input id="${id("light")}" type="color" value="${d.light}"></div>` +
+    (l.shade.fit ? `<div class="row"><label class="auto"><input type="checkbox" id="${id("auto")}"${l.shade.auto === false ? "" : " checked"}>` +
+                   `<span data-t="sAuto" data-tt="sAutoTip"></span></label></div>` : "") + "</div>";
 }
 const shadeNow = l => ({ method: $(l.id + "-method").value, dir: +$(l.id + "-dir").value, alt: +$(l.id + "-alt").value,
                          ex: +$(l.id + "-ex").value, op: +$(l.id + "-op").value, shadow: $(l.id + "-shadow").value,
@@ -238,6 +241,20 @@ function applyShade(l) {
   $(l.id + "-exval").textContent = v.ex.toLocaleString(loc(), { minimumFractionDigits: 2 });
   $(l.id + "-opval").textContent = v.op + " %";
 }
+// the intensity following the view: the server's for the view's relief (the layer's `fit`), each time the map settles
+const shadeTimers = {};
+const shadeFollowing = l => !!l.shade?.fit && !!$(`${l.id}-auto`)?.checked;
+async function followShade(l) {
+  const b = map.getBounds(), box = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map(v => v.toFixed(4)).join(",");
+  try {
+    const r = await fetch(`/fit/${l.id}?bbox=${box}`);
+    if (!r.ok) return;
+    const f = await r.json();
+    if (typeof f.exaggeration !== "number" || !shadeFollowing(l)) return;
+    $(`${l.id}-ex`).value = Math.round(f.exaggeration * 20) / 20;
+    applyShade(l); writeAddress();
+  } catch (e) { /* the view keeps its intensity */ }
+}
 // the first view from the address: a value outside a control's range or options is left out
 function readShade(l, q) {
   const k = x => `${l.id}_${x}`;
@@ -247,6 +264,8 @@ function readShade(l, q) {
     if (v !== null && v !== "" && +v >= lo && +v <= hi) $(l.id + "-" + x).value = v;
   }
   for (const x of ["shadow", "light"]) if (/^[0-9a-f]{6}$/i.test(q.get(k(x)) ?? "")) $(l.id + "-" + x).value = "#" + q.get(k(x)).toLowerCase();
+  // an intensity in the address is kept, unless the address also says to follow the view
+  if (l.shade.fit && (q.get(k("auto")) === "0" || (q.get(k("ex")) && q.get(k("auto")) !== "1"))) $(l.id + "-auto").checked = false;
 }
 // A dem layer's values in colour, its depth (or height): a palette over a floor and a cap on a log or a linear scale, as
 // a ramp or in bands, the shallow end cut clear or grey, an opacity; the colour formula is made anew as a control moves.
@@ -733,7 +752,8 @@ function addressNow() {
   for (const l of OTHER) if (l.shade) {
     const v = shadeNow(l), d = shadeDefaults(l);
     put(l.id + "_method", v.method, d.method);
-    for (const x of Object.keys(SHADE_RANGES)) put(l.id + "_" + x, String(v[x]), String(d[x]));
+    for (const x of Object.keys(SHADE_RANGES)) if (x !== "ex" || !shadeFollowing(l)) put(l.id + "_" + x, String(v[x]), String(d[x]));
+    if (l.shade.fit) put(l.id + "_auto", shadeFollowing(l) ? "1" : "0", l.shade.auto === false ? "0" : "1");
     for (const x of ["shadow", "light"]) put(l.id + "_" + x, v[x].slice(1), d[x].slice(1));
   }
   for (const l of OTHER) if (l.colour) {
@@ -776,6 +796,7 @@ function addLayer(l, meta) {
       map.addLayer(spec, before);
     }
     applyVariant(l); applyColour(l); applyShade(l); applyChoice(l); showLayer(l); countText(l);
+    if (shadeFollowing(l)) followShade(l);
     if (following(l)) fitColour(l, true);
     else if (l.colour?.fit && $(`${l.id}-cscale`).value === "equal") fitColour(l, true, true);
   };
@@ -845,6 +866,11 @@ for (const l of OTHER) if (l.variants) $(l.id + "-by").addEventListener("change"
 for (const l of OTHER) if (l.shade)
   for (const x of ["method", ...Object.keys(SHADE_RANGES), "shadow", "light"]) $(l.id + "-" + x).addEventListener("input", () => applyShade(l));
 for (const l of OTHER) if (l.colour) for (const x of COLOUR_KEYS) $(`${l.id}-c${x}`).addEventListener("input", () => applyColour(l));
+for (const l of OTHER) if (l.shade?.fit) {
+  // an intensity set by hand is kept: the view is no longer followed
+  $(`${l.id}-ex`).addEventListener("input", () => { $(`${l.id}-auto`).checked = false; });
+  $(`${l.id}-auto`).addEventListener("change", () => { if (shadeFollowing(l)) followShade(l); });
+}
 for (const l of OTHER) if (l.contours?.fit)
   $(`${l.id}-kauto`).addEventListener("change", () => { if (contourFollowing(l)) followContours(l); else setContourLevels(l); });
 for (const l of OTHER) if (l.colour?.fit) {
@@ -982,6 +1008,9 @@ map.on("moveend", () => {
   }
   for (const l of OTHER) if (contourFollowing(l) && map.getSource(l.id)) {
     clearTimeout(contourTimers[l.id]); contourTimers[l.id] = setTimeout(() => followContours(l), 300);
+  }
+  for (const l of OTHER) if (shadeFollowing(l) && map.getLayer(l.style[0].id)) {
+    clearTimeout(shadeTimers[l.id]); shadeTimers[l.id] = setTimeout(() => followShade(l), 300);
   }
 });
 // a refused tile would otherwise leave the map blank without a word

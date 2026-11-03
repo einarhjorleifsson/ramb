@@ -87,7 +87,9 @@
 #'   intensity, 0-1), `opacity` (0-100: the alpha of the shading's colours, which has no opacity of its own),
 #'   `shadow` and `highlight` (colours as `"#rrggbb"`); MapLibre's own defaults for those not given. `TRUE` takes
 #'   every default. Each control applies as it moves, and goes into the page's address as `<id>_method`, `<id>_dir`,
-#'   `<id>_alt`, `<id>_ex`, `<id>_op`, `<id>_shadow` and `<id>_light`.
+#'   `<id>_alt`, `<id>_ex`, `<id>_op`, `<id>_shadow` and `<id>_light`. With `fit`, a function of the view's box as a
+#'   colour's `fit` returning a list with `exaggeration` (0-1), the intensity can follow the view (`auto`, `TRUE` by
+#'   default; `<id>_auto` in the address, which leaves out `<id>_ex` while it follows), until it is set by hand.
 #' @param colour For a dem layer with a `color-relief` style: its values in colour, with their controls in the page, a
 #'   list of any of `of` (`"depth"`, the elevation's negative, or `"elevation"`; what is 0 or less is clear), `palette`
 #'   (an id of the map's palettes; the map's own when not given), `floor` and `cap` (the values the palette's ends
@@ -320,12 +322,25 @@ rb_map_layer <- function(
     stop("`contours` is for a contour layer.", call. = FALSE)
   }
   if (!is.null(shade)) {
+    if (is.list(shade) && !is.null(shade$fit)) {
+      if (!is.function(shade$fit)) {
+        stop("`shade$fit` is a function of west, south, east and north.", call. = FALSE)
+      }
+      fit <- shade$fit
+      shade$fit <- NULL
+    }
     shade <- .rb_map_shade(shade, kind, style)
+    if (!is.null(fit)) {
+      shade$fit <- TRUE
+    }
   }
   if (!is.null(colour)) {
     if (is.list(colour) && !is.null(colour$fit)) {
       if (!is.function(colour$fit)) {
         stop("`colour$fit` is a function of west, south, east and north.", call. = FALSE)
+      }
+      if (!is.null(fit)) {
+        stop("A layer has one fit: give the colour's and the shading's to two layers on the same tiles.", call. = FALSE)
       }
       fit <- colour$fit
       colour$fit <- NULL
@@ -525,7 +540,7 @@ rb_map <- function(
       unlist(lapply(layers, function(l) {
         c(
           if (!is.null(l$config$shade)) {
-            paste0(l$config$id, "_", c("method", "dir", "alt", "ex", "op", "shadow", "light"))
+            paste0(l$config$id, "_", c("method", "dir", "alt", "ex", "op", "shadow", "light", "auto"))
           },
           if (!is.null(l$config$colour)) {
             paste0(l$config$id, "_", c("pal", "lo", "hi", "scale", "mode", "cut", "cutas", "cop", "auto"))
@@ -1098,13 +1113,13 @@ rb_map_tiles_table <- function(
     stop("`shade` is for a dem layer with a `hillshade` style.", call. = FALSE)
   }
   given <- if (isTRUE(shade)) list() else shade
-  known <- c("method", "direction", "altitude", "exaggeration", "opacity", "shadow", "highlight")
+  known <- c("method", "direction", "altitude", "exaggeration", "opacity", "shadow", "highlight", "auto")
   if (!is.list(given) || (length(given) && (is.null(names(given)) || !all(names(given) %in% known)))) {
     stop(sprintf("`shade` is TRUE or a list of any of %s.", paste(known, collapse = ", ")), call. = FALSE)
   }
   v <- utils::modifyList(
     list(method = "standard", direction = 335, altitude = 45, exaggeration = 0.5, opacity = 100,
-         shadow = "#000000", highlight = "#ffffff"),
+         shadow = "#000000", highlight = "#ffffff", auto = TRUE),
     given
   )
   num <- function(x, lo, hi) is.numeric(x) && length(x) == 1 && !is.na(x) && x >= lo && x <= hi
@@ -1117,7 +1132,8 @@ rb_map_tiles_table <- function(
     exaggeration = num(v$exaggeration, 0, 1),
     opacity = num(v$opacity, 0, 100),
     shadow = hex(v$shadow),
-    highlight = hex(v$highlight)
+    highlight = hex(v$highlight),
+    auto = is.logical(v$auto) && length(v$auto) == 1 && !is.na(v$auto)
   )
   if (!all(ok)) {
     stop(
@@ -2351,20 +2367,29 @@ format.rb_map <- function(x, ...) {
       if (inherits(v, "error")) {
         return(reply(500L, sub("\n.*", "", conditionMessage(v))))
       }
-      # c(floor, cap), or a list of `floor`, `cap` and `quantiles` (rising), for colours in equal shares
-      q <- if (is.list(v)) v$quantiles
-      if (is.list(v)) {
-        v <- c(v$floor, v$cap)
+      # c(floor, cap), or a list of any of `floor` and `cap`, `quantiles` (rising, for colours in equal shares and
+      # contour levels) and `exaggeration` (0-1, a shading's intensity)
+      if (is.null(v)) {
+        return(reply(404L, "no values in view"))
       }
-      if (is.null(v) || length(v) != 2 || anyNA(v)) {
+      if (!is.list(v)) {
+        v <- if (length(v) == 2) list(floor = v[[1]], cap = v[[2]]) else list()
+      }
+      fc <- c(v$floor, v$cap)
+      q <- v$quantiles
+      ex <- v$exaggeration
+      if ((length(fc) && (length(fc) != 2 || anyNA(fc))) || (!length(fc) && is.null(q) && is.null(ex))) {
         return(reply(404L, "no values in view"))
       }
       if (!is.null(q) && (!is.numeric(q) || anyNA(q) || is.unsorted(q))) {
         return(reply(500L, "the fit's quantiles are not rising numbers"))
       }
+      if (!is.null(ex) && (!is.numeric(ex) || length(ex) != 1 || is.na(ex) || ex < 0 || ex > 1)) {
+        return(reply(500L, "the fit's exaggeration is not a number from 0 to 1"))
+      }
       return(reply(
         200L,
-        json(Filter(Negate(is.null), list(floor = v[[1]], cap = v[[2]], q = if (!is.null(q)) as.list(q)))),
+        json(Filter(Negate(is.null), list(floor = v$floor, cap = v$cap, q = if (!is.null(q)) as.list(q), exaggeration = ex))),
         "application/json; charset=utf-8",
         list(`Cache-Control` = "no-store")
       ))

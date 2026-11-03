@@ -1,3 +1,10 @@
+# ramb 2026.11.03.7
+
+- A dem layer's shading intensity following the view (`shade$fit`, returning `exaggeration`; `shade$auto`, on by
+  default): fitted to the view's relief each time the map settles, until set by hand; `<id>_auto` in the address,
+  which leaves out the intensity while it follows. The fit route answers with any of a floor and cap, quantiles and
+  an exaggeration. A layer has one fit. First used by fishycode's bathymetry map (plan 063, point 8(c)).
+
 # ramb 2026.11.03.6
 
 - A contour layer's levels from the view (`contours$fit`, as a colour's, returning the values' quantiles in view;

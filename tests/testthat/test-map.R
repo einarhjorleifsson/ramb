@@ -793,7 +793,7 @@ test_that("a dem layer's relief controls: MapLibre's defaults filled in, each va
   expect_equal(
     l$config$shade,
     list(method = "standard", direction = 335, altitude = 45, exaggeration = 0.5, opacity = 100,
-         shadow = "#000000", highlight = "#ffffff")
+         shadow = "#000000", highlight = "#ffffff", auto = TRUE)
   )
   given <- rb_map_layer("relief", "dem", tiles = dem, style = shade_style,
                         shade = list(method = "igor", direction = 315, highlight = "#FFF8E0"))$config$shade
@@ -983,4 +983,22 @@ test_that("a contour layer's levels from the view: its fit kept on the server, f
                                             layers = "contours")))),
     "contours_auto"
   )
+})
+
+test_that("a shading's intensity from the view: its fit answered by the route, one fit a layer", {
+  skip_if_not_installed("jsonlite")
+  dem <- function(z, x, y) NULL
+  shade_style <- list(list(id = "relief-shade", type = "hillshade"))
+  fit <- function(west, south, east, north) if (west < -100) list(exaggeration = 2) else list(exaggeration = 0.45)
+  l <- rb_map_layer("relief", "dem", tiles = dem, style = shade_style, shade = list(exaggeration = 0.6, fit = fit))
+  expect_true(l$config$shade$fit)
+  expect_true(l$config$shade$auto)
+  expect_true(is.function(l$fit))
+  app <- .rb_map_app(rb_map(rb_map_group("g", "G", list(l))))
+  expect_equal(jsonlite::fromJSON(get(app, "/fit/relief", "bbox=-25,63,-20,65")$body), list(exaggeration = 0.45))
+  expect_equal(get(app, "/fit/relief", "bbox=-120,63,-110,65")$status, 500L) # out of 0-1
+  both <- list(list(id = "c", type = "color-relief"), list(id = "s", type = "hillshade"))
+  expect_error(rb_map_layer("d", "dem", tiles = dem, style = both, shade = list(fit = fit), colour = list(fit = fit)),
+               "one fit")
+  expect_error(rb_map_layer("relief", "dem", tiles = dem, style = shade_style, shade = list(fit = "x")), "a function")
 })

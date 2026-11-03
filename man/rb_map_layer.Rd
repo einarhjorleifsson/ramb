@@ -99,7 +99,9 @@ lights 45 degrees apart), \code{direction} (the light's azimuth, 0-359), \code{a
 intensity, 0-1), \code{opacity} (0-100: the alpha of the shading's colours, which has no opacity of its own),
 \code{shadow} and \code{highlight} (colours as \code{"#rrggbb"}); MapLibre's own defaults for those not given. \code{TRUE} takes
 every default. Each control applies as it moves, and goes into the page's address as \verb{<id>_method}, \verb{<id>_dir},
-\verb{<id>_alt}, \verb{<id>_ex}, \verb{<id>_op}, \verb{<id>_shadow} and \verb{<id>_light}.}
+\verb{<id>_alt}, \verb{<id>_ex}, \verb{<id>_op}, \verb{<id>_shadow} and \verb{<id>_light}. With \code{fit}, a function of the view's box as a
+colour's \code{fit} returning a list with \code{exaggeration} (0-1), the intensity can follow the view (\code{auto}, \code{TRUE} by
+default; \verb{<id>_auto} in the address, which leaves out \verb{<id>_ex} while it follows), until it is set by hand.}
 
 \item{colour}{For a dem layer with a \code{color-relief} style: its values in colour, with their controls in the page, a
 list of any of \code{of} (\code{"depth"}, the elevation's negative, or \code{"elevation"}; what is 0 or less is clear), \code{palette}
