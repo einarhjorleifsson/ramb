@@ -1,3 +1,11 @@
+# ramb 2026.11.03.3
+
+- `rb_map_layer(kind = "contour")` (new kind) and its `contours` argument: contour lines made in the browser from a dem
+  layer's image tiles by `maplibre-contour` 0.1.1 (BSD-3-Clause, pinned, loaded by the page only for a map that has
+  one), at intervals set by zoom (`thresholds`, a minor and a major from each zoom on) and a `multiplier` (-1 for
+  depths), drawn by the layer's `style` over the elevations and under the base map's labels, also after a base map is
+  changed. The tiles are served as a dem layer's are. First used by fishycode's bathymetry map (plan 063, step 3).
+
 # ramb 2026.11.03.2
 
 - `rb_map_layer(colour = )` (new argument): a dem layer's depth (or height) in colour, in the reader's hands. Under the

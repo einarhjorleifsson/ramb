@@ -772,7 +772,7 @@ test_that("a dem layer: elevation images from an MBTiles file, served as images 
   expect_error(rb_map_layer("depth", "dem", tiles = tiles, style = shade, encoding = "lerc"), "terrarium")
   expect_error(
     rb_map_layer("lines", "vector", tiles = function(z, x, y) raw(0), style = shade, bounds = c(0, 0, 1, 1)),
-    "for a dem layer"
+    "for a dem or contour layer"
   )
 
   app <- .rb_map_app(rb_map(rb_map_group("g", "G", list(l))))
@@ -858,4 +858,45 @@ test_that("a dem layer's colour controls: defaults filled in, each value checked
     ),
     "depth_cut"
   )
+})
+
+test_that("a contour layer: its intervals by zoom checked and kept as an object, its tiles served as images", {
+  skip_if_not_installed("jsonlite")
+  png1 <- as.raw(1:4)
+  tiles <- structure(function(z, x, y) if (z == 1) png1 else NULL, format = "png", encoding = "terrarium", maxzoom = 1L)
+  lines <- list(list(id = "contours-line", type = "line", "source-layer" = "contours"))
+  l <- rb_map_layer("contours", "contour", tiles = tiles, style = lines,
+                    contours = list(thresholds = list("9" = c(50, 200), "6" = c(500, 1000)), multiplier = -1))
+  expect_equal(names(l$config$contours$thresholds), c("6", "9")) # in zoom order
+  expect_equal(l$config$contours$multiplier, -1)
+  expect_equal(l$config[c("format", "encoding", "maxzoom")], list(format = "png", encoding = "terrarium", maxzoom = 1L))
+  cfg <- jsonlite::fromJSON(.rb_map_app(rb_map(rb_map_group("g", "G", list(l))))$call(
+    list(REQUEST_METHOD = "GET", PATH_INFO = "/config.json", QUERY_STRING = "")
+  )$body, simplifyVector = FALSE)
+  expect_equal(cfg$layers[[1]]$contours$thresholds, list("6" = list(500, 1000), "9" = list(50, 200)))
+
+  expect_error(rb_map_layer("contours", "contour", tiles = tiles, style = lines), "`contours` is a list of `thresholds`")
+  expect_error(
+    rb_map_layer("contours", "contour", tiles = tiles, style = lines, contours = list(thresholds = list("x" = 100))),
+    "thresholds"
+  )
+  expect_error(
+    rb_map_layer("contours", "contour", tiles = tiles, style = lines, contours = list(thresholds = list("6" = c(500, 100)))),
+    "thresholds"
+  )
+  expect_error(
+    rb_map_layer("contours", "contour", tiles = tiles, style = lines,
+                 contours = list(thresholds = list("6" = 100), multiplier = 0)),
+    "multiplier"
+  )
+  dem <- list(list(id = "d", type = "hillshade"))
+  expect_error(rb_map_layer("d", "dem", tiles = tiles, style = dem, contours = list(thresholds = list("6" = 100))),
+               "for a contour layer")
+
+  app <- .rb_map_app(rb_map(rb_map_group("g", "G", list(l))))
+  ok <- get(app, "/tiles/contours/1/0/0.png")
+  expect_equal(ok$status, 200L)
+  expect_equal(ok$headers$`Content-Type`, "image/png")
+  expect_equal(get(app, "/tiles/contours/2/0/0.png")$status, 404L)
+  expect_equal(get(app, "/tiles/contours/1/0/0.pbf")$status, 404L)
 })

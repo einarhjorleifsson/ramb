@@ -148,6 +148,16 @@ const LAYERS = CONFIG.layers, OTHER = LAYERS.filter(l => l.kind !== "grid");
 const G = LAYERS.find(l => l.kind === "grid");   // one grid layer at most, with the colour controls
 const SOURCES = new Set(LAYERS.map(l => l.id));    // each layer's source is named by its id
 const DEM = new Set(LAYERS.filter(l => l.kind === "dem").map(l => l.id));   // elevations, drawn under a grid
+const CONTOUR = new Set(LAYERS.filter(l => l.kind === "contour").map(l => l.id));   // over them, under the labels
+// maplibre-contour, pinned as MapLibre is, loaded only for a map with contours
+let contourLib = null;
+const loadContour = () => contourLib ??= new Promise((resolve, reject) => {
+  const s = document.createElement("script");
+  s.src = "https://cdn.jsdelivr.net/npm/maplibre-contour@0.1.1/dist/index.min.js";
+  s.onload = () => window.mlcontour ? resolve(window.mlcontour) : reject(new Error("maplibre-contour"));
+  s.onerror = reject;
+  document.head.append(s);
+});
 
 const $ = id => document.getElementById(id);
 let LANG = LANGS.includes(CONFIG.language) ? CONFIG.language : LANGS.includes("en") ? "en" : LANGS[0];
@@ -542,7 +552,8 @@ function setBase(id) {
     const sources = Object.fromEntries(Object.entries(prev.sources).filter(([k]) => SOURCES.has(k)));
     const i = next.layers.findIndex(l => l.type === "symbol");
     // elevations and a grid under the base's labels, the other layers over them in their order
-    const under = own.filter(l => DEM.has(l.source) || l.source === G?.id), rest = own.filter(l => !under.includes(l));
+    const under = own.filter(l => DEM.has(l.source) || l.source === G?.id || CONTOUR.has(l.source)),
+          rest = own.filter(l => !under.includes(l));
     const layers = i < 0 ? [...next.layers, ...under, ...rest]
                          : [...next.layers.slice(0, i), ...under, ...next.layers.slice(i), ...rest];
     return { ...next, glyphs: next.glyphs ?? prev.glyphs, sources: { ...next.sources, ...sources }, layers };
@@ -669,13 +680,15 @@ $("copylink").addEventListener("click", () => {
 
 // The other layers -----------------------------------------------------------------------------------------------------
 // Vector tiles from the server ("vector", its count from /meta), a GeoJSON file ("geojson", its count from the file) or
-// image tiles of elevations ("dem", a raster-dem source whose styles go under a grid or the base's labels),
+// image tiles of elevations ("dem", a raster-dem source whose styles go under a grid or the base's labels), or contour
+// lines made in the browser from such tiles ("contour", by maplibre-contour, over the elevations, under the labels),
 // drawn by its styles over the base map's labels; a layer the server does not have is disabled, with its "missing" text
 function addLayer(l, meta) {
   const draw = () => {
-    // elevations go under a grid, or under the base's labels
-    const before = !DEM.has(l.id) ? undefined
-                 : G && map.getLayer(G.id) ? G.id : map.getStyle().layers.find(x => x.type === "symbol")?.id;
+    // elevations go under a grid, or under the base's labels; contours over both, under the labels
+    const firstSymbol = () => map.getStyle().layers.find(x => x.type === "symbol" && !SOURCES.has(x.source))?.id;
+    const before = DEM.has(l.id) ? (G && map.getLayer(G.id) ? G.id : firstSymbol())
+                 : CONTOUR.has(l.id) ? firstSymbol() : undefined;
     for (const st of l.style) {
       const spec = { ...st, source: l.id };
       if (spec.type === "symbol" && spec.layout?.["text-field"] && !spec.layout["text-font"]) spec.layout = { ...spec.layout, "text-font": FONT };
@@ -695,6 +708,19 @@ function addLayer(l, meta) {
                           tiles: [`${location.origin}/tiles/${l.id}/{z}/{x}/{y}.${l.format ?? "png"}?v=${meta.layers?.[l.id]?.v ?? meta.engine}`],
                           minzoom: l.minzoom ?? 0, maxzoom: l.maxzoom ?? 14, ...(l.bounds ? { bounds: l.bounds } : {}) });
     draw();
+  } else if (l.kind === "contour") {
+    // the lines are made in the browser from the elevation tiles, at the layer's intervals by zoom
+    loadContour().then(mlcontour => {
+      const dem = new mlcontour.DemSource({
+        url: `${location.origin}/tiles/${l.id}/{z}/{x}/{y}.${l.format ?? "png"}?v=${meta.layers?.[l.id]?.v ?? meta.engine}`,
+        encoding: l.encoding ?? "terrarium", maxzoom: l.maxzoom ?? 12, worker: true
+      });
+      dem.setupMaplibre(maplibregl);
+      map.addSource(l.id, { type: "vector", maxzoom: 15, ...(l.bounds ? { bounds: l.bounds } : {}),
+                            tiles: [dem.contourProtocolUrl({ multiplier: l.contours.multiplier ?? 1, thresholds: l.contours.thresholds,
+                                                             contourLayer: "contours", elevationKey: "ele", levelKey: "level" })] });
+      draw();
+    }).catch(() => missing(l));
   } else if (l.kind === "geojson") {
     fetch(`/data/${l.id}.geojson`).then(r => r.ok ? r.json() : Promise.reject(r.status)).then(data => {
       map.addSource(l.id, { type: "geojson", data });

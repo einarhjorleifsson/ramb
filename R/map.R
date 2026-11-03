@@ -9,7 +9,7 @@
 #                                    vector layer's count
 #   /tiles/<id>/{z}/{x}/{y}.pbf      a grid or vector layer's tile; a grid's query parameters are checked against
 #                                    its filters before its tile function sees them
-#   /tiles/<id>/{z}/{x}/{y}.png      a dem layer's tile, an image of elevations (.webp for a WebP one)
+#   /tiles/<id>/{z}/{x}/{y}.png      a dem or contour layer's tile, an image of elevations (.webp for a WebP one)
 #   /data/<id>.geojson               a geojson layer's data
 
 .rb_map_engine <- 2L # the page's ENGINE: changed together
@@ -19,7 +19,7 @@
 
 #' A layer of a map
 #'
-#' One layer of an [rb_map()]: what it shows, how it is drawn, and where its data come from. Four kinds:
+#' One layer of an [rb_map()]: what it shows, how it is drawn, and where its data come from. Five kinds:
 #'
 #' * `"grid"`: vector tiles of cells, coloured in the page by a numeric field on a log scale, with the palette,
 #'   stretch, floor, cap and histogram there too. Its `filters` become controls whose values go into the tile address
@@ -30,6 +30,10 @@
 #' * `"dem"`: image tiles of elevations (Terrarium or Mapbox Terrain-RGB), such as an MBTiles file read by
 #'   [rb_map_tiles_mbtiles()], drawn by `style` in the page under the base map's labels: MapLibre's `hillshade` and
 #'   `color-relief` layers, so the shading and the colours are made in the browser.
+#' * `"contour"`: contour lines made in the browser from the same image tiles of elevations, by `maplibre-contour`
+#'   (loaded by the page only for a map that has one), at the intervals of `contours`, drawn by `style` (a `line`, and
+#'   a `symbol` for the labels, from the source layer `"contours"`, its features' `ele` and `level`) under the base
+#'   map's labels.
 #'
 #' Texts (`label`, `info`, a filter's `label`, a legend's `label`, ...) are keys of the map's `texts` ([rb_map()]), or
 #' the text itself where no key matches. MapLibre styles and expressions are lists, so that a one-element array stays
@@ -37,13 +41,13 @@
 #' FALSE)` they already are.
 #'
 #' @param id The layer's name, lower case: its checkbox, its source and its key in the page's address.
-#' @param kind `"grid"`, `"vector"` or `"geojson"`.
+#' @param kind `"grid"`, `"vector"`, `"geojson"`, `"dem"` or `"contour"`.
 #' @param label,info Its name in the sidebar and the text behind its ⓘ.
 #' @param visible Whether it is on when the page opens; the address turns it off with `id=0` or on with `id=1`.
 #' @param tiles The tile function. For a grid, `function(z, x, y, params)`, `params` a named list of the filters'
 #'   values as text (absent when not given); for a vector layer, `function(z, x, y)`. It returns a Mapbox vector tile
 #'   as raw bytes (DuckDB's `ST_AsMVT()`), or `raw(0)`. A dem layer's, `function(z, x, y)`, returns an image of
-#'   elevations (PNG or WebP) as raw bytes, or `NULL` where there is none.
+#'   elevations (PNG or WebP) as raw bytes, or `NULL` where there is none; a contour layer's the same.
 #' @param meta For a grid, a list or a function returning one, read when the server starts: `options` (per filter
 #'   with `meta = TRUE`, a data frame of `value` and, optionally, `name` and `code`), `ranges` (per range filter, its
 #'   first and last value) and `v` (a version, put into the tile address so a rebuilt source is not hidden by the
@@ -72,7 +76,7 @@
 #' @param source_layer For a grid, the tile layer its cells are in (`"cells"`).
 #' @param minzoom,maxzoom The zooms its tiles are made for.
 #' @param opacity For a grid, its opacity when the page opens, 0-100.
-#' @param encoding,tile_size,bounds For a dem layer: how its images hold the elevation (`"terrarium"` or `"mapbox"`),
+#' @param encoding,tile_size,bounds For a dem or contour layer: how its images hold the elevation (`"terrarium"` or `"mapbox"`),
 #'   their side in pixels, and the extent that has tiles (west, south, east, north), so the page asks for no other.
 #'   Taken, with `minzoom` and `maxzoom`, from the attributes of `tiles` where not given ([rb_map_tiles_mbtiles()]
 #'   sets them); else `"terrarium"` and 512. The image format (`"png"` or `"webp"`) is the `format` attribute's.
@@ -92,6 +96,9 @@
 #'   100, 200, 500, 1,000 and 2,000, cuts 0, 10, 20 and 50, no cut, clear, 100. `TRUE` takes them all. Each control
 #'   applies as it moves, and goes into the page's address as `<id>_pal`, `<id>_lo`, `<id>_hi`, `<id>_scale`,
 #'   `<id>_mode`, `<id>_cut`, `<id>_cutas` and `<id>_cop`.
+#' @param contours For a contour layer: `thresholds`, a named list by zoom of the minor and the major interval from that
+#'   zoom on (`list("6" = c(500, 1000), "9" = c(50, 200))`; a major line has `level` 1), and `multiplier`, by which the
+#'   elevations are multiplied before the lines are drawn (-1 for depths, 1 by default).
 #' @return An `rb_map_layer`, for [rb_map_group()].
 #' @seealso [rb_map()], [rb_map_tiles_table()]
 #' @export
@@ -132,7 +139,7 @@
 #' names(cells$config)
 rb_map_layer <- function(
   id,
-  kind = c("grid", "vector", "geojson", "dem"),
+  kind = c("grid", "vector", "geojson", "dem", "contour"),
   label = id,
   info = NULL,
   visible = TRUE,
@@ -155,7 +162,8 @@ rb_map_layer <- function(
   tile_size = NULL,
   bounds = NULL,
   shade = NULL,
-  colour = NULL
+  colour = NULL,
+  contours = NULL
 ) {
   kind <- match.arg(kind)
   if (!is.character(id) || length(id) != 1 || !grepl("^[a-z][a-z0-9_]*$", id)) {
@@ -183,12 +191,12 @@ rb_map_layer <- function(
       call. = FALSE
     )
   }
-  if (kind %in% c("grid", "vector", "dem") && !is.function(tiles)) {
+  if (kind %in% c("grid", "vector", "dem", "contour") && !is.function(tiles)) {
     stop(
       sprintf(
         "A %s layer needs `tiles`, a function returning %s.",
         kind,
-        if (kind == "dem") "an image tile" else "a vector tile"
+        if (kind %in% c("dem", "contour")) "an image tile" else "a vector tile"
       ),
       call. = FALSE
     )
@@ -256,7 +264,7 @@ rb_map_layer <- function(
     f
   })
   format <- NULL
-  if (kind == "dem") {
+  if (kind %in% c("dem", "contour")) {
     given_or_attr <- function(given, name, usual = NULL) {
       if (!is.null(given)) {
         given
@@ -270,7 +278,7 @@ rb_map_layer <- function(
     format <- given_or_attr(NULL, "format", "png")
     if (!encoding %in% c("terrarium", "mapbox") || !format %in% c("png", "webp")) {
       stop(
-        "A dem layer's `encoding` is \"terrarium\" or \"mapbox\", its tiles' format \"png\" or \"webp\".",
+        "A dem or contour layer's `encoding` is \"terrarium\" or \"mapbox\", its tiles' format \"png\" or \"webp\".",
         call. = FALSE
       )
     }
@@ -282,7 +290,12 @@ rb_map_layer <- function(
     minzoom <- given_or_attr(minzoom, "minzoom")
     maxzoom <- given_or_attr(maxzoom, "maxzoom")
   } else if (!is.null(encoding) || !is.null(tile_size) || !is.null(bounds)) {
-    stop("`encoding`, `tile_size` and `bounds` are for a dem layer.", call. = FALSE)
+    stop("`encoding`, `tile_size` and `bounds` are for a dem or contour layer.", call. = FALSE)
+  }
+  if (kind == "contour") {
+    contours <- .rb_map_contours(contours)
+  } else if (!is.null(contours)) {
+    stop("`contours` is for a contour layer.", call. = FALSE)
   }
   if (!is.null(shade)) {
     shade <- .rb_map_shade(shade, kind, style)
@@ -313,7 +326,8 @@ rb_map_layer <- function(
     bounds = bounds,
     format = format,
     shade = shade,
-    colour = colour
+    colour = colour,
+    contours = contours
   )
   structure(
     list(
@@ -1079,6 +1093,27 @@ rb_map_tiles_table <- function(
   v$shadow <- tolower(v$shadow)
   v$highlight <- tolower(v$highlight)
   v
+}
+
+# A contour layer's intervals by zoom, as an object of the zoom's name, and its multiplier, each checked
+.rb_map_contours <- function(contours) {
+  t <- contours$thresholds
+  z <- suppressWarnings(as.numeric(names(t)))
+  one <- function(x) is.numeric(x) && length(x) %in% 1:2 && !anyNA(x) && all(x > 0) && !is.unsorted(x)
+  if (
+    !is.list(contours) || !all(names(contours) %in% c("thresholds", "multiplier")) || !is.list(t) || !length(t) ||
+      anyNA(z) || any(z < 0 | z > 24 | z != round(z)) || anyDuplicated(z) || !all(vapply(t, one, logical(1)))
+  ) {
+    stop(
+      "A contour layer's `contours` is a list of `thresholds`, by zoom (0-24, as names) the minor and major interval from that zoom on, both above 0, and optionally `multiplier`.",
+      call. = FALSE
+    )
+  }
+  m <- if (is.null(contours$multiplier)) 1 else contours$multiplier
+  if (!is.numeric(m) || length(m) != 1 || is.na(m) || m == 0) {
+    stop("`contours$multiplier` is a number other than 0.", call. = FALSE)
+  }
+  list(thresholds = lapply(t[order(z)], as.list), multiplier = m)
 }
 
 # A dem layer's colour controls: the defaults for what is not given, each value checked
@@ -2182,6 +2217,7 @@ format.rb_map <- function(x, ...) {
       l$config$kind,
       grid = if (is.function(l$meta)) l$meta() else l$meta,
       dem = list(count = 1L, v = started),
+      contour = list(count = 1L, v = started),
       vector = list(
         count = if (is.null(attr(l$tiles, "count"))) {
           1L
@@ -2282,7 +2318,7 @@ format.rb_map <- function(x, ...) {
         is.null(layers[[m[2]]]) ||
         layers[[m[2]]]$config$kind == "geojson" ||
         m[6] !=
-          (if (layers[[m[2]]]$config$kind == "dem") {
+          (if (layers[[m[2]]]$config$kind %in% c("dem", "contour")) {
             layers[[m[2]]]$config$format
           } else {
             "pbf"
@@ -2300,7 +2336,7 @@ format.rb_map <- function(x, ...) {
       return(reply(400L, "x and y lie in the zoom's range"))
     }
     l <- layers[[m[2]]]
-    if (l$config$kind == "dem") {
+    if (l$config$kind %in% c("dem", "contour")) {
       return(.rb_map_tile_reply(
         function() l$tiles(z, x, y),
         reply,

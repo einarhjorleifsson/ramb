@@ -6,7 +6,7 @@
 \usage{
 rb_map_layer(
   id,
-  kind = c("grid", "vector", "geojson", "dem"),
+  kind = c("grid", "vector", "geojson", "dem", "contour"),
   label = id,
   info = NULL,
   visible = TRUE,
@@ -29,13 +29,14 @@ rb_map_layer(
   tile_size = NULL,
   bounds = NULL,
   shade = NULL,
-  colour = NULL
+  colour = NULL,
+  contours = NULL
 )
 }
 \arguments{
 \item{id}{The layer's name, lower case: its checkbox, its source and its key in the page's address.}
 
-\item{kind}{\code{"grid"}, \code{"vector"} or \code{"geojson"}.}
+\item{kind}{\code{"grid"}, \code{"vector"}, \code{"geojson"}, \code{"dem"} or \code{"contour"}.}
 
 \item{label, info}{Its name in the sidebar and the text behind its ⓘ.}
 
@@ -44,7 +45,7 @@ rb_map_layer(
 \item{tiles}{The tile function. For a grid, \verb{function(z, x, y, params)}, \code{params} a named list of the filters'
 values as text (absent when not given); for a vector layer, \verb{function(z, x, y)}. It returns a Mapbox vector tile
 as raw bytes (DuckDB's \code{ST_AsMVT()}), or \code{raw(0)}. A dem layer's, \verb{function(z, x, y)}, returns an image of
-elevations (PNG or WebP) as raw bytes, or \code{NULL} where there is none.}
+elevations (PNG or WebP) as raw bytes, or \code{NULL} where there is none; a contour layer's the same.}
 
 \item{meta}{For a grid, a list or a function returning one, read when the server starts: \code{options} (per filter
 with \code{meta = TRUE}, a data frame of \code{value} and, optionally, \code{name} and \code{code}), \code{ranges} (per range filter, its
@@ -87,7 +88,7 @@ optional \code{unnamed} text for an option with no name; several values, comma s
 
 \item{opacity}{For a grid, its opacity when the page opens, 0-100.}
 
-\item{encoding, tile_size, bounds}{For a dem layer: how its images hold the elevation (\code{"terrarium"} or \code{"mapbox"}),
+\item{encoding, tile_size, bounds}{For a dem or contour layer: how its images hold the elevation (\code{"terrarium"} or \code{"mapbox"}),
 their side in pixels, and the extent that has tiles (west, south, east, north), so the page asks for no other.
 Taken, with \code{minzoom} and \code{maxzoom}, from the attributes of \code{tiles} where not given (\code{\link[=rb_map_tiles_mbtiles]{rb_map_tiles_mbtiles()}}
 sets them); else \code{"terrarium"} and 512. The image format (\code{"png"} or \code{"webp"}) is the \code{format} attribute's.}
@@ -109,12 +110,16 @@ rising), \code{cuts} (the cuts offered, 0 for none) and \code{cut} (one of them:
 100, 200, 500, 1,000 and 2,000, cuts 0, 10, 20 and 50, no cut, clear, 100. \code{TRUE} takes them all. Each control
 applies as it moves, and goes into the page's address as \verb{<id>_pal}, \verb{<id>_lo}, \verb{<id>_hi}, \verb{<id>_scale},
 \verb{<id>_mode}, \verb{<id>_cut}, \verb{<id>_cutas} and \verb{<id>_cop}.}
+
+\item{contours}{For a contour layer: \code{thresholds}, a named list by zoom of the minor and the major interval from that
+zoom on (\code{list("6" = c(500, 1000), "9" = c(50, 200))}; a major line has \code{level} 1), and \code{multiplier}, by which the
+elevations are multiplied before the lines are drawn (-1 for depths, 1 by default).}
 }
 \value{
 An \code{rb_map_layer}, for \code{\link[=rb_map_group]{rb_map_group()}}.
 }
 \description{
-One layer of an \code{\link[=rb_map]{rb_map()}}: what it shows, how it is drawn, and where its data come from. Four kinds:
+One layer of an \code{\link[=rb_map]{rb_map()}}: what it shows, how it is drawn, and where its data come from. Five kinds:
 }
 \details{
 \itemize{
@@ -127,6 +132,10 @@ stretch, floor, cap and histogram there too. Its \code{filters} become controls 
 \item \code{"dem"}: image tiles of elevations (Terrarium or Mapbox Terrain-RGB), such as an MBTiles file read by
 \code{\link[=rb_map_tiles_mbtiles]{rb_map_tiles_mbtiles()}}, drawn by \code{style} in the page under the base map's labels: MapLibre's \code{hillshade} and
 \code{color-relief} layers, so the shading and the colours are made in the browser.
+\item \code{"contour"}: contour lines made in the browser from the same image tiles of elevations, by \code{maplibre-contour}
+(loaded by the page only for a map that has one), at the intervals of \code{contours}, drawn by \code{style} (a \code{line}, and
+a \code{symbol} for the labels, from the source layer \code{"contours"}, its features' \code{ele} and \code{level}) under the base
+map's labels.
 }
 
 Texts (\code{label}, \code{info}, a filter's \code{label}, a legend's \code{label}, ...) are keys of the map's \code{texts} (\code{\link[=rb_map]{rb_map()}}), or
