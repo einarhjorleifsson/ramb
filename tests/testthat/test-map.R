@@ -822,3 +822,40 @@ test_that("a dem layer's relief controls: MapLibre's defaults filled in, each va
     "relief_dir"
   )
 })
+
+test_that("a dem layer's colour controls: defaults filled in, each value checked, the palette the map's, names taken", {
+  dem <- function(z, x, y) NULL
+  colour_style <- list(list(id = "depth-colour", type = "color-relief"))
+  l <- rb_map_layer("depth", "dem", tiles = dem, style = colour_style, colour = TRUE)
+  expect_equal(
+    l$config$colour[c("of", "floor", "cap", "scale", "mode", "cut", "cut_as", "opacity")],
+    list(of = "depth", floor = 10, cap = 2000, scale = "log", mode = "ramp", cut = 0, cut_as = "clear", opacity = 100)
+  )
+  expect_null(l$config$colour$palette) # the map's own
+  expect_equal(l$config$colour$bands, list(10, 20, 50, 100, 200, 500, 1000, 2000)) # an array in the config's JSON
+  given <- rb_map_layer("depth", "dem", tiles = dem, style = colour_style,
+                        colour = list(palette = "blues", cut = 20, cut_as = "grey", mode = "bands"))$config$colour
+  expect_equal(given[c("palette", "cut", "cut_as", "mode")], list(palette = "blues", cut = 20, cut_as = "grey", mode = "bands"))
+
+  shade_style <- list(list(id = "relief-shade", type = "hillshade"))
+  expect_error(rb_map_layer("relief", "dem", tiles = dem, style = shade_style, colour = TRUE), "`color-relief` style")
+  expect_error(rb_map_layer("depth", "dem", tiles = dem, style = colour_style, colour = list(cut = 15)), "cut")
+  expect_error(rb_map_layer("depth", "dem", tiles = dem, style = colour_style, colour = list(bands = c(50, 20))), "bands")
+  expect_error(rb_map_layer("depth", "dem", tiles = dem, style = colour_style, colour = list(scale = "sqrt")), "scale")
+  expect_error(rb_map_layer("depth", "dem", tiles = dem, style = colour_style, colour = list(floor = 0)), "floor")
+  expect_error(rb_map_layer("depth", "dem", tiles = dem, style = colour_style, colour = list(hue = 1)), "TRUE or a list")
+
+  expect_error(
+    rb_map(rb_map_group("g", "G", list(rb_map_layer("depth", "dem", tiles = dem, style = colour_style,
+                                                    colour = list(palette = "rainbow"))))),
+    "palette"
+  )
+  expect_error(
+    rb_map(
+      rb_map_group("g", "G", list(l)),
+      choose = list(fields = list(list(field = "depth_cut", options = list(list(value = "a", match = "a")),
+                                       layers = "depth")))
+    ),
+    "depth_cut"
+  )
+})

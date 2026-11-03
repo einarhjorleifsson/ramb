@@ -118,6 +118,8 @@ const ENGINE_TEXTS = {
   shMethod: "Shading", shStandard: "standard", shBasic: "basic", shCombined: "combined", shIgor: "igor (soft)",
   shMulti: "several lights", shDirection: "Light from", shAltitude: "Light height", shIntensity: "Intensity",
   shShadow: "Shadow", shHighlight: "Light",
+  cScale: "Scale", cLog: "log", cLinear: "linear", cMode: "Colours as", cRamp: "a ramp", cBands: "bands",
+  cCut: "Shallower than", cNone: "none", cCutAs: "drawn", cClear: "clear", cGrey: "grey",
   loading: "loading tiles…", zoom: "zoom", refused: "the server refused tiles (HTTP {1})",
   older: "the server is an older version ({1}) than this page ({2}): restart it", colour: "Colour",
   colours: "Colours", stretch: "Stretch", stretchTip: "How the colours are spread between floor and cap",
@@ -232,6 +234,94 @@ function readShade(l, q) {
   }
   for (const x of ["shadow", "light"]) if (/^[0-9a-f]{6}$/i.test(q.get(k(x)) ?? "")) $(l.id + "-" + x).value = "#" + q.get(k(x)).toLowerCase();
 }
+// A dem layer's values in colour, its depth (or height): a palette over a floor and a cap on a log or a linear scale, as
+// a ramp or in bands, the shallow end cut clear or grey, an opacity; the colour formula is made anew as a control moves.
+// MapLibre's colour relief interpolates between stops, so bands are pairs of stops a centimetre apart
+const CLEAR = "rgba(0,0,0,0)", GREY = "rgba(150,150,150,0.75)", EPS = 0.01;
+const COLOUR_KEYS = ["pal", "lo", "hi", "scale", "mode", "cut", "cutas", "op"];
+const colourDefaults = l => ({ pal: l.colour.palette ?? CONFIG.palette ?? PALETTES[0].id, lo: l.colour.floor,
+                               hi: l.colour.cap, scale: l.colour.scale, mode: l.colour.mode, cut: l.colour.cut,
+                               cutas: l.colour.cut_as, op: l.colour.opacity });
+function colourHtml(l) {
+  const d = colourDefaults(l), id = k => `${l.id}-c${k}`;
+  const sel = (k, t, opts) => `<div class="row"><label for="${id(k)}" data-t="${t}"></label><select id="${id(k)}">` +
+    opts.map(([v, text, raw]) => `<option value="${esc(v)}"${raw ? "" : ` data-t="${text}"`}${String(v) === String(d[k]) ? " selected" : ""}>` +
+                                 `${raw ? esc(text) : ""}</option>`).join("") + "</select></div>";
+  const slider = (k, t, lo, hi, step, v) => `<div class="row range"><label for="${id(k)}" data-t="${t}"></label><input id="${id(k)}" ` +
+    `type="range" min="${lo}" max="${hi}" step="${step}" value="${v}"><span class="val" id="${id(k)}val"></span></div>`;
+  return `<div class="when-on">` + sel("pal", "colours", PALETTES.map(p => [p.id, p.label ?? p.id, true])) +
+    slider("lo", "floor", 0, 4, "any", Math.log10(d.lo)) + slider("hi", "cap", 0, 4, "any", Math.log10(d.hi)) +
+    sel("scale", "cScale", [["log", "cLog"], ["linear", "cLinear"]]) + sel("mode", "cMode", [["ramp", "cRamp"], ["bands", "cBands"]]) +
+    sel("cut", "cCut", l.colour.cuts.map(c => c > 0 ? [c, `${c} m`, true] : [c, "cNone"])) +
+    sel("cutas", "cCutAs", [["clear", "cClear"], ["grey", "cGrey"]]) + slider("op", "opacity", 0, 100, 1, d.op) +
+    `<div class="legend"><div class="bar" id="${id("bar")}"></div><div class="swatches" id="${id("bands")}" hidden></div>` +
+    `<div class="ends"><span id="${id("lolab")}"></span><span id="${id("hilab")}"></span></div></div></div>`;
+}
+const colourNow = l => {
+  const g = k => $(`${l.id}-c${k}`);
+  return { pal: g("pal").value, lo: 10 ** +g("lo").value, hi: 10 ** +g("hi").value, scale: g("scale").value,
+           mode: g("mode").value, cut: +g("cut").value, cutas: g("cutas").value, op: +g("op").value };
+};
+const hexRgb = h => { const n = parseInt(h.slice(1, 7), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+// the palette's colour at t in [0, 1], between its stops
+function rampAt(cols, t) {
+  t = Math.min(1, Math.max(0, t));
+  const x = t * (cols.length - 1), i = Math.min(Math.floor(x), cols.length - 2), f = x - i, a = hexRgb(cols[i]), b = hexRgb(cols[i + 1]);
+  return `rgb(${a.map((v, k) => Math.round(v + f * (b[k] - v))).join(",")})`;
+}
+// the stops as [value, colour], the value (depth or height) rising: clear at 0 (land, no value), the cut, then the ramp
+// or the bands, the last colour on to the deepest
+function colourStops(l) {
+  const v = colourNow(l), cols = (PALETTES.find(p => p.id === v.pal) ?? PALETTES[0]).colors;
+  const lo = Math.min(v.lo, v.hi), hi = Math.max(v.lo, v.hi), lg = v.scale === "log";
+  const tOf = x => lg ? (Math.log10(x) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo) || 1) : (x - lo) / (hi - lo || 1);
+  const s = [[0, CLEAR]], start = v.cut, top = Math.max(hi, 11000);
+  if (v.cut > 0) s.push([EPS, v.cutas === "grey" ? GREY : CLEAR], [v.cut, v.cutas === "grey" ? GREY : CLEAR]);
+  const bands = [];
+  if (v.mode === "bands") {
+    const b = [start, ...l.colour.bands.filter(x => x > start), top];
+    for (let i = 0; i < b.length - 1; i++) {
+      const a = b[i] > 0 ? b[i] : b[i + 1] / 2, c = rampAt(cols, tOf(lg ? Math.sqrt(a * b[i + 1]) : (a + b[i + 1]) / 2));
+      s.push([b[i] + EPS, c], [b[i + 1], c]);
+      bands.push([b[i], i < b.length - 2 ? b[i + 1] : null, c]);
+    }
+  } else {
+    s.push([start + EPS, rampAt(cols, tOf(Math.max(start + EPS, lo)))]);
+    for (let k = 0; k <= 24; k++) {
+      const x = lg ? 10 ** (Math.log10(lo) + k / 24 * (Math.log10(hi) - Math.log10(lo))) : lo + k / 24 * (hi - lo);
+      if (x > s[s.length - 1][0]) s.push([x, rampAt(cols, k / 24)]);
+    }
+    if (top > s[s.length - 1][0]) s.push([top, cols[cols.length - 1]]);
+  }
+  return { s, cols, bands, v };
+}
+function applyColour(l) {
+  if (!l.colour) return;
+  const { s, cols, bands, v } = colourStops(l), sign = l.colour.of === "depth" ? -1 : 1;
+  const expr = ["interpolate", ["linear"], ["elevation"], ...s.map(([x, c]) => [sign * x, c]).sort((a, b) => a[0] - b[0]).flat()];
+  for (const st of l.style) if (st.type === "color-relief" && map.getLayer(st.id)) {
+    map.setPaintProperty(st.id, "color-relief-color", expr);
+    map.setPaintProperty(st.id, "color-relief-opacity", v.op / 100);
+  }
+  // depths to two figures, whole metres from 10
+  const dm = x => { const r = +x.toPrecision(2); return r >= 10 ? Math.round(r).toLocaleString(loc()) : fmt(r); };
+  const m = x => `${dm(x)} m`, id = k => `${l.id}-c${k}`;
+  $(id("loval")).textContent = m(v.lo); $(id("hival")).textContent = m(v.hi); $(id("opval")).textContent = v.op + " %";
+  $(id("bar")).hidden = v.mode === "bands"; $(id("bands")).hidden = v.mode !== "bands";
+  $(id("bar")).style.background = `linear-gradient(to right, ${cols.join(",")})`;
+  $(id("lolab")).textContent = v.mode === "bands" ? "" : "≤ " + m(Math.min(v.lo, v.hi));
+  $(id("hilab")).textContent = v.mode === "bands" ? "" : "≥ " + m(Math.max(v.lo, v.hi));
+  $(id("bands")).innerHTML = bands.map(([a, b, c]) => `<span><i style="background:${c}"></i>${b === null ? "> " + m(a) : `${dm(a)}–${m(b)}`}</span>`).join("");
+}
+function readColour(l, q) {
+  const k = x => `${l.id}_${x}`, set = (x, v) => { $(`${l.id}-c${x}`).value = v; };
+  if (PALETTES.some(p => p.id === q.get(k("pal")))) set("pal", q.get(k("pal")));
+  for (const x of ["lo", "hi"]) { const v = +q.get(k(x)); if (q.get(k(x)) && v >= 1 && v <= 10000) set(x, Math.log10(v)); }
+  for (const [x, ok] of [["scale", ["log", "linear"]], ["mode", ["ramp", "bands"]], ["cutas", ["clear", "grey"]]])
+    if (ok.includes(q.get(k(x)))) set(x, q.get(k(x)));
+  if (l.colour.cuts.map(String).includes(q.get(k("cut")))) set("cut", q.get(k("cut")));
+  const op = q.get(k("cop")); if (op !== null && op !== "" && +op >= 0 && +op <= 100) set("op", op);
+}
 function layerRow(l) {
   const row = document.createElement("div");
   row.className = "layer" + (l.visible ? "" : " off");
@@ -247,6 +337,7 @@ function layerRow(l) {
     box.append($("grid-colour").content.cloneNode(true));
     row.append(box);
   }
+  if (l.colour) row.insertAdjacentHTML("beforeend", colourHtml(l));
   if (l.shade) row.insertAdjacentHTML("beforeend", shadeHtml(l));
   // the styles to choose between (a vector or geojson layer's variants), and the legend, which a variant may replace
   if (l.variants) row.insertAdjacentHTML("beforeend", `<div class="when-on"><div class="row">` +
@@ -504,6 +595,7 @@ Promise.all([fetch("/meta").then(r => r.json()), styleLoaded]).then(([meta]) => 
   }
   for (const l of OTHER) if (l.variants && l.variants.options.some(o => o.value === q.get(l.id + "_by"))) $(l.id + "-by").value = q.get(l.id + "_by");
   for (const l of OTHER) if (l.shade) readShade(l, q);
+  for (const l of OTHER) if (l.colour) readColour(l, q);
   CHOOSE.forEach((f, i) => {
     const vals = (q.get(f.field) ?? "").split(",").filter(v => f.options.some(o => o.value === v));
     if (vals.length) setChosen(i, f.multi ? vals : vals.slice(0, 1));
@@ -554,6 +646,12 @@ function addressNow() {
     for (const x of Object.keys(SHADE_RANGES)) put(l.id + "_" + x, String(v[x]), String(d[x]));
     for (const x of ["shadow", "light"]) put(l.id + "_" + x, v[x].slice(1), d[x].slice(1));
   }
+  for (const l of OTHER) if (l.colour) {
+    const v = colourNow(l), d = colourDefaults(l), r = x => String(+x.toPrecision(3));
+    for (const x of ["pal", "scale", "mode", "cutas"]) put(`${l.id}_${x}`, v[x], d[x]);
+    put(`${l.id}_lo`, r(v.lo), r(d.lo)); put(`${l.id}_hi`, r(v.hi), r(d.hi));
+    put(`${l.id}_cut`, String(v.cut), String(d.cut)); put(`${l.id}_cop`, String(v.op), String(d.op));
+  }
   CHOOSE.forEach((f, i) => put(f.field, chosen(i)?.join(",") ?? "", ""));
   put("base", document.querySelector("#bases input:checked")?.value, BASEMAPS[0].id);
   put("lang", LANG, LANGS.includes(CONFIG.language) ? CONFIG.language : LANGS.includes("en") ? "en" : LANGS[0]);
@@ -583,7 +681,7 @@ function addLayer(l, meta) {
       if (spec.type === "symbol" && spec.layout?.["text-field"] && !spec.layout["text-font"]) spec.layout = { ...spec.layout, "text-font": FONT };
       map.addLayer(spec, before);
     }
-    applyVariant(l); applyShade(l); applyChoice(l); showLayer(l); countText(l);
+    applyVariant(l); applyColour(l); applyShade(l); applyChoice(l); showLayer(l); countText(l);
   };
   if (l.kind === "vector") {
     const n = meta.layers?.[l.id]?.count ?? 0;
@@ -635,6 +733,7 @@ function applyVariant(l) {
 for (const l of OTHER) if (l.variants) $(l.id + "-by").addEventListener("change", () => { popup?.remove(); applyVariant(l); });
 for (const l of OTHER) if (l.shade)
   for (const x of ["method", ...Object.keys(SHADE_RANGES), "shadow", "light"]) $(l.id + "-" + x).addEventListener("input", () => applyShade(l));
+for (const l of OTHER) if (l.colour) for (const x of COLOUR_KEYS) $(`${l.id}-c${x}`).addEventListener("input", () => applyColour(l));
 
 // A layer's styles filtered to the values chosen, on top of each style's own filter; a layer without the field is
 // left as it is. Nothing is fetched again: the tiles carry the fields

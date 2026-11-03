@@ -28,7 +28,8 @@ rb_map_layer(
   encoding = NULL,
   tile_size = NULL,
   bounds = NULL,
-  shade = NULL
+  shade = NULL,
+  colour = NULL
 )
 }
 \arguments{
@@ -98,6 +99,16 @@ intensity, 0-1), \code{opacity} (0-100: the alpha of the shading's colours, whic
 \code{shadow} and \code{highlight} (colours as \code{"#rrggbb"}); MapLibre's own defaults for those not given. \code{TRUE} takes
 every default. Each control applies as it moves, and goes into the page's address as \verb{<id>_method}, \verb{<id>_dir},
 \verb{<id>_alt}, \verb{<id>_ex}, \verb{<id>_op}, \verb{<id>_shadow} and \verb{<id>_light}.}
+
+\item{colour}{For a dem layer with a \code{color-relief} style: its values in colour, with their controls in the page, a
+list of any of \code{of} (\code{"depth"}, the elevation's negative, or \code{"elevation"}; what is 0 or less is clear), \code{palette}
+(an id of the map's palettes; the map's own when not given), \code{floor} and \code{cap} (the values the palette's ends
+stand at, 1-10,000), \code{scale} (\code{"log"} or \code{"linear"}), \code{mode} (\code{"ramp"} or \code{"bands"}), \code{bands} (the bands' breaks,
+rising), \code{cuts} (the cuts offered, 0 for none) and \code{cut} (one of them: values under it are drawn as \code{cut_as},
+\code{"clear"} or \code{"grey"}), \code{opacity} (0-100). Defaults: depth, floor 10, cap 2,000, log, a ramp, bands at 10, 20, 50,
+100, 200, 500, 1,000 and 2,000, cuts 0, 10, 20 and 50, no cut, clear, 100. \code{TRUE} takes them all. Each control
+applies as it moves, and goes into the page's address as \verb{<id>_pal}, \verb{<id>_lo}, \verb{<id>_hi}, \verb{<id>_scale},
+\verb{<id>_mode}, \verb{<id>_cut}, \verb{<id>_cutas} and \verb{<id>_cop}.}
 }
 \value{
 An \code{rb_map_layer}, for \code{\link[=rb_map_group]{rb_map_group()}}.

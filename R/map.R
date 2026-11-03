@@ -83,6 +83,15 @@
 #'   `shadow` and `highlight` (colours as `"#rrggbb"`); MapLibre's own defaults for those not given. `TRUE` takes
 #'   every default. Each control applies as it moves, and goes into the page's address as `<id>_method`, `<id>_dir`,
 #'   `<id>_alt`, `<id>_ex`, `<id>_op`, `<id>_shadow` and `<id>_light`.
+#' @param colour For a dem layer with a `color-relief` style: its values in colour, with their controls in the page, a
+#'   list of any of `of` (`"depth"`, the elevation's negative, or `"elevation"`; what is 0 or less is clear), `palette`
+#'   (an id of the map's palettes; the map's own when not given), `floor` and `cap` (the values the palette's ends
+#'   stand at, 1-10,000), `scale` (`"log"` or `"linear"`), `mode` (`"ramp"` or `"bands"`), `bands` (the bands' breaks,
+#'   rising), `cuts` (the cuts offered, 0 for none) and `cut` (one of them: values under it are drawn as `cut_as`,
+#'   `"clear"` or `"grey"`), `opacity` (0-100). Defaults: depth, floor 10, cap 2,000, log, a ramp, bands at 10, 20, 50,
+#'   100, 200, 500, 1,000 and 2,000, cuts 0, 10, 20 and 50, no cut, clear, 100. `TRUE` takes them all. Each control
+#'   applies as it moves, and goes into the page's address as `<id>_pal`, `<id>_lo`, `<id>_hi`, `<id>_scale`,
+#'   `<id>_mode`, `<id>_cut`, `<id>_cutas` and `<id>_cop`.
 #' @return An `rb_map_layer`, for [rb_map_group()].
 #' @seealso [rb_map()], [rb_map_tiles_table()]
 #' @export
@@ -145,7 +154,8 @@ rb_map_layer <- function(
   encoding = NULL,
   tile_size = NULL,
   bounds = NULL,
-  shade = NULL
+  shade = NULL,
+  colour = NULL
 ) {
   kind <- match.arg(kind)
   if (!is.character(id) || length(id) != 1 || !grepl("^[a-z][a-z0-9_]*$", id)) {
@@ -277,6 +287,9 @@ rb_map_layer <- function(
   if (!is.null(shade)) {
     shade <- .rb_map_shade(shade, kind, style)
   }
+  if (!is.null(colour)) {
+    colour <- .rb_map_colour(colour, kind, style)
+  }
   config <- list(
     id = id,
     kind = kind,
@@ -299,7 +312,8 @@ rb_map_layer <- function(
     tile_size = tile_size,
     bounds = bounds,
     format = format,
-    shade = shade
+    shade = shade,
+    colour = colour
   )
   structure(
     list(
@@ -426,6 +440,12 @@ rb_map <- function(
   if (!is.null(palette) && !palette %in% vapply(palettes, `[[`, "", "id")) {
     stop("`palette` is an id of `palettes`.", call. = FALSE)
   }
+  for (l in layers) {
+    p <- l$config$colour$palette
+    if (!is.null(p) && !p %in% vapply(palettes, `[[`, "", "id")) {
+      stop(sprintf("Layer %s: its colour's `palette` is an id of `palettes`.", l$config$id), call. = FALSE)
+    }
+  }
   if (!is.null(choose)) {
     one <- function(f) {
       is.character(f$field) && length(f$field) == 1 && length(f$options) > 0
@@ -454,9 +474,14 @@ rb_map <- function(
         unlist(lapply(l$config$filters, function(f) c(f$id, unlist(f$params))))
       })),
       unlist(lapply(layers, function(l) {
-        if (!is.null(l$config$shade)) {
-          paste0(l$config$id, "_", c("method", "dir", "alt", "ex", "op", "shadow", "light"))
-        }
+        c(
+          if (!is.null(l$config$shade)) {
+            paste0(l$config$id, "_", c("method", "dir", "alt", "ex", "op", "shadow", "light"))
+          },
+          if (!is.null(l$config$colour)) {
+            paste0(l$config$id, "_", c("pal", "lo", "hi", "scale", "mode", "cut", "cutas", "cop"))
+          }
+        )
       }))
     )
     clash <- intersect(vapply(choose$fields, `[[`, "", "field"), taken)
@@ -1054,6 +1079,52 @@ rb_map_tiles_table <- function(
   v$shadow <- tolower(v$shadow)
   v$highlight <- tolower(v$highlight)
   v
+}
+
+# A dem layer's colour controls: the defaults for what is not given, each value checked
+.rb_map_colour <- function(colour, kind, style) {
+  if (kind != "dem" || !any(vapply(style, function(s) identical(s$type, "color-relief"), logical(1)))) {
+    stop("`colour` is for a dem layer with a `color-relief` style.", call. = FALSE)
+  }
+  given <- if (isTRUE(colour)) list() else colour
+  known <- c("of", "palette", "floor", "cap", "scale", "mode", "bands", "cuts", "cut", "cut_as", "opacity")
+  if (!is.list(given) || (length(given) && (is.null(names(given)) || !all(names(given) %in% known)))) {
+    stop(sprintf("`colour` is TRUE or a list of any of %s.", paste(known, collapse = ", ")), call. = FALSE)
+  }
+  v <- utils::modifyList(
+    list(of = "depth", palette = NULL, floor = 10, cap = 2000, scale = "log", mode = "ramp",
+         bands = c(10, 20, 50, 100, 200, 500, 1000, 2000), cuts = c(0, 10, 20, 50), cut = 0, cut_as = "clear",
+         opacity = 100),
+    given
+  )
+  one_of <- function(x, ok) is.character(x) && length(x) == 1 && x %in% ok
+  num <- function(x, lo, hi) is.numeric(x) && length(x) == 1 && !is.na(x) && x >= lo && x <= hi
+  rising <- function(x) is.numeric(x) && length(x) > 0 && !anyNA(x) && all(x >= 0) && !is.unsorted(x, strictly = TRUE)
+  ok <- c(
+    of = one_of(v$of, c("depth", "elevation")),
+    palette = is.null(v$palette) || (is.character(v$palette) && length(v$palette) == 1),
+    floor = num(v$floor, 1, 10000),
+    cap = num(v$cap, 1, 10000),
+    scale = one_of(v$scale, c("log", "linear")),
+    mode = one_of(v$mode, c("ramp", "bands")),
+    bands = rising(v$bands) && all(v$bands > 0),
+    cuts = rising(v$cuts),
+    cut = num(v$cut, 0, Inf) && v$cut %in% v$cuts,
+    cut_as = one_of(v$cut_as, c("clear", "grey")),
+    opacity = num(v$opacity, 0, 100)
+  )
+  if (!all(ok)) {
+    stop(
+      sprintf(
+        "`colour`: %s out of range (of depth or elevation; floor and cap 1-10,000; scale log or linear; mode ramp or bands; bands and cuts rising, the cut one of the cuts; cut_as clear or grey; opacity 0-100).",
+        paste(names(ok)[!ok], collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  v$bands <- as.list(v$bands)
+  v$cuts <- as.list(v$cuts)
+  Filter(Negate(is.null), v)
 }
 
 #' Tiles from an MBTiles file

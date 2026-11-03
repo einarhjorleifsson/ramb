@@ -1,3 +1,12 @@
+# ramb 2026.11.03.2
+
+- `rb_map_layer(colour = )` (new argument): a dem layer's depth (or height) in colour, in the reader's hands. Under the
+  layer in the page, a palette (any of the map's), a floor and a cap, a log or a linear scale, a ramp or bands (at the
+  layer's breaks, the charts' isobaths by default), a cut of the shallow end (none, 10, 20 or 50 m by default) drawn
+  clear or grey, an opacity, and a legend that follows them; the colour formula is made anew as a control moves, with
+  nothing fetched again, and every control is in the page's address. `TRUE` takes the defaults. First used by
+  fishycode's bathymetry map (plan 063, step 2).
+
 # ramb 2026.11.03.1
 
 - `rb_map_layer(shade = )` (new argument): a dem layer's relief in the reader's hands. Under the layer in the page,
