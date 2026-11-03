@@ -110,7 +110,9 @@ rising), \code{cuts} (the cuts offered, 0 for none) and \code{cut} (one of them:
 100, 200, 500, 1,000 and 2,000, cuts 0, 10, 20 and 50, no cut, clear, 100. \code{TRUE} takes them all. Each control
 applies as it moves, and goes into the page's address as \verb{<id>_pal}, \verb{<id>_lo}, \verb{<id>_hi}, \verb{<id>_scale},
 \verb{<id>_mode}, \verb{<id>_cut}, \verb{<id>_cutas} and \verb{<id>_cop}. With \code{fit}, a function of the view's \code{west}, \code{south}, \code{east}
-and \code{north} returning the floor and the cap for the values there (or \code{NULL} where there are none), the page has a
+and \code{north} returning the floor and the cap for the values there (or \code{NULL} where there are none; or a list of
+\code{floor}, \code{cap} and \code{quantiles}, the values' quantiles rising, which also offers \code{scale} \code{"equal"}, each colour an
+equal share of the values in view between the floor and the cap), the page has a
 "Fit to view" button, answered by the server at \verb{/fit/<id>?bbox=w,s,e,n}, and follows the view: it fits again each
 time the map settles, until a floor or cap is set by hand (\code{auto}, \code{TRUE} by default; \verb{<id>_auto} in the address,
 where the floor and cap are left out while it follows).}

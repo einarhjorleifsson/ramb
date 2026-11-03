@@ -97,7 +97,9 @@
 #'   100, 200, 500, 1,000 and 2,000, cuts 0, 10, 20 and 50, no cut, clear, 100. `TRUE` takes them all. Each control
 #'   applies as it moves, and goes into the page's address as `<id>_pal`, `<id>_lo`, `<id>_hi`, `<id>_scale`,
 #'   `<id>_mode`, `<id>_cut`, `<id>_cutas` and `<id>_cop`. With `fit`, a function of the view's `west`, `south`, `east`
-#'   and `north` returning the floor and the cap for the values there (or `NULL` where there are none), the page has a
+#'   and `north` returning the floor and the cap for the values there (or `NULL` where there are none; or a list of
+#'   `floor`, `cap` and `quantiles`, the values' quantiles rising, which also offers `scale` `"equal"`, each colour an
+#'   equal share of the values in view between the floor and the cap), the page has a
 #'   "Fit to view" button, answered by the server at `/fit/<id>?bbox=w,s,e,n`, and follows the view: it fits again each
 #'   time the map settles, until a floor or cap is set by hand (`auto`, `TRUE` by default; `<id>_auto` in the address,
 #'   where the floor and cap are left out while it follows).
@@ -317,6 +319,8 @@ rb_map_layer <- function(
     colour <- .rb_map_colour(colour, kind, style)
     if (!is.null(fit)) {
       colour$fit <- TRUE
+    } else if (identical(colour$scale, "equal")) {
+      stop("`colour$scale` \"equal\" needs `colour$fit`, which gives the values' quantiles in view.", call. = FALSE)
     }
   }
   config <- list(
@@ -1157,7 +1161,7 @@ rb_map_tiles_table <- function(
     palette = is.null(v$palette) || (is.character(v$palette) && length(v$palette) == 1),
     floor = num(v$floor, 1, 10000),
     cap = num(v$cap, 1, 10000),
-    scale = one_of(v$scale, c("log", "linear")),
+    scale = one_of(v$scale, c("log", "linear", "equal")),
     mode = one_of(v$mode, c("ramp", "bands")),
     bands = rising(v$bands) && all(v$bands > 0),
     cuts = rising(v$cuts),
@@ -1169,7 +1173,7 @@ rb_map_tiles_table <- function(
   if (!all(ok)) {
     stop(
       sprintf(
-        "`colour`: %s out of range (of depth or elevation; floor and cap 1-10,000; scale log or linear; mode ramp or bands; bands and cuts rising, the cut one of the cuts; cut_as clear or grey; opacity 0-100).",
+        "`colour`: %s out of range (of depth or elevation; floor and cap 1-10,000; scale log, linear or equal; mode ramp or bands; bands and cuts rising, the cut one of the cuts; cut_as clear or grey; opacity 0-100).",
         paste(names(ok)[!ok], collapse = ", ")
       ),
       call. = FALSE
@@ -2326,12 +2330,20 @@ format.rb_map <- function(x, ...) {
       if (inherits(v, "error")) {
         return(reply(500L, sub("\n.*", "", conditionMessage(v))))
       }
+      # c(floor, cap), or a list of `floor`, `cap` and `quantiles` (rising), for colours in equal shares
+      q <- if (is.list(v)) v$quantiles
+      if (is.list(v)) {
+        v <- c(v$floor, v$cap)
+      }
       if (is.null(v) || length(v) != 2 || anyNA(v)) {
         return(reply(404L, "no values in view"))
       }
+      if (!is.null(q) && (!is.numeric(q) || anyNA(q) || is.unsorted(q))) {
+        return(reply(500L, "the fit's quantiles are not rising numbers"))
+      }
       return(reply(
         200L,
-        json(list(floor = v[[1]], cap = v[[2]])),
+        json(Filter(Negate(is.null), list(floor = v[[1]], cap = v[[2]], q = if (!is.null(q)) as.list(q)))),
         "application/json; charset=utf-8",
         list(`Cache-Control` = "no-store")
       ))

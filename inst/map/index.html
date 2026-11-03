@@ -122,7 +122,7 @@ const ENGINE_TEXTS = {
   cScale: "Scale", cLog: "log", cLinear: "linear", cMode: "Colours as", cRamp: "a ramp", cBands: "bands",
   cCut: "Shallower than", cNone: "none", cCutAs: "drawn", cClear: "clear", cGrey: "grey",
   cFitTip: "Floor and cap at the 2nd and 98th percentiles of the values in view", cFitNone: "no values in view to fit to",
-  cAuto: "follow the view", cAutoTip: "Fit the floor and cap to the view each time it settles; setting either by hand stops it",
+  cEqual: "equal shares", cAuto: "follow the view", cAutoTip: "Fit the floor and cap to the view each time it settles; setting either by hand stops it",
   loading: "loading tiles…", zoom: "zoom", refused: "the server refused tiles (HTTP {1})",
   older: "the server is an older version ({1}) than this page ({2}): restart it", colour: "Colour",
   colours: "Colours", stretch: "Stretch", stretchTip: "How the colours are spread between floor and cap",
@@ -264,7 +264,8 @@ function colourHtml(l) {
     `type="range" min="${lo}" max="${hi}" step="${step}" value="${v}"><span class="val" id="${id(k)}val"></span></div>`;
   return `<div class="when-on">` + sel("pal", "colours", PALETTES.map(p => [p.id, p.label ?? p.id, true])) +
     slider("lo", "floor", 0, 4, "any", Math.log10(d.lo)) + slider("hi", "cap", 0, 4, "any", Math.log10(d.hi)) +
-    sel("scale", "cScale", [["log", "cLog"], ["linear", "cLinear"]]) + sel("mode", "cMode", [["ramp", "cRamp"], ["bands", "cBands"]]) +
+    sel("scale", "cScale", [["log", "cLog"], ["linear", "cLinear"], ...(l.colour.fit ? [["equal", "cEqual"]] : [])]) +
+    sel("mode", "cMode", [["ramp", "cRamp"], ["bands", "cBands"]]) +
     sel("cut", "cCut", l.colour.cuts.map(c => c > 0 ? [c, `${c} m`, true] : [c, "cNone"])) +
     sel("cutas", "cCutAs", [["clear", "cClear"], ["grey", "cGrey"]]) + slider("op", "opacity", 0, 100, 1, d.op) +
     (l.colour.fit ? `<div class="row"><button id="${id("fit")}" data-t="fit" data-tt="cFitTip"></button>` +
@@ -287,10 +288,21 @@ function rampAt(cols, t) {
 }
 // the stops as [value, colour], the value (depth or height) rising: clear at 0 (land, no value), the cut, then the ramp
 // or the bands, the last colour on to the deepest
+// the view's quantiles from the last fit, by layer, for colours in equal shares
+const colourQ = {};
 function colourStops(l) {
   const v = colourNow(l), cols = (PALETTES.find(p => p.id === v.pal) ?? PALETTES[0]).colors;
-  const lo = Math.min(v.lo, v.hi), hi = Math.max(v.lo, v.hi), lg = v.scale === "log";
-  const tOf = x => lg ? (Math.log10(x) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo) || 1) : (x - lo) / (hi - lo || 1);
+  const lo = Math.min(v.lo, v.hi), hi = Math.max(v.lo, v.hi), lg = v.scale !== "linear";
+  // equal shares: the quantiles between floor and cap, each step between them an equal share of the values in view
+  // (on a log scale until the first fit brings them)
+  const pts = v.scale === "equal" && colourQ[l.id] ? [lo, ...colourQ[l.id].filter(x => x > lo && x < hi), hi] : null;
+  const tOf = x => {
+    if (pts) {
+      for (let i = 1; i < pts.length; i++) if (x < pts[i]) return Math.max(0, (i - 1 + (x - pts[i - 1]) / (pts[i] - pts[i - 1])) / (pts.length - 1));
+      return 1;
+    }
+    return lg ? (Math.log10(x) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo) || 1) : (x - lo) / (hi - lo || 1);
+  };
   const s = [[0, CLEAR]], start = v.cut, top = Math.max(hi, 11000);
   if (v.cut > 0) s.push([EPS, v.cutas === "grey" ? GREY : CLEAR], [v.cut, v.cutas === "grey" ? GREY : CLEAR]);
   const bands = [];
@@ -303,9 +315,10 @@ function colourStops(l) {
     }
   } else {
     s.push([start + EPS, rampAt(cols, tOf(Math.max(start + EPS, lo)))]);
-    for (let k = 0; k <= 24; k++) {
-      const x = lg ? 10 ** (Math.log10(lo) + k / 24 * (Math.log10(hi) - Math.log10(lo))) : lo + k / 24 * (hi - lo);
-      if (x > s[s.length - 1][0]) s.push([x, rampAt(cols, k / 24)]);
+    const n = pts ? pts.length - 1 : 24;
+    for (let k = 0; k <= n; k++) {
+      const x = pts ? pts[k] : lg ? 10 ** (Math.log10(lo) + k / n * (Math.log10(hi) - Math.log10(lo))) : lo + k / n * (hi - lo);
+      if (x > s[s.length - 1][0]) s.push([x, rampAt(cols, k / n)]);
     }
     if (top > s[s.length - 1][0]) s.push([top, cols[cols.length - 1]]);
   }
@@ -333,14 +346,18 @@ function applyColour(l) {
 // is asked again each time the map settles, and says nothing where the view has no values
 const fitTimers = {};
 const following = l => !!l.colour?.fit && !!$(`${l.id}-cauto`)?.checked;
-async function fitColour(l, quiet = false) {
+// `keep`: the quantiles only, the floor and cap left as they are (not following, colours in equal shares)
+async function fitColour(l, quiet = false, keep = false) {
   const b = map.getBounds(), box = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map(v => v.toFixed(4)).join(",");
   try {
     const r = await fetch(`/fit/${l.id}?bbox=${box}`);
     if (!r.ok) throw new Error(r.status);
     const f = await r.json();
-    $(`${l.id}-clo`).value = Math.log10(Math.min(Math.max(1, f.floor), 10000));
-    $(`${l.id}-chi`).value = Math.log10(Math.min(Math.max(1, f.cap), 10000));
+    if (f.q) colourQ[l.id] = f.q;
+    if (!keep) {
+      $(`${l.id}-clo`).value = Math.log10(Math.min(Math.max(1, f.floor), 10000));
+      $(`${l.id}-chi`).value = Math.log10(Math.min(Math.max(1, f.cap), 10000));
+    }
     applyColour(l); writeAddress();
   } catch (e) {
     if (quiet) return;
@@ -352,7 +369,7 @@ function readColour(l, q) {
   const k = x => `${l.id}_${x}`, set = (x, v) => { $(`${l.id}-c${x}`).value = v; };
   if (PALETTES.some(p => p.id === q.get(k("pal")))) set("pal", q.get(k("pal")));
   for (const x of ["lo", "hi"]) { const v = +q.get(k(x)); if (q.get(k(x)) && v >= 1 && v <= 10000) set(x, Math.log10(v)); }
-  for (const [x, ok] of [["scale", ["log", "linear"]], ["mode", ["ramp", "bands"]], ["cutas", ["clear", "grey"]]])
+  for (const [x, ok] of [["scale", ["log", "linear", ...(l.colour.fit ? ["equal"] : [])]], ["mode", ["ramp", "bands"]], ["cutas", ["clear", "grey"]]])
     if (ok.includes(q.get(k(x)))) set(x, q.get(k(x)));
   if (l.colour.cuts.map(String).includes(q.get(k("cut")))) set("cut", q.get(k("cut")));
   const op = q.get(k("cop")); if (op !== null && op !== "" && +op >= 0 && +op <= 100) set("op", op);
@@ -725,6 +742,7 @@ function addLayer(l, meta) {
     }
     applyVariant(l); applyColour(l); applyShade(l); applyChoice(l); showLayer(l); countText(l);
     if (following(l)) fitColour(l, true);
+    else if (l.colour?.fit && $(`${l.id}-cscale`).value === "equal") fitColour(l, true, true);
   };
   if (l.kind === "vector") {
     const n = meta.layers?.[l.id]?.count ?? 0;
@@ -795,6 +813,10 @@ for (const l of OTHER) if (l.colour?.fit) {
   // a floor or cap set by hand is kept: the view is no longer followed
   for (const x of ["lo", "hi"]) $(`${l.id}-c${x}`).addEventListener("input", () => { $(`${l.id}-cauto`).checked = false; });
   $(`${l.id}-cauto`).addEventListener("change", () => { if (following(l)) fitColour(l, true); });
+  // equal shares need the view's quantiles: fitted now if none are at hand
+  $(`${l.id}-cscale`).addEventListener("input", () => {
+    if ($(`${l.id}-cscale`).value === "equal" && !colourQ[l.id]) fitColour(l, true, !following(l));
+  });
 }
 
 // A layer's styles filtered to the values chosen, on top of each style's own filter; a layer without the field is

@@ -1,3 +1,11 @@
+# ramb 2026.11.03.5
+
+- A dem layer's colours in equal shares (`colour$scale = "equal"`, offered where the layer has a `fit`): the fit may
+  return the values' quantiles in view (a list of `floor`, `cap` and `quantiles`), and the palette's colours are then
+  placed at them, each colour an equal share of the values in view between the floor and the cap, as a grid's "equal"
+  stretch. Following the view, the quantiles follow it; not following, they stay as last fitted. First used by
+  fishycode's bathymetry map (plan 063, point 8(a)).
+
 # ramb 2026.11.03.4
 
 - `rb_map_layer(colour = list(fit = ))`: a function of the view's box returning the floor and the cap for the values

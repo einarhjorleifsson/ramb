@@ -940,3 +940,21 @@ test_that("a dem layer's colours follow the view by default, and its address nam
     "depth_auto"
   )
 })
+
+test_that("a fit may give the values' quantiles in view, for colours in equal shares", {
+  skip_if_not_installed("jsonlite")
+  dem <- function(z, x, y) NULL
+  colour_style <- list(list(id = "depth-colour", type = "color-relief"))
+  fit <- function(west, south, east, north) {
+    if (west < -100) list(floor = 1, cap = 9, quantiles = c(5, 3)) else list(floor = 3, cap = 80, quantiles = c(3, 20, 40, 80))
+  }
+  l <- rb_map_layer("depth", "dem", tiles = dem, style = colour_style, colour = list(fit = fit, scale = "equal"))
+  expect_equal(l$config$colour$scale, "equal")
+  app <- .rb_map_app(rb_map(rb_map_group("g", "G", list(l))))
+  r <- get(app, "/fit/depth", "bbox=-25,63,-20,65")
+  expect_equal(r$status, 200L)
+  expect_equal(jsonlite::fromJSON(r$body, simplifyVector = FALSE), list(floor = 3, cap = 80, q = list(3, 20, 40, 80)))
+  expect_equal(get(app, "/fit/depth", "bbox=-120,63,-110,65")$status, 500L) # quantiles not rising
+  expect_error(rb_map_layer("depth", "dem", tiles = dem, style = colour_style, colour = list(scale = "equal")),
+               "needs `colour\\$fit`")
+})
