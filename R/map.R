@@ -11,6 +11,7 @@
 #                                    its filters before its tile function sees them
 #   /tiles/<id>/{z}/{x}/{y}.png      a dem or contour layer's tile, an image of elevations (.webp for a WebP one)
 #   /data/<id>.geojson               a geojson layer's data
+#   /fit/<id>?bbox=w,s,e,n           a dem layer's floor and cap for the values in a box, from its colour's `fit`
 
 .rb_map_engine <- 2L # the page's ENGINE: changed together
 .rb_maps <- new.env(parent = emptyenv()) # the servers rb_map_serve() started, by port
@@ -95,7 +96,11 @@
 #'   `"clear"` or `"grey"`), `opacity` (0-100). Defaults: depth, floor 10, cap 2,000, log, a ramp, bands at 10, 20, 50,
 #'   100, 200, 500, 1,000 and 2,000, cuts 0, 10, 20 and 50, no cut, clear, 100. `TRUE` takes them all. Each control
 #'   applies as it moves, and goes into the page's address as `<id>_pal`, `<id>_lo`, `<id>_hi`, `<id>_scale`,
-#'   `<id>_mode`, `<id>_cut`, `<id>_cutas` and `<id>_cop`.
+#'   `<id>_mode`, `<id>_cut`, `<id>_cutas` and `<id>_cop`. With `fit`, a function of the view's `west`, `south`, `east`
+#'   and `north` returning the floor and the cap for the values there (or `NULL` where there are none), the page has a
+#'   "Fit to view" button, answered by the server at `/fit/<id>?bbox=w,s,e,n`, and follows the view: it fits again each
+#'   time the map settles, until a floor or cap is set by hand (`auto`, `TRUE` by default; `<id>_auto` in the address,
+#'   where the floor and cap are left out while it follows).
 #' @param contours For a contour layer: `thresholds`, a named list by zoom of the minor and the major interval from that
 #'   zoom on (`list("6" = c(500, 1000), "9" = c(50, 200))`; a major line has `level` 1), and `multiplier`, by which the
 #'   elevations are multiplied before the lines are drawn (-1 for depths, 1 by default).
@@ -300,8 +305,19 @@ rb_map_layer <- function(
   if (!is.null(shade)) {
     shade <- .rb_map_shade(shade, kind, style)
   }
+  fit <- NULL
   if (!is.null(colour)) {
+    if (is.list(colour) && !is.null(colour$fit)) {
+      if (!is.function(colour$fit)) {
+        stop("`colour$fit` is a function of west, south, east and north.", call. = FALSE)
+      }
+      fit <- colour$fit
+      colour$fit <- NULL
+    }
     colour <- .rb_map_colour(colour, kind, style)
+    if (!is.null(fit)) {
+      colour$fit <- TRUE
+    }
   }
   config <- list(
     id = id,
@@ -334,7 +350,8 @@ rb_map_layer <- function(
       config = Filter(Negate(is.null), config),
       tiles = tiles,
       meta = meta,
-      data = data
+      data = data,
+      fit = fit
     ),
     class = "rb_map_layer"
   )
@@ -493,7 +510,7 @@ rb_map <- function(
             paste0(l$config$id, "_", c("method", "dir", "alt", "ex", "op", "shadow", "light"))
           },
           if (!is.null(l$config$colour)) {
-            paste0(l$config$id, "_", c("pal", "lo", "hi", "scale", "mode", "cut", "cutas", "cop"))
+            paste0(l$config$id, "_", c("pal", "lo", "hi", "scale", "mode", "cut", "cutas", "cop", "auto"))
           }
         )
       }))
@@ -1122,14 +1139,14 @@ rb_map_tiles_table <- function(
     stop("`colour` is for a dem layer with a `color-relief` style.", call. = FALSE)
   }
   given <- if (isTRUE(colour)) list() else colour
-  known <- c("of", "palette", "floor", "cap", "scale", "mode", "bands", "cuts", "cut", "cut_as", "opacity")
+  known <- c("of", "palette", "floor", "cap", "scale", "mode", "bands", "cuts", "cut", "cut_as", "opacity", "auto")
   if (!is.list(given) || (length(given) && (is.null(names(given)) || !all(names(given) %in% known)))) {
     stop(sprintf("`colour` is TRUE or a list of any of %s.", paste(known, collapse = ", ")), call. = FALSE)
   }
   v <- utils::modifyList(
     list(of = "depth", palette = NULL, floor = 10, cap = 2000, scale = "log", mode = "ramp",
          bands = c(10, 20, 50, 100, 200, 500, 1000, 2000), cuts = c(0, 10, 20, 50), cut = 0, cut_as = "clear",
-         opacity = 100),
+         opacity = 100, auto = TRUE),
     given
   )
   one_of <- function(x, ok) is.character(x) && length(x) == 1 && x %in% ok
@@ -1146,7 +1163,8 @@ rb_map_tiles_table <- function(
     cuts = rising(v$cuts),
     cut = num(v$cut, 0, Inf) && v$cut %in% v$cuts,
     cut_as = one_of(v$cut_as, c("clear", "grey")),
-    opacity = num(v$opacity, 0, 100)
+    opacity = num(v$opacity, 0, 100),
+    auto = is.logical(v$auto) && length(v$auto) == 1 && !is.na(v$auto)
   )
   if (!all(ok)) {
     stop(
@@ -2286,6 +2304,34 @@ format.rb_map <- function(x, ...) {
       return(reply(
         200L,
         meta,
+        "application/json; charset=utf-8",
+        list(`Cache-Control` = "no-store")
+      ))
+    }
+    f <- regmatches(path, regexec("^/fit/([a-z][a-z0-9_]*)$", path))[[1]]
+    if (length(f) == 2) {
+      fit <- layers[[f[2]]]$fit
+      if (!is.function(fit)) {
+        return(reply(404L, "no fit for this layer"))
+      }
+      b <- suppressWarnings(as.numeric(strsplit(
+        .rb_or(.rb_map_query(req$QUERY_STRING)$bbox, ""),
+        ",",
+        fixed = TRUE
+      )[[1]]))
+      if (length(b) != 4 || anyNA(b) || b[1] >= b[3] || b[2] >= b[4] || any(abs(b[c(2, 4)]) > 90)) {
+        return(reply(400L, "bbox is west,south,east,north"))
+      }
+      v <- tryCatch(fit(b[1], b[2], b[3], b[4]), error = function(e) e)
+      if (inherits(v, "error")) {
+        return(reply(500L, sub("\n.*", "", conditionMessage(v))))
+      }
+      if (is.null(v) || length(v) != 2 || anyNA(v)) {
+        return(reply(404L, "no values in view"))
+      }
+      return(reply(
+        200L,
+        json(list(floor = v[[1]], cap = v[[2]])),
         "application/json; charset=utf-8",
         list(`Cache-Control` = "no-store")
       ))

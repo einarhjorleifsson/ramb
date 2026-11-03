@@ -43,6 +43,7 @@
   .row select, .row input[type=range] { flex: 1; min-width: 0; }
   .row.colours input[type=color] { width: 34px; height: 22px; padding: 0; border: 1px solid #c8ccd0; background: none; }
   .row.colours label + input + label { width: auto; margin-left: 10px; }
+  .row label.auto { width: auto; margin-left: 10px; display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
   .years select { flex: 1; }
   .range .val { width: 54px; text-align: right; font-variant-numeric: tabular-nums; }
   button { font: inherit; padding: 2px 8px; }
@@ -120,6 +121,8 @@ const ENGINE_TEXTS = {
   shShadow: "Shadow", shHighlight: "Light",
   cScale: "Scale", cLog: "log", cLinear: "linear", cMode: "Colours as", cRamp: "a ramp", cBands: "bands",
   cCut: "Shallower than", cNone: "none", cCutAs: "drawn", cClear: "clear", cGrey: "grey",
+  cFitTip: "Floor and cap at the 2nd and 98th percentiles of the values in view", cFitNone: "no values in view to fit to",
+  cAuto: "follow the view", cAutoTip: "Fit the floor and cap to the view each time it settles; setting either by hand stops it",
   loading: "loading tiles…", zoom: "zoom", refused: "the server refused tiles (HTTP {1})",
   older: "the server is an older version ({1}) than this page ({2}): restart it", colour: "Colour",
   colours: "Colours", stretch: "Stretch", stretchTip: "How the colours are spread between floor and cap",
@@ -264,6 +267,9 @@ function colourHtml(l) {
     sel("scale", "cScale", [["log", "cLog"], ["linear", "cLinear"]]) + sel("mode", "cMode", [["ramp", "cRamp"], ["bands", "cBands"]]) +
     sel("cut", "cCut", l.colour.cuts.map(c => c > 0 ? [c, `${c} m`, true] : [c, "cNone"])) +
     sel("cutas", "cCutAs", [["clear", "cClear"], ["grey", "cGrey"]]) + slider("op", "opacity", 0, 100, 1, d.op) +
+    (l.colour.fit ? `<div class="row"><button id="${id("fit")}" data-t="fit" data-tt="cFitTip"></button>` +
+                    `<label class="auto"><input type="checkbox" id="${id("auto")}"${l.colour.auto === false ? "" : " checked"}>` +
+                    `<span data-t="cAuto" data-tt="cAutoTip"></span></label></div>` : "") +
     `<div class="legend"><div class="bar" id="${id("bar")}"></div><div class="swatches" id="${id("bands")}" hidden></div>` +
     `<div class="ends"><span id="${id("lolab")}"></span><span id="${id("hilab")}"></span></div></div></div>`;
 }
@@ -323,6 +329,25 @@ function applyColour(l) {
   $(id("hilab")).textContent = v.mode === "bands" ? "" : "≥ " + m(Math.max(v.lo, v.hi));
   $(id("bands")).innerHTML = bands.map(([a, b, c]) => `<span><i style="background:${c}"></i>${b === null ? "> " + m(a) : `${dm(a)}–${m(b)}`}</span>`).join("");
 }
+// Fit to view: the server's floor and cap for the values in the view's box (the layer's `fit`); following the view, it
+// is asked again each time the map settles, and says nothing where the view has no values
+const fitTimers = {};
+const following = l => !!l.colour?.fit && !!$(`${l.id}-cauto`)?.checked;
+async function fitColour(l, quiet = false) {
+  const b = map.getBounds(), box = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map(v => v.toFixed(4)).join(",");
+  try {
+    const r = await fetch(`/fit/${l.id}?bbox=${box}`);
+    if (!r.ok) throw new Error(r.status);
+    const f = await r.json();
+    $(`${l.id}-clo`).value = Math.log10(Math.min(Math.max(1, f.floor), 10000));
+    $(`${l.id}-chi`).value = Math.log10(Math.min(Math.max(1, f.cap), 10000));
+    applyColour(l); writeAddress();
+  } catch (e) {
+    if (quiet) return;
+    $("status").textContent = tr("cFitNone");
+    setTimeout(() => { $("status").textContent = tileError || zoomText(); }, 2500);
+  }
+}
 function readColour(l, q) {
   const k = x => `${l.id}_${x}`, set = (x, v) => { $(`${l.id}-c${x}`).value = v; };
   if (PALETTES.some(p => p.id === q.get(k("pal")))) set("pal", q.get(k("pal")));
@@ -331,6 +356,9 @@ function readColour(l, q) {
     if (ok.includes(q.get(k(x)))) set(x, q.get(k(x)));
   if (l.colour.cuts.map(String).includes(q.get(k("cut")))) set("cut", q.get(k("cut")));
   const op = q.get(k("cop")); if (op !== null && op !== "" && +op >= 0 && +op <= 100) set("op", op);
+  // a floor or cap in the address is kept, unless the address also says to follow the view
+  if (l.colour.fit && (q.get(k("auto")) === "0" || ((q.get(k("lo")) || q.get(k("hi"))) && q.get(k("auto")) !== "1")))
+    $(`${l.id}-cauto`).checked = false;
 }
 function layerRow(l) {
   const row = document.createElement("div");
@@ -660,7 +688,8 @@ function addressNow() {
   for (const l of OTHER) if (l.colour) {
     const v = colourNow(l), d = colourDefaults(l), r = x => String(+x.toPrecision(3));
     for (const x of ["pal", "scale", "mode", "cutas"]) put(`${l.id}_${x}`, v[x], d[x]);
-    put(`${l.id}_lo`, r(v.lo), r(d.lo)); put(`${l.id}_hi`, r(v.hi), r(d.hi));
+    if (!following(l)) { put(`${l.id}_lo`, r(v.lo), r(d.lo)); put(`${l.id}_hi`, r(v.hi), r(d.hi)); }
+    if (l.colour.fit) put(`${l.id}_auto`, following(l) ? "1" : "0", l.colour.auto === false ? "0" : "1");
     put(`${l.id}_cut`, String(v.cut), String(d.cut)); put(`${l.id}_cop`, String(v.op), String(d.op));
   }
   CHOOSE.forEach((f, i) => put(f.field, chosen(i)?.join(",") ?? "", ""));
@@ -695,6 +724,7 @@ function addLayer(l, meta) {
       map.addLayer(spec, before);
     }
     applyVariant(l); applyColour(l); applyShade(l); applyChoice(l); showLayer(l); countText(l);
+    if (following(l)) fitColour(l, true);
   };
   if (l.kind === "vector") {
     const n = meta.layers?.[l.id]?.count ?? 0;
@@ -760,6 +790,12 @@ for (const l of OTHER) if (l.variants) $(l.id + "-by").addEventListener("change"
 for (const l of OTHER) if (l.shade)
   for (const x of ["method", ...Object.keys(SHADE_RANGES), "shadow", "light"]) $(l.id + "-" + x).addEventListener("input", () => applyShade(l));
 for (const l of OTHER) if (l.colour) for (const x of COLOUR_KEYS) $(`${l.id}-c${x}`).addEventListener("input", () => applyColour(l));
+for (const l of OTHER) if (l.colour?.fit) {
+  $(`${l.id}-cfit`).addEventListener("click", () => fitColour(l));
+  // a floor or cap set by hand is kept: the view is no longer followed
+  for (const x of ["lo", "hi"]) $(`${l.id}-c${x}`).addEventListener("input", () => { $(`${l.id}-cauto`).checked = false; });
+  $(`${l.id}-cauto`).addEventListener("change", () => { if (following(l)) fitColour(l, true); });
+}
 
 // A layer's styles filtered to the values chosen, on top of each style's own filter; a layer without the field is
 // left as it is. Nothing is fetched again: the tiles carry the fields
@@ -878,6 +914,12 @@ $("menu").addEventListener("click", () => document.body.classList.add("side-open
 $("close").addEventListener("click", () => document.body.classList.remove("side-open"));
 
 map.on("dataloading", () => { $("status").textContent = tr("loading"); });
+// a dem layer's colours following the view are fitted again each time the map settles
+map.on("moveend", () => {
+  for (const l of OTHER) if (following(l) && map.getLayer(l.style[0].id)) {
+    clearTimeout(fitTimers[l.id]); fitTimers[l.id] = setTimeout(() => fitColour(l, true), 300);
+  }
+});
 // a refused tile would otherwise leave the map blank without a word
 map.on("error", async e => {
   const s = e.error?.status;

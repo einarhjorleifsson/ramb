@@ -900,3 +900,43 @@ test_that("a contour layer: its intervals by zoom checked and kept as an object,
   expect_equal(get(app, "/tiles/contours/2/0/0.png")$status, 404L)
   expect_equal(get(app, "/tiles/contours/1/0/0.pbf")$status, 404L)
 })
+
+test_that("a dem layer's colours fitted to the view: the server asks the layer's fit for the view's box", {
+  skip_if_not_installed("jsonlite")
+  dem <- function(z, x, y) NULL
+  colour_style <- list(list(id = "depth-colour", type = "color-relief"))
+  seen <- NULL
+  fit <- function(west, south, east, north) {
+    seen <<- c(west, south, east, north)
+    if (west < -100) NULL else c(12.5, 480)
+  }
+  l <- rb_map_layer("depth", "dem", tiles = dem, style = colour_style, colour = list(fit = fit))
+  expect_true(l$config$colour$fit) # the page's button; the function stays on the server
+  expect_true(is.function(l$fit))
+  app <- .rb_map_app(rb_map(rb_map_group("g", "G", list(l))))
+  r <- get(app, "/fit/depth", "bbox=-25.5,63.5,-20,65")
+  expect_equal(r$status, 200L)
+  expect_equal(jsonlite::fromJSON(r$body), list(floor = 12.5, cap = 480))
+  expect_equal(seen, c(-25.5, 63.5, -20, 65))
+  expect_equal(get(app, "/fit/depth", "bbox=-120,63.5,-110,65")$status, 404L) # no values there
+  expect_equal(get(app, "/fit/depth", "bbox=-20,63.5,-25,65")$status, 400L) # west east of east
+  expect_equal(get(app, "/fit/depth", "")$status, 400L)
+  expect_equal(get(app, "/fit/other", "bbox=-25,63,-20,65")$status, 404L)
+  expect_error(rb_map_layer("depth", "dem", tiles = dem, style = colour_style, colour = list(fit = 3)), "a function")
+  expect_null(rb_map_layer("depth", "dem", tiles = dem, style = colour_style, colour = TRUE)$config$colour$fit)
+})
+
+test_that("a dem layer's colours follow the view by default, and its address name is taken", {
+  dem <- function(z, x, y) NULL
+  colour_style <- list(list(id = "depth-colour", type = "color-relief"))
+  expect_true(rb_map_layer("depth", "dem", tiles = dem, style = colour_style, colour = TRUE)$config$colour$auto)
+  expect_false(rb_map_layer("depth", "dem", tiles = dem, style = colour_style, colour = list(auto = FALSE))$config$colour$auto)
+  expect_error(rb_map_layer("depth", "dem", tiles = dem, style = colour_style, colour = list(auto = "yes")), "auto")
+  l <- rb_map_layer("depth", "dem", tiles = dem, style = colour_style, colour = TRUE)
+  expect_error(
+    rb_map(rb_map_group("g", "G", list(l)),
+           choose = list(fields = list(list(field = "depth_auto", options = list(list(value = "a", match = "a")),
+                                            layers = "depth")))),
+    "depth_auto"
+  )
+})

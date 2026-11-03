@@ -1,3 +1,12 @@
+# ramb 2026.11.03.4
+
+- `rb_map_layer(colour = list(fit = ))`: a function of the view's box returning the floor and the cap for the values
+  there gives a dem layer's colours a "Fit to view" button, answered by the server at `/fit/<id>?bbox=w,s,e,n`, as a
+  grid's floor and cap are fitted to the cells in view. A view with no values says so in the status line. And the
+  colours follow the view: they are fitted again each time the map settles, until a floor or cap is set by hand
+  (`auto`, on by default; `<id>_auto` in the address, which leaves out the floor and cap while it follows). First used
+  by fishycode's bathymetry map, from its 50 m grid (plan 063 point 7(a)).
+
 # ramb 2026.11.03.3
 
 - `rb_map_layer(kind = "contour")` (new kind) and its `contours` argument: contour lines made in the browser from a dem
