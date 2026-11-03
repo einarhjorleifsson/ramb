@@ -9,16 +9,17 @@
 #                                    vector layer's count
 #   /tiles/<id>/{z}/{x}/{y}.pbf      a grid or vector layer's tile; a grid's query parameters are checked against
 #                                    its filters before its tile function sees them
+#   /tiles/<id>/{z}/{x}/{y}.png      a dem layer's tile, an image of elevations (.webp for a WebP one)
 #   /data/<id>.geojson               a geojson layer's data
 
-.rb_map_engine <- 1L # the page's ENGINE: changed together
+.rb_map_engine <- 2L # the page's ENGINE: changed together
 .rb_maps <- new.env(parent = emptyenv()) # the servers rb_map_serve() started, by port
 .rb_tiles <- new.env(parent = emptyenv())
 .rb_tiles$served <- list() # by port, the temporary tables (connection and name) of the map served there
 
 #' A layer of a map
 #'
-#' One layer of an [rb_map()]: what it shows, how it is drawn, and where its data come from. Three kinds:
+#' One layer of an [rb_map()]: what it shows, how it is drawn, and where its data come from. Four kinds:
 #'
 #' * `"grid"`: vector tiles of cells, coloured in the page by a numeric field on a log scale, with the palette,
 #'   stretch, floor, cap and histogram there too. Its `filters` become controls whose values go into the tile address
@@ -26,6 +27,9 @@
 #' * `"vector"`: vector tiles of features, drawn by `style`, such as a table of geometries served by
 #'   [rb_map_tiles_table()].
 #' * `"geojson"`: features sent whole as GeoJSON, drawn by `style`.
+#' * `"dem"`: image tiles of elevations (Terrarium or Mapbox Terrain-RGB), such as an MBTiles file read by
+#'   [rb_map_tiles_mbtiles()], drawn by `style` in the page under the base map's labels: MapLibre's `hillshade` and
+#'   `color-relief` layers, so the shading and the colours are made in the browser.
 #'
 #' Texts (`label`, `info`, a filter's `label`, a legend's `label`, ...) are keys of the map's `texts` ([rb_map()]), or
 #' the text itself where no key matches. MapLibre styles and expressions are lists, so that a one-element array stays
@@ -38,7 +42,8 @@
 #' @param visible Whether it is on when the page opens; the address turns it off with `id=0` or on with `id=1`.
 #' @param tiles The tile function. For a grid, `function(z, x, y, params)`, `params` a named list of the filters'
 #'   values as text (absent when not given); for a vector layer, `function(z, x, y)`. It returns a Mapbox vector tile
-#'   as raw bytes (DuckDB's `ST_AsMVT()`), or `raw(0)`.
+#'   as raw bytes (DuckDB's `ST_AsMVT()`), or `raw(0)`. A dem layer's, `function(z, x, y)`, returns an image of
+#'   elevations (PNG or WebP) as raw bytes, or `NULL` where there is none.
 #' @param meta For a grid, a list or a function returning one, read when the server starts: `options` (per filter
 #'   with `meta = TRUE`, a data frame of `value` and, optionally, `name` and `code`), `ranges` (per range filter, its
 #'   first and last value) and `v` (a version, put into the tile address so a rebuilt source is not hidden by the
@@ -51,7 +56,7 @@
 #'   hold `{field}` placeholders; `template`, a text with `{field}` placeholders shown in place of the value when there
 #'   is one; and `format`, `"value"` or `"count"`), `maxWidth`. For a grid, `fields` only, the first in bold.
 #' @param legend A list of swatches, each `swatch` (`fill` and `stroke`, or `dot`) and `label`.
-#' @param variants For a vector or geojson layer, styles to choose between in the page, such as the column the
+#' @param variants For a vector, geojson or dem layer, styles to choose between in the page, such as the column the
 #'   points are coloured by: `label` (the control's text) and `options`, each a `value`, a `label`, `paint` (by the
 #'   layer's style ids, the paint properties it sets) and optionally `legend` (in place of the layer's). The first
 #'   option is shown when the page opens; a choice goes into the address as `<id>_by`, and nothing is fetched again.
@@ -67,6 +72,10 @@
 #' @param source_layer For a grid, the tile layer its cells are in (`"cells"`).
 #' @param minzoom,maxzoom The zooms its tiles are made for.
 #' @param opacity For a grid, its opacity when the page opens, 0-100.
+#' @param encoding,tile_size,bounds For a dem layer: how its images hold the elevation (`"terrarium"` or `"mapbox"`),
+#'   their side in pixels, and the extent that has tiles (west, south, east, north), so the page asks for no other.
+#'   Taken, with `minzoom` and `maxzoom`, from the attributes of `tiles` where not given ([rb_map_tiles_mbtiles()]
+#'   sets them); else `"terrarium"` and 512. The image format (`"png"` or `"webp"`) is the `format` attribute's.
 #' @return An `rb_map_layer`, for [rb_map_group()].
 #' @seealso [rb_map()], [rb_map_tiles_table()]
 #' @export
@@ -107,7 +116,7 @@
 #' names(cells$config)
 rb_map_layer <- function(
   id,
-  kind = c("grid", "vector", "geojson"),
+  kind = c("grid", "vector", "geojson", "dem"),
   label = id,
   info = NULL,
   visible = TRUE,
@@ -125,7 +134,10 @@ rb_map_layer <- function(
   source_layer = NULL,
   minzoom = NULL,
   maxzoom = NULL,
-  opacity = NULL
+  opacity = NULL,
+  encoding = NULL,
+  tile_size = NULL,
+  bounds = NULL
 ) {
   kind <- match.arg(kind)
   if (!is.character(id) || length(id) != 1 || !grepl("^[a-z][a-z0-9_]*$", id)) {
@@ -153,11 +165,12 @@ rb_map_layer <- function(
       call. = FALSE
     )
   }
-  if (kind %in% c("grid", "vector") && !is.function(tiles)) {
+  if (kind %in% c("grid", "vector", "dem") && !is.function(tiles)) {
     stop(
       sprintf(
-        "A %s layer needs `tiles`, a function returning a vector tile.",
-        kind
+        "A %s layer needs `tiles`, a function returning %s.",
+        kind,
+        if (kind == "dem") "an image tile" else "a vector tile"
       ),
       call. = FALSE
     )
@@ -180,7 +193,7 @@ rb_map_layer <- function(
   if (!is.null(variants)) {
     if (kind == "grid") {
       stop(
-        "`variants` are for a vector or geojson layer; a grid is coloured by its `metrics`.",
+        "`variants` are for a vector, geojson or dem layer; a grid is coloured by its `metrics`.",
         call. = FALSE
       )
     }
@@ -224,6 +237,35 @@ rb_map_layer <- function(
     }
     f
   })
+  format <- NULL
+  if (kind == "dem") {
+    given_or_attr <- function(given, name, usual = NULL) {
+      if (!is.null(given)) {
+        given
+      } else if (!is.null(attr(tiles, name))) {
+        attr(tiles, name)
+      } else {
+        usual
+      }
+    }
+    encoding <- given_or_attr(encoding, "encoding", "terrarium")
+    format <- given_or_attr(NULL, "format", "png")
+    if (!encoding %in% c("terrarium", "mapbox") || !format %in% c("png", "webp")) {
+      stop(
+        "A dem layer's `encoding` is \"terrarium\" or \"mapbox\", its tiles' format \"png\" or \"webp\".",
+        call. = FALSE
+      )
+    }
+    tile_size <- as.integer(given_or_attr(tile_size, "tile_size", 512L))
+    bounds <- given_or_attr(bounds, "bounds")
+    if (!is.null(bounds)) {
+      bounds <- as.list(as.numeric(bounds))
+    }
+    minzoom <- given_or_attr(minzoom, "minzoom")
+    maxzoom <- given_or_attr(maxzoom, "maxzoom")
+  } else if (!is.null(encoding) || !is.null(tile_size) || !is.null(bounds)) {
+    stop("`encoding`, `tile_size` and `bounds` are for a dem layer.", call. = FALSE)
+  }
   config <- list(
     id = id,
     kind = kind,
@@ -241,7 +283,11 @@ rb_map_layer <- function(
     source_layer = source_layer,
     minzoom = minzoom,
     maxzoom = maxzoom,
-    opacity = opacity
+    opacity = opacity,
+    encoding = encoding,
+    tile_size = tile_size,
+    bounds = bounds,
+    format = format
   )
   structure(
     list(
@@ -950,6 +996,64 @@ rb_map_tiles_table <- function(
   attr(tile, "count") <- n
   attr(tile, "table") <- nm
   .rb_hold(tile)
+}
+
+#' Tiles from an MBTiles file
+#'
+#' A tile function for an [rb_map_layer()] that reads its tiles from an MBTiles file (SQLite), such as the image tiles
+#' of elevations a dem layer draws. The file is opened once, read-only, and stays open while the function lives.
+#'
+#' @param file An MBTiles file: a `tiles` table (`zoom_level`, `tile_column`, `tile_row` in the TMS order, from the
+#'   south, and `tile_data`) and a `metadata` table of `name` and `value`.
+#' @return A function `function(z, x, y)` (`y` from the north, as the page asks) returning a tile's bytes, or `NULL`
+#'   where the file has none; with the file's `format`, `bounds`, `minzoom`, `maxzoom`, `encoding` and `tile_size` as
+#'   attributes where its metadata give them, which [rb_map_layer()] takes for a dem layer.
+#' @seealso [rb_map_layer()]
+#' @export
+#' @examples
+#' if (requireNamespace("RSQLite", quietly = TRUE)) {
+#'   f <- tempfile(fileext = ".mbtiles")
+#'   con <- DBI::dbConnect(RSQLite::SQLite(), f)
+#'   DBI::dbWriteTable(con, "metadata", data.frame(
+#'     name = c("format", "encoding", "bounds", "minzoom", "maxzoom"),
+#'     value = c("png", "terrarium", "-30,60,-5,70", "0", "1")
+#'   ))
+#'   DBI::dbExecute(con, "CREATE TABLE tiles (zoom_level INTEGER, tile_column INTEGER, tile_row INTEGER,
+#'                        tile_data BLOB)")
+#'   DBI::dbExecute(con, "INSERT INTO tiles VALUES (1, 0, 1, ?)", params = list(list(as.raw(1:4))))
+#'   DBI::dbDisconnect(con)
+#'   tiles <- rb_map_tiles_mbtiles(f)
+#'   tiles(1, 0, 0) # the north-west tile at zoom 1, row 1 counted from the south
+#'   attributes(tiles)[c("format", "encoding", "bounds")]
+#' }
+rb_map_tiles_mbtiles <- function(file) {
+  if (!requireNamespace("RSQLite", quietly = TRUE)) {
+    stop("rb_map_tiles_mbtiles() needs the RSQLite package.", call. = FALSE)
+  }
+  if (!is.character(file) || length(file) != 1 || !file.exists(file)) {
+    stop("`file` is the path of an MBTiles file.", call. = FALSE)
+  }
+  con <- DBI::dbConnect(RSQLite::SQLite(), file, flags = RSQLite::SQLITE_RO)
+  md <- DBI::dbGetQuery(con, "SELECT name, value FROM metadata")
+  m <- stats::setNames(as.list(md$value), md$name)
+  int <- function(v) if (is.null(v)) NULL else as.integer(v)
+  tile <- function(z, x, y) {
+    r <- DBI::dbGetQuery(
+      con,
+      "SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?",
+      params = list(as.integer(z), as.integer(x), as.integer(2^z - 1 - y))
+    )
+    if (!nrow(r)) NULL else as.raw(r$tile_data[[1]])
+  }
+  structure(
+    tile,
+    format = if (is.null(m$format)) "png" else m$format,
+    encoding = m$encoding,
+    tile_size = int(m$tile_size),
+    bounds = if (!is.null(m$bounds)) as.numeric(strsplit(m$bounds, ",", fixed = TRUE)[[1]]),
+    minzoom = int(m$minzoom),
+    maxzoom = int(m$maxzoom)
+  )
 }
 
 # ST_AsMVT() takes VARCHAR, FLOAT, DOUBLE, INTEGER, BIGINT and BOOLEAN properties and refuses every other type: an R
@@ -1948,6 +2052,7 @@ format.rb_map <- function(x, ...) {
     switch(
       l$config$kind,
       grid = if (is.function(l$meta)) l$meta() else l$meta,
+      dem = list(count = 1L, v = started),
       vector = list(
         count = if (is.null(attr(l$tiles, "count"))) {
           1L
@@ -2039,14 +2144,20 @@ format.rb_map <- function(x, ...) {
     m <- regmatches(
       path,
       regexec(
-        "^/tiles/([a-z][a-z0-9_]*)/([0-9]+)/([0-9]+)/([0-9]+)[.]pbf$",
+        "^/tiles/([a-z][a-z0-9_]*)/([0-9]+)/([0-9]+)/([0-9]+)[.](pbf|png|webp)$",
         path
       )
     )[[1]]
     if (
-      length(m) != 5 ||
+      length(m) != 6 ||
         is.null(layers[[m[2]]]) ||
-        layers[[m[2]]]$config$kind == "geojson"
+        layers[[m[2]]]$config$kind == "geojson" ||
+        m[6] !=
+          (if (layers[[m[2]]]$config$kind == "dem") {
+            layers[[m[2]]]$config$format
+          } else {
+            "pbf"
+          })
     ) {
       return(reply(404L, "not found"))
     }
@@ -2060,6 +2171,13 @@ format.rb_map <- function(x, ...) {
       return(reply(400L, "x and y lie in the zoom's range"))
     }
     l <- layers[[m[2]]]
+    if (l$config$kind == "dem") {
+      return(.rb_map_tile_reply(
+        function() l$tiles(z, x, y),
+        reply,
+        paste0("image/", l$config$format)
+      ))
+    }
     if (l$config$kind == "vector") {
       return(.rb_map_tile_reply(function() l$tiles(z, x, y), reply))
     }
@@ -2076,15 +2194,23 @@ format.rb_map <- function(x, ...) {
 }
 
 # A tile, or the first line of why its function failed: the page shows the reason, where the map would stay blank
-.rb_map_tile_reply <- function(tile, reply) {
+.rb_map_tile_reply <- function(
+  tile,
+  reply,
+  type = "application/vnd.mapbox-vector-tile"
+) {
   body <- tryCatch(tile(), error = function(e) e)
   if (inherits(body, "error")) {
     return(reply(500L, sub("\n.*", "", conditionMessage(body))))
   }
+  # an image that is not there: an empty one is no image the page can decode
+  if (is.null(body) && startsWith(type, "image/")) {
+    return(reply(404L, "no tile"))
+  }
   reply(
     200L,
     if (is.null(body)) raw(0) else body,
-    "application/vnd.mapbox-vector-tile",
+    type,
     list(`Cache-Control` = "max-age=600")
   )
 }

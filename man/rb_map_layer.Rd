@@ -6,7 +6,7 @@
 \usage{
 rb_map_layer(
   id,
-  kind = c("grid", "vector", "geojson"),
+  kind = c("grid", "vector", "geojson", "dem"),
   label = id,
   info = NULL,
   visible = TRUE,
@@ -24,7 +24,10 @@ rb_map_layer(
   source_layer = NULL,
   minzoom = NULL,
   maxzoom = NULL,
-  opacity = NULL
+  opacity = NULL,
+  encoding = NULL,
+  tile_size = NULL,
+  bounds = NULL
 )
 }
 \arguments{
@@ -38,7 +41,8 @@ rb_map_layer(
 
 \item{tiles}{The tile function. For a grid, \verb{function(z, x, y, params)}, \code{params} a named list of the filters'
 values as text (absent when not given); for a vector layer, \verb{function(z, x, y)}. It returns a Mapbox vector tile
-as raw bytes (DuckDB's \code{ST_AsMVT()}), or \code{raw(0)}.}
+as raw bytes (DuckDB's \code{ST_AsMVT()}), or \code{raw(0)}. A dem layer's, \verb{function(z, x, y)}, returns an image of
+elevations (PNG or WebP) as raw bytes, or \code{NULL} where there is none.}
 
 \item{meta}{For a grid, a list or a function returning one, read when the server starts: \code{options} (per filter
 with \code{meta = TRUE}, a data frame of \code{value} and, optionally, \code{name} and \code{code}), \code{ranges} (per range filter, its
@@ -57,7 +61,7 @@ is one; and \code{format}, \code{"value"} or \code{"count"}), \code{maxWidth}. F
 
 \item{legend}{A list of swatches, each \code{swatch} (\code{fill} and \code{stroke}, or \code{dot}) and \code{label}.}
 
-\item{variants}{For a vector or geojson layer, styles to choose between in the page, such as the column the
+\item{variants}{For a vector, geojson or dem layer, styles to choose between in the page, such as the column the
 points are coloured by: \code{label} (the control's text) and \code{options}, each a \code{value}, a \code{label}, \code{paint} (by the
 layer's style ids, the paint properties it sets) and optionally \code{legend} (in place of the layer's). The first
 option is shown when the page opens; a choice goes into the address as \verb{<id>_by}, and nothing is fetched again.}
@@ -80,12 +84,17 @@ optional \code{unnamed} text for an option with no name; several values, comma s
 \item{minzoom, maxzoom}{The zooms its tiles are made for.}
 
 \item{opacity}{For a grid, its opacity when the page opens, 0-100.}
+
+\item{encoding, tile_size, bounds}{For a dem layer: how its images hold the elevation (\code{"terrarium"} or \code{"mapbox"}),
+their side in pixels, and the extent that has tiles (west, south, east, north), so the page asks for no other.
+Taken, with \code{minzoom} and \code{maxzoom}, from the attributes of \code{tiles} where not given (\code{\link[=rb_map_tiles_mbtiles]{rb_map_tiles_mbtiles()}}
+sets them); else \code{"terrarium"} and 512. The image format (\code{"png"} or \code{"webp"}) is the \code{format} attribute's.}
 }
 \value{
 An \code{rb_map_layer}, for \code{\link[=rb_map_group]{rb_map_group()}}.
 }
 \description{
-One layer of an \code{\link[=rb_map]{rb_map()}}: what it shows, how it is drawn, and where its data come from. Three kinds:
+One layer of an \code{\link[=rb_map]{rb_map()}}: what it shows, how it is drawn, and where its data come from. Four kinds:
 }
 \details{
 \itemize{
@@ -95,6 +104,9 @@ stretch, floor, cap and histogram there too. Its \code{filters} become controls 
 \item \code{"vector"}: vector tiles of features, drawn by \code{style}, such as a table of geometries served by
 \code{\link[=rb_map_tiles_table]{rb_map_tiles_table()}}.
 \item \code{"geojson"}: features sent whole as GeoJSON, drawn by \code{style}.
+\item \code{"dem"}: image tiles of elevations (Terrarium or Mapbox Terrain-RGB), such as an MBTiles file read by
+\code{\link[=rb_map_tiles_mbtiles]{rb_map_tiles_mbtiles()}}, drawn by \code{style} in the page under the base map's labels: MapLibre's \code{hillshade} and
+\code{color-relief} layers, so the shading and the colours are made in the browser.
 }
 
 Texts (\code{label}, \code{info}, a filter's \code{label}, a legend's \code{label}, ...) are keys of the map's \code{texts} (\code{\link[=rb_map]{rb_map()}}), or

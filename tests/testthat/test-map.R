@@ -739,3 +739,49 @@ test_that("grouped pings: a choice per group column, over every layer that has i
     "named as the page's address"
   )
 })
+
+test_that("a dem layer: elevation images from an MBTiles file, served as images under their own extension", {
+  skip_if_not_installed("RSQLite")
+  skip_if_not_installed("jsonlite")
+  f <- tempfile(fileext = ".mbtiles")
+  on.exit(unlink(f))
+  con <- DBI::dbConnect(RSQLite::SQLite(), f)
+  DBI::dbWriteTable(con, "metadata", data.frame(
+    name = c("format", "encoding", "bounds", "minzoom", "maxzoom", "tile_size"),
+    value = c("png", "terrarium", "-30,60,-5,70", "0", "1", "256")
+  ))
+  DBI::dbExecute(con, "CREATE TABLE tiles (zoom_level INTEGER, tile_column INTEGER, tile_row INTEGER, tile_data BLOB)")
+  # zoom 1, the north-west tile: row 1 counted from the south
+  DBI::dbExecute(con, "INSERT INTO tiles VALUES (1, 0, 1, ?)", params = list(list(as.raw(1:4))))
+  DBI::dbDisconnect(con)
+
+  tiles <- rb_map_tiles_mbtiles(f)
+  expect_identical(tiles(1, 0, 0), as.raw(1:4))
+  expect_null(tiles(1, 0, 1))
+  expect_equal(attr(tiles, "bounds"), c(-30, 60, -5, 70))
+  expect_error(rb_map_tiles_mbtiles(tempfile()), "path of an MBTiles file")
+
+  shade <- list(list(id = "depth-shade", type = "hillshade"))
+  l <- rb_map_layer("depth", "dem", tiles = tiles, style = shade)
+  expect_equal(l$config[c("encoding", "tile_size", "format", "minzoom", "maxzoom")],
+               list(encoding = "terrarium", tile_size = 256L, format = "png", minzoom = 0L, maxzoom = 1L))
+  expect_equal(l$config$bounds, list(-30, 60, -5, 70)) # an array in the config's JSON
+  # given arguments win over the file's
+  expect_equal(rb_map_layer("depth", "dem", tiles = tiles, style = shade, tile_size = 512)$config$tile_size, 512L)
+  expect_error(rb_map_layer("depth", "dem", style = shade), "needs `tiles`, a function returning an image tile")
+  expect_error(rb_map_layer("depth", "dem", tiles = tiles, style = shade, encoding = "lerc"), "terrarium")
+  expect_error(
+    rb_map_layer("lines", "vector", tiles = function(z, x, y) raw(0), style = shade, bounds = c(0, 0, 1, 1)),
+    "for a dem layer"
+  )
+
+  app <- .rb_map_app(rb_map(rb_map_group("g", "G", list(l))))
+  ok <- get(app, "/tiles/depth/1/0/0.png")
+  expect_equal(ok$status, 200L)
+  expect_equal(ok$headers$`Content-Type`, "image/png")
+  expect_identical(ok$body, as.raw(1:4))
+  expect_equal(get(app, "/tiles/depth/1/0/1.png")$status, 404L) # not in the file: no empty image
+  expect_equal(get(app, "/tiles/depth/1/0/0.pbf")$status, 404L) # not its format
+  meta <- jsonlite::fromJSON(get(app, "/meta")$body)
+  expect_true(nzchar(meta$layers$depth$v))
+})

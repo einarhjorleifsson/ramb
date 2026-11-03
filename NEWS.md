@@ -1,3 +1,17 @@
+# ramb 2026.11.03
+
+## Elevations on a map: a dem layer, drawn in the browser
+
+- `rb_map_layer(kind = "dem")` (new kind): image tiles of elevations, Terrarium or Mapbox Terrain-RGB, PNG or WebP,
+  served at `/tiles/<id>/{z}/{x}/{y}.png` (or `.webp`) and drawn by MapLibre's `hillshade` and `color-relief` layers
+  under a grid and the base map's labels, so the shading and the colours are made in the browser; `variants` choose
+  between colour ramps there. New arguments `encoding`, `tile_size` and `bounds`, taken from the tile function's
+  attributes where not given. A tile that is not there is a 404, never an empty image.
+- `rb_map_tiles_mbtiles()` (new): a tile function reading an MBTiles file, read-only, with its format, bounds, zooms,
+  encoding and tile size as attributes. Needs RSQLite (Suggests).
+- The page runs on MapLibre GL JS 5.24.0 (was 4.7.1), the first line with `color-relief`; the engine is 2.
+- First used by fishycode's bathymetry map (TODO 185): Olex's 50 m depth grid with GEBCO around Iceland.
+
 # ramb 2026.11.02.3
 
 - `rb_read_example("dansk_planted")` (new example data): dansk's 14 tracks made clean, thinned to a ping every 10 s,

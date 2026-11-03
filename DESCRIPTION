@@ -1,7 +1,7 @@
 Package: ramb
 Type: Package
 Title: Vessel Track Tools and the ICES Fishing-Activity Flow
-Version: 2026.11.02.3
+Version: 2026.11.03
 Authors@R: c(
   person("Einar", "Hjörleifsson", role = c("aut", "cre"), email = "einar.hjorleifsson@gmail.com"),
   person("Charles", "Karney", role = "ctb", comment = "GeographicLib-C geodesic.c/h, vendored unchanged in src/ (MIT/X11); see inst/COPYRIGHTS")
@@ -56,7 +56,8 @@ Suggests:
     s2,
     testthat (>= 3.0.0),
     withr,
-    yaml
+    yaml,
+    RSQLite
 Config/roxygen2/version: 8.1.0
 Roxygen: list(markdown = TRUE)
 Config/testthat/edition: 3

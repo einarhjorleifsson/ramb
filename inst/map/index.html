@@ -6,8 +6,8 @@
 <title>Map</title>
 <!-- ramb's map viewer (rb_map(), rb_map_serve()): the engine. What it shows comes from its config, which the server
      writes into the script tag "config" below as it serves the page. -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.css">
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
 <style>
   /* a sidebar of groups that fold, each layer with its info and, when ticked, its controls and legend under it
      (after vefsja.is); behind a menu button on a phone */
@@ -108,7 +108,7 @@
 <script id="config" type="application/json">__CONFIG__</script>
 <script>
 // The engine's version: rb_map_serve() sends its own in /meta, and a server older than the page is named as such
-const ENGINE = 1;
+const ENGINE = 2;
 // The engine's texts, in English; a config adds languages and the texts of its layers ({1}, {2} filled in here)
 const ENGINE_TEXTS = {
   menu: "Layers and filters", close: "Close", copyLink: "Copy a link to this view", copied: "link copied",
@@ -140,6 +140,7 @@ const LANGS = CONFIG.languages ?? ["en"];
 const LAYERS = CONFIG.layers, OTHER = LAYERS.filter(l => l.kind !== "grid");
 const G = LAYERS.find(l => l.kind === "grid");   // one grid layer at most, with the colour controls
 const SOURCES = new Set(LAYERS.map(l => l.id));    // each layer's source is named by its id
+const DEM = new Set(LAYERS.filter(l => l.kind === "dem").map(l => l.id));   // elevations, drawn under a grid
 
 const $ = id => document.getElementById(id);
 let LANG = LANGS.includes(CONFIG.language) ? CONFIG.language : LANGS.includes("en") ? "en" : LANGS[0];
@@ -391,10 +392,10 @@ function setBase(id) {
     const own = prev.layers.filter(l => SOURCES.has(l.source));
     const sources = Object.fromEntries(Object.entries(prev.sources).filter(([k]) => SOURCES.has(k)));
     const i = next.layers.findIndex(l => l.type === "symbol");
-    // a grid under the base's labels, the other layers over them in their order
-    const grid = own.filter(l => l.source === G?.id), rest = own.filter(l => l.source !== G?.id);
-    const layers = i < 0 ? [...next.layers, ...grid, ...rest]
-                         : [...next.layers.slice(0, i), ...grid, ...next.layers.slice(i), ...rest];
+    // elevations and a grid under the base's labels, the other layers over them in their order
+    const under = own.filter(l => DEM.has(l.source) || l.source === G?.id), rest = own.filter(l => !under.includes(l));
+    const layers = i < 0 ? [...next.layers, ...under, ...rest]
+                         : [...next.layers.slice(0, i), ...under, ...next.layers.slice(i), ...rest];
     return { ...next, glyphs: next.glyphs ?? prev.glyphs, sources: { ...next.sources, ...sources }, layers };
   } });
 }
@@ -504,14 +505,18 @@ $("copylink").addEventListener("click", () => {
 });
 
 // The other layers -----------------------------------------------------------------------------------------------------
-// Vector tiles from the server ("vector", its count from /meta) or a GeoJSON file ("geojson", its count from the file),
+// Vector tiles from the server ("vector", its count from /meta), a GeoJSON file ("geojson", its count from the file) or
+// image tiles of elevations ("dem", a raster-dem source whose styles go under a grid or the base's labels),
 // drawn by its styles over the base map's labels; a layer the server does not have is disabled, with its "missing" text
 function addLayer(l, meta) {
   const draw = () => {
+    // elevations go under a grid, or under the base's labels
+    const before = !DEM.has(l.id) ? undefined
+                 : G && map.getLayer(G.id) ? G.id : map.getStyle().layers.find(x => x.type === "symbol")?.id;
     for (const st of l.style) {
       const spec = { ...st, source: l.id };
       if (spec.type === "symbol" && spec.layout?.["text-field"] && !spec.layout["text-font"]) spec.layout = { ...spec.layout, "text-font": FONT };
-      map.addLayer(spec);
+      map.addLayer(spec, before);
     }
     applyVariant(l); applyChoice(l); showLayer(l); countText(l);
   };
@@ -521,6 +526,11 @@ function addLayer(l, meta) {
     counts[l.id] = n;
     map.addSource(l.id, { type: "vector", tiles: [`${location.origin}/tiles/${l.id}/{z}/{x}/{y}.pbf?v=${meta.layers[l.id].v ?? meta.engine}`],
                           minzoom: l.minzoom ?? 0, maxzoom: l.maxzoom ?? 14 });
+    draw();
+  } else if (l.kind === "dem") {
+    map.addSource(l.id, { type: "raster-dem", encoding: l.encoding ?? "terrarium", tileSize: l.tile_size ?? 512,
+                          tiles: [`${location.origin}/tiles/${l.id}/{z}/{x}/{y}.${l.format ?? "png"}?v=${meta.layers?.[l.id]?.v ?? meta.engine}`],
+                          minzoom: l.minzoom ?? 0, maxzoom: l.maxzoom ?? 14, ...(l.bounds ? { bounds: l.bounds } : {}) });
     draw();
   } else if (l.kind === "geojson") {
     fetch(`/data/${l.id}.geojson`).then(r => r.ok ? r.json() : Promise.reject(r.status)).then(data => {
