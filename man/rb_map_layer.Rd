@@ -27,7 +27,8 @@ rb_map_layer(
   opacity = NULL,
   encoding = NULL,
   tile_size = NULL,
-  bounds = NULL
+  bounds = NULL,
+  shade = NULL
 )
 }
 \arguments{
@@ -89,6 +90,14 @@ optional \code{unnamed} text for an option with no name; several values, comma s
 their side in pixels, and the extent that has tiles (west, south, east, north), so the page asks for no other.
 Taken, with \code{minzoom} and \code{maxzoom}, from the attributes of \code{tiles} where not given (\code{\link[=rb_map_tiles_mbtiles]{rb_map_tiles_mbtiles()}}
 sets them); else \code{"terrarium"} and 512. The image format (\code{"png"} or \code{"webp"}) is the \code{format} attribute's.}
+
+\item{shade}{For a dem layer with a \code{hillshade} style: the relief's controls in the page, and their values when it
+opens, a list of any of \code{method} (\code{"standard"}, \code{"basic"}, \code{"combined"}, \code{"igor"} or \code{"multidirectional"}, three
+lights 45 degrees apart), \code{direction} (the light's azimuth, 0-359), \code{altitude} (0-90), \code{exaggeration} (the
+intensity, 0-1), \code{opacity} (0-100: the alpha of the shading's colours, which has no opacity of its own),
+\code{shadow} and \code{highlight} (colours as \code{"#rrggbb"}); MapLibre's own defaults for those not given. \code{TRUE} takes
+every default. Each control applies as it moves, and goes into the page's address as \verb{<id>_method}, \verb{<id>_dir},
+\verb{<id>_alt}, \verb{<id>_ex}, \verb{<id>_op}, \verb{<id>_shadow} and \verb{<id>_light}.}
 }
 \value{
 An \code{rb_map_layer}, for \code{\link[=rb_map_group]{rb_map_group()}}.

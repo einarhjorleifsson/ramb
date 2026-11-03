@@ -1,3 +1,12 @@
+# ramb 2026.11.03.1
+
+- `rb_map_layer(shade = )` (new argument): a dem layer's relief in the reader's hands. Under the layer in the page,
+  its shading's method (MapLibre's five; "several lights" is three, 45 degrees apart), the light's direction and
+  height, the intensity, the opacity (the alpha of the shading's colours, as MapLibre's hillshade has none of its own)
+  and the shadow's and light's colours, each applied as it moves, with nothing fetched again, and kept in the page's
+  address. `TRUE` takes MapLibre's defaults. First used by fishycode's bathymetry map, its relief apart from its depth
+  (plan 063, step 1).
+
 # ramb 2026.11.03
 
 ## Elevations on a map: a dem layer, drawn in the browser

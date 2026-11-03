@@ -41,6 +41,8 @@
   .choose .chips label { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); }
   .row label { width: 74px; color: var(--muted); }
   .row select, .row input[type=range] { flex: 1; min-width: 0; }
+  .row.colours input[type=color] { width: 34px; height: 22px; padding: 0; border: 1px solid #c8ccd0; background: none; }
+  .row.colours label + input + label { width: auto; margin-left: 10px; }
   .years select { flex: 1; }
   .range .val { width: 54px; text-align: right; font-variant-numeric: tabular-nums; }
   button { font: inherit; padding: 2px 8px; }
@@ -113,6 +115,9 @@ const ENGINE = 2;
 const ENGINE_TEXTS = {
   menu: "Layers and filters", close: "Close", copyLink: "Copy a link to this view", copied: "link copied",
   notCopied: "the browser refused to copy the link", infoTip: "About this layer", gBase: "Base map", gAbout: "About",
+  shMethod: "Shading", shStandard: "standard", shBasic: "basic", shCombined: "combined", shIgor: "igor (soft)",
+  shMulti: "several lights", shDirection: "Light from", shAltitude: "Light height", shIntensity: "Intensity",
+  shShadow: "Shadow", shHighlight: "Light",
   loading: "loading tiles…", zoom: "zoom", refused: "the server refused tiles (HTTP {1})",
   older: "the server is an older version ({1}) than this page ({2}): restart it", colour: "Colour",
   colours: "Colours", stretch: "Stretch", stretchTip: "How the colours are spread between floor and cap",
@@ -175,6 +180,58 @@ function filterRow(f) {
          opts.map(o => `<option value="${esc(o.value)}" data-t="${o.label}"${o.tip ? ` data-tt="${o.tip}"` : ""}` +
                        `${o.value === f.default ? " selected" : ""}></option>`).join("") + "</select></div>";
 }
+// A dem layer's relief: its shading's method, light, intensity, opacity and colours, each applied as it moves
+const SHADE_METHODS = [["standard", "shStandard"], ["basic", "shBasic"], ["combined", "shCombined"], ["igor", "shIgor"],
+                       ["multidirectional", "shMulti"]];
+const SHADE_RANGES = { dir: [0, 359, 1, "shDirection"], alt: [0, 90, 1, "shAltitude"], ex: [0, 1, 0.05, "shIntensity"],
+                       op: [0, 100, 1, "opacity"] };
+const shadeDefaults = l => ({ method: l.shade.method, dir: l.shade.direction, alt: l.shade.altitude,
+                              ex: l.shade.exaggeration, op: l.shade.opacity, shadow: l.shade.shadow, light: l.shade.highlight });
+function shadeHtml(l) {
+  const d = shadeDefaults(l), id = k => `${l.id}-${k}`;
+  return `<div class="when-on"><div class="row"><label for="${id("method")}" data-t="shMethod"></label><select id="${id("method")}">` +
+    SHADE_METHODS.map(([v, t]) => `<option value="${v}" data-t="${t}"${v === d.method ? " selected" : ""}></option>`).join("") + "</select></div>" +
+    Object.entries(SHADE_RANGES).map(([k, [lo, hi, step, t]]) =>
+      `<div class="row range"><label for="${id(k)}" data-t="${t}"></label><input id="${id(k)}" type="range" min="${lo}" max="${hi}" ` +
+      `step="${step}" value="${d[k]}"><span class="val" id="${id(k)}val"></span></div>`).join("") +
+    `<div class="row colours"><label for="${id("shadow")}" data-t="shShadow"></label><input id="${id("shadow")}" type="color" value="${d.shadow}">` +
+    `<label for="${id("light")}" data-t="shHighlight"></label><input id="${id("light")}" type="color" value="${d.light}"></div></div>`;
+}
+const shadeNow = l => ({ method: $(l.id + "-method").value, dir: +$(l.id + "-dir").value, alt: +$(l.id + "-alt").value,
+                         ex: +$(l.id + "-ex").value, op: +$(l.id + "-op").value, shadow: $(l.id + "-shadow").value,
+                         light: $(l.id + "-light").value });
+const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
+// MapLibre's hillshade has no opacity of its own: it is the alpha of its colours. Several lights are three, 45° apart
+function applyShade(l) {
+  if (!l.shade) return;
+  const v = shadeNow(l), multi = v.method === "multidirectional", a = v.op / 100;
+  const three = x => multi ? [x, x, x] : x;
+  const paint = {
+    "hillshade-method": v.method,
+    "hillshade-illumination-direction": multi ? [v.dir - 45, v.dir, v.dir + 45].map(d => (d + 360) % 360) : v.dir,
+    "hillshade-illumination-altitude": three(v.alt),
+    "hillshade-exaggeration": v.ex,
+    "hillshade-shadow-color": three(rgba(v.shadow, a)),
+    "hillshade-highlight-color": three(rgba(v.light, a)),
+    "hillshade-accent-color": rgba(v.shadow, a)
+  };
+  for (const st of l.style) if (st.type === "hillshade" && map.getLayer(st.id))
+    for (const [k, x] of Object.entries(paint)) map.setPaintProperty(st.id, k, x);
+  $(l.id + "-dirval").textContent = v.dir + "°";
+  $(l.id + "-altval").textContent = v.alt + "°";
+  $(l.id + "-exval").textContent = v.ex.toLocaleString(loc(), { minimumFractionDigits: 2 });
+  $(l.id + "-opval").textContent = v.op + " %";
+}
+// the first view from the address: a value outside a control's range or options is left out
+function readShade(l, q) {
+  const k = x => `${l.id}_${x}`;
+  if (SHADE_METHODS.some(([v]) => v === q.get(k("method")))) $(l.id + "-method").value = q.get(k("method"));
+  for (const [x, [lo, hi]] of Object.entries(SHADE_RANGES)) {
+    const v = q.get(k(x));
+    if (v !== null && v !== "" && +v >= lo && +v <= hi) $(l.id + "-" + x).value = v;
+  }
+  for (const x of ["shadow", "light"]) if (/^[0-9a-f]{6}$/i.test(q.get(k(x)) ?? "")) $(l.id + "-" + x).value = "#" + q.get(k(x)).toLowerCase();
+}
 function layerRow(l) {
   const row = document.createElement("div");
   row.className = "layer" + (l.visible ? "" : " off");
@@ -190,6 +247,7 @@ function layerRow(l) {
     box.append($("grid-colour").content.cloneNode(true));
     row.append(box);
   }
+  if (l.shade) row.insertAdjacentHTML("beforeend", shadeHtml(l));
   // the styles to choose between (a vector or geojson layer's variants), and the legend, which a variant may replace
   if (l.variants) row.insertAdjacentHTML("beforeend", `<div class="when-on"><div class="row">` +
     `<label for="${l.id}-by" data-t="${esc(l.variants.label ?? "")}"></label><select id="${l.id}-by">` +
@@ -445,6 +503,7 @@ Promise.all([fetch("/meta").then(r => r.json()), styleLoaded]).then(([meta]) => 
     $(l.id).checked = !l.visible; $("lyr-" + l.id).classList.toggle("off", !$(l.id).checked);
   }
   for (const l of OTHER) if (l.variants && l.variants.options.some(o => o.value === q.get(l.id + "_by"))) $(l.id + "-by").value = q.get(l.id + "_by");
+  for (const l of OTHER) if (l.shade) readShade(l, q);
   CHOOSE.forEach((f, i) => {
     const vals = (q.get(f.field) ?? "").split(",").filter(v => f.options.some(o => o.value === v));
     if (vals.length) setChosen(i, f.multi ? vals : vals.slice(0, 1));
@@ -489,6 +548,12 @@ function addressNow() {
   }
   for (const l of LAYERS) if (!$(l.id).disabled && $(l.id).checked !== !!l.visible) q.set(l.id, $(l.id).checked ? "1" : "0");
   for (const l of OTHER) if (l.variants) put(l.id + "_by", $(l.id + "-by").value, l.variants.options[0].value);
+  for (const l of OTHER) if (l.shade) {
+    const v = shadeNow(l), d = shadeDefaults(l);
+    put(l.id + "_method", v.method, d.method);
+    for (const x of Object.keys(SHADE_RANGES)) put(l.id + "_" + x, String(v[x]), String(d[x]));
+    for (const x of ["shadow", "light"]) put(l.id + "_" + x, v[x].slice(1), d[x].slice(1));
+  }
   CHOOSE.forEach((f, i) => put(f.field, chosen(i)?.join(",") ?? "", ""));
   put("base", document.querySelector("#bases input:checked")?.value, BASEMAPS[0].id);
   put("lang", LANG, LANGS.includes(CONFIG.language) ? CONFIG.language : LANGS.includes("en") ? "en" : LANGS[0]);
@@ -518,7 +583,7 @@ function addLayer(l, meta) {
       if (spec.type === "symbol" && spec.layout?.["text-field"] && !spec.layout["text-font"]) spec.layout = { ...spec.layout, "text-font": FONT };
       map.addLayer(spec, before);
     }
-    applyVariant(l); applyChoice(l); showLayer(l); countText(l);
+    applyVariant(l); applyShade(l); applyChoice(l); showLayer(l); countText(l);
   };
   if (l.kind === "vector") {
     const n = meta.layers?.[l.id]?.count ?? 0;
@@ -568,6 +633,8 @@ function applyVariant(l) {
   }
 }
 for (const l of OTHER) if (l.variants) $(l.id + "-by").addEventListener("change", () => { popup?.remove(); applyVariant(l); });
+for (const l of OTHER) if (l.shade)
+  for (const x of ["method", ...Object.keys(SHADE_RANGES), "shadow", "light"]) $(l.id + "-" + x).addEventListener("input", () => applyShade(l));
 
 // A layer's styles filtered to the values chosen, on top of each style's own filter; a layer without the field is
 // left as it is. Nothing is fetched again: the tiles carry the fields

@@ -76,6 +76,13 @@
 #'   their side in pixels, and the extent that has tiles (west, south, east, north), so the page asks for no other.
 #'   Taken, with `minzoom` and `maxzoom`, from the attributes of `tiles` where not given ([rb_map_tiles_mbtiles()]
 #'   sets them); else `"terrarium"` and 512. The image format (`"png"` or `"webp"`) is the `format` attribute's.
+#' @param shade For a dem layer with a `hillshade` style: the relief's controls in the page, and their values when it
+#'   opens, a list of any of `method` (`"standard"`, `"basic"`, `"combined"`, `"igor"` or `"multidirectional"`, three
+#'   lights 45 degrees apart), `direction` (the light's azimuth, 0-359), `altitude` (0-90), `exaggeration` (the
+#'   intensity, 0-1), `opacity` (0-100: the alpha of the shading's colours, which has no opacity of its own),
+#'   `shadow` and `highlight` (colours as `"#rrggbb"`); MapLibre's own defaults for those not given. `TRUE` takes
+#'   every default. Each control applies as it moves, and goes into the page's address as `<id>_method`, `<id>_dir`,
+#'   `<id>_alt`, `<id>_ex`, `<id>_op`, `<id>_shadow` and `<id>_light`.
 #' @return An `rb_map_layer`, for [rb_map_group()].
 #' @seealso [rb_map()], [rb_map_tiles_table()]
 #' @export
@@ -137,7 +144,8 @@ rb_map_layer <- function(
   opacity = NULL,
   encoding = NULL,
   tile_size = NULL,
-  bounds = NULL
+  bounds = NULL,
+  shade = NULL
 ) {
   kind <- match.arg(kind)
   if (!is.character(id) || length(id) != 1 || !grepl("^[a-z][a-z0-9_]*$", id)) {
@@ -266,6 +274,9 @@ rb_map_layer <- function(
   } else if (!is.null(encoding) || !is.null(tile_size) || !is.null(bounds)) {
     stop("`encoding`, `tile_size` and `bounds` are for a dem layer.", call. = FALSE)
   }
+  if (!is.null(shade)) {
+    shade <- .rb_map_shade(shade, kind, style)
+  }
   config <- list(
     id = id,
     kind = kind,
@@ -287,7 +298,8 @@ rb_map_layer <- function(
     encoding = encoding,
     tile_size = tile_size,
     bounds = bounds,
-    format = format
+    format = format,
+    shade = shade
   )
   structure(
     list(
@@ -440,6 +452,11 @@ rb_map <- function(
       "v",
       unlist(lapply(layers, function(l) {
         unlist(lapply(l$config$filters, function(f) c(f$id, unlist(f$params))))
+      })),
+      unlist(lapply(layers, function(l) {
+        if (!is.null(l$config$shade)) {
+          paste0(l$config$id, "_", c("method", "dir", "alt", "ex", "op", "shadow", "light"))
+        }
       }))
     )
     clash <- intersect(vapply(choose$fields, `[[`, "", "field"), taken)
@@ -996,6 +1013,47 @@ rb_map_tiles_table <- function(
   attr(tile, "count") <- n
   attr(tile, "table") <- nm
   .rb_hold(tile)
+}
+
+# A dem layer's relief controls: MapLibre's hillshade defaults for what is not given, each value checked
+.rb_map_shade <- function(shade, kind, style) {
+  if (kind != "dem" || !any(vapply(style, function(s) identical(s$type, "hillshade"), logical(1)))) {
+    stop("`shade` is for a dem layer with a `hillshade` style.", call. = FALSE)
+  }
+  given <- if (isTRUE(shade)) list() else shade
+  known <- c("method", "direction", "altitude", "exaggeration", "opacity", "shadow", "highlight")
+  if (!is.list(given) || (length(given) && (is.null(names(given)) || !all(names(given) %in% known)))) {
+    stop(sprintf("`shade` is TRUE or a list of any of %s.", paste(known, collapse = ", ")), call. = FALSE)
+  }
+  v <- utils::modifyList(
+    list(method = "standard", direction = 335, altitude = 45, exaggeration = 0.5, opacity = 100,
+         shadow = "#000000", highlight = "#ffffff"),
+    given
+  )
+  num <- function(x, lo, hi) is.numeric(x) && length(x) == 1 && !is.na(x) && x >= lo && x <= hi
+  hex <- function(x) is.character(x) && length(x) == 1 && grepl("^#[0-9A-Fa-f]{6}$", x)
+  ok <- c(
+    method = is.character(v$method) && length(v$method) == 1 &&
+      v$method %in% c("standard", "basic", "combined", "igor", "multidirectional"),
+    direction = num(v$direction, 0, 359),
+    altitude = num(v$altitude, 0, 90),
+    exaggeration = num(v$exaggeration, 0, 1),
+    opacity = num(v$opacity, 0, 100),
+    shadow = hex(v$shadow),
+    highlight = hex(v$highlight)
+  )
+  if (!all(ok)) {
+    stop(
+      sprintf(
+        "`shade`: %s out of range (method one of MapLibre's five; direction 0-359, altitude 0-90, exaggeration 0-1, opacity 0-100; colours \"#rrggbb\").",
+        paste(names(ok)[!ok], collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  v$shadow <- tolower(v$shadow)
+  v$highlight <- tolower(v$highlight)
+  v
 }
 
 #' Tiles from an MBTiles file

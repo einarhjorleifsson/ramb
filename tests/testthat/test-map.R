@@ -785,3 +785,40 @@ test_that("a dem layer: elevation images from an MBTiles file, served as images 
   meta <- jsonlite::fromJSON(get(app, "/meta")$body)
   expect_true(nzchar(meta$layers$depth$v))
 })
+
+test_that("a dem layer's relief controls: MapLibre's defaults filled in, each value checked, its address names taken", {
+  dem <- function(z, x, y) NULL
+  shade_style <- list(list(id = "relief-shade", type = "hillshade"))
+  l <- rb_map_layer("relief", "dem", tiles = dem, style = shade_style, shade = TRUE)
+  expect_equal(
+    l$config$shade,
+    list(method = "standard", direction = 335, altitude = 45, exaggeration = 0.5, opacity = 100,
+         shadow = "#000000", highlight = "#ffffff")
+  )
+  given <- rb_map_layer("relief", "dem", tiles = dem, style = shade_style,
+                        shade = list(method = "igor", direction = 315, highlight = "#FFF8E0"))$config$shade
+  expect_equal(given[c("method", "direction", "altitude", "highlight")],
+               list(method = "igor", direction = 315, altitude = 45, highlight = "#fff8e0"))
+  expect_null(rb_map_layer("relief", "dem", tiles = dem, style = shade_style)$config$shade)
+
+  colour_style <- list(list(id = "depth-colour", type = "color-relief"))
+  expect_error(rb_map_layer("depth", "dem", tiles = dem, style = colour_style, shade = TRUE), "`hillshade` style")
+  expect_error(
+    rb_map_layer("lines", "vector", tiles = function(z, x, y) raw(0), style = shade_style, shade = TRUE),
+    "`hillshade` style"
+  )
+  expect_error(rb_map_layer("relief", "dem", tiles = dem, style = shade_style, shade = list(method = "sun")), "method")
+  expect_error(rb_map_layer("relief", "dem", tiles = dem, style = shade_style, shade = list(altitude = 95)), "altitude")
+  expect_error(rb_map_layer("relief", "dem", tiles = dem, style = shade_style, shade = list(shadow = "black")), "shadow")
+  expect_error(rb_map_layer("relief", "dem", tiles = dem, style = shade_style, shade = list(sun = 1)), "TRUE or a list")
+
+  # a choice may not take a name the relief's controls write into the address
+  expect_error(
+    rb_map(
+      rb_map_group("g", "G", list(l)),
+      choose = list(fields = list(list(field = "relief_dir", options = list(list(value = "a", match = "a")),
+                                       layers = "relief")))
+    ),
+    "relief_dir"
+  )
+})
