@@ -239,7 +239,8 @@
 #      at most ang[k] degrees and either both legs are longer than distlim[k]
 #      metres or, where speedlim_kn[k] > 0, both legs are faster.
 # Every speed uses a time step of at least min_dt_s; argosfilter adds 1 s to
-# every step instead. Defaults follow fishycode curate/checks/sda_tune.R.
+# every step instead. The defaults are fishycode decision 067's, from its sda_tune study (archived in
+# $FISHYDATA/archive/2026-10-whack-studies/ by its plan 062).
 #
 # noise_m (off at 0): with a `.rb_feed` column on x, a leg between pings of different feeds no
 # longer than noise_m metres counts as no distance in both stages (rb_flag_ping_impossible()).
@@ -353,7 +354,7 @@
   lon,
   lat,
   feed,
-  priority = c("stk", "astd", "astdB", "emodnet"),
+  priority,
   max_dt_s = 10,
   kn_max = 25,
   n = 3

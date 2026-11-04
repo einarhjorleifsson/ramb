@@ -140,6 +140,16 @@
     "ping_flag",
     after = "rb_flag_ping_duplicate"
   ),
+  # step 0: the speed of the pings left, within each stream (fishycode plan 062 step 4b)
+  .rb_step(
+    "rb_add_ping_speed",
+    "ping",
+    "step",
+    "x",
+    c("vid", "time", "lon", "lat"),
+    c("speed_derived", "speed_derived_span_s", "speed_derived_basis"),
+    after = "rb_flag_ping_impossible"
+  ),
   .rb_step(
     "rb_flag_ping_port",
     "ping",

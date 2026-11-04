@@ -44,6 +44,7 @@ flagged are tested, and they are not used as anchors. No row is dropped.
 }
 \seealso{
 Other flag pings:
+\code{\link[=rb_add_ping_speed]{rb_add_ping_speed()}},
 \code{\link[=rb_flag_ping_impossible]{rb_flag_ping_impossible()}},
 \code{\link[=rb_flag_ping_invalid]{rb_flag_ping_invalid()}},
 \code{\link[=rb_flag_ping_port]{rb_flag_ping_port()}}

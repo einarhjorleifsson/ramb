@@ -1,3 +1,16 @@
+# ramb 2026.11.04
+
+Step 0 revised (fishycode plan 062, step 4; built 2026-11-04 by Claude (AI), not yet checked by a person).
+
+- `rb_add_ping_speed()` (new): a speed derived from the positions, within each stream, after the flags: from the ping
+  before to the ping after (a central difference), with the span beside it and a basis (`speed_derived`,
+  `speed_derived_span_s`, `speed_derived_basis`). A ping flagged as a bad position gets none and is no neighbour; a
+  copy of a report (`"duplicate"`) gets none but stays a neighbour in its stream. The distance is the WGS84
+  ellipsoid's, on its local radii, within 0.1 % of Karney's geodesic, and the same on a data frame and a lazy table.
+  It replaces the speed fishycode derived in its union before any flag.
+- The engine behind `rb_flag_ping_duplicate()` no longer takes Iceland's feeds as its default order (the exported
+  function never did).
+
 # ramb 2026.11.03.7
 
 - A dem layer's shading intensity following the view (`shade$fit`, returning `exaggeration`; `shade$auto`, on by

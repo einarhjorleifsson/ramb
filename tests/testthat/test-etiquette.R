@@ -686,6 +686,15 @@ etiquette_cases <- local({
       note = "whacks1. Lazy input: temporary parquet label files, kept for the session."
     ),
     list(
+      fn = "rb_add_ping_speed",
+      main = "x",
+      args = function() list(x = fresh(whacks1)),
+      shape = "same",
+      lazy = TRUE,
+      sf = TRUE,
+      note = "whacks1 (46 pings), unflagged: one SQL query, a data frame registered and collected."
+    ),
+    list(
       fn = "rb_flag_ping_port",
       main = "pings",
       args = function() {

@@ -124,10 +124,14 @@ test_that("a step shorter than min_dt_s counts as min_dt_s, in all five filters"
   }
 })
 t0 <- as.POSIXct("2020-06-01 12:00:00", tz = "UTC")
+# the feeds' order: the engine has no default since 2026.11.04 (it was Iceland's feeds)
+.rb_whack_duplicates_is <- function(...) {
+  .rb_whack_duplicates(..., priority = c("stk", "astd", "astdB", "emodnet"))
+}
 dlon <- function(m) m / (111194.9 * cos(64 * pi / 180)) # degrees of longitude for m metres at 64 N
 
 test_that("the lower-ranked copy of a report is flagged, the higher-ranked one kept", {
-  d <- .rb_whack_duplicates(
+  d <- .rb_whack_duplicates_is(
     c(1, 1),
     t0 + c(0, 1),
     c(-22, -22 + dlon(0.5)),
@@ -135,7 +139,7 @@ test_that("the lower-ranked copy of a report is flagged, the higher-ranked one k
     c("stk", "astd")
   )
   expect_equal(d, c(FALSE, TRUE))
-  d <- .rb_whack_duplicates(
+  d <- .rb_whack_duplicates_is(
     c(1, 1),
     t0 + c(0, 1),
     c(-22, -22 + dlon(0.5)),
@@ -147,7 +151,7 @@ test_that("the lower-ranked copy of a report is flagged, the higher-ranked one k
 
 test_that("a pair outside the time or distance window, or of two vessels, is not a copy", {
   expect_equal(
-    .rb_whack_duplicates(
+    .rb_whack_duplicates_is(
       c(1, 1),
       t0 + c(0, 11),
       c(-22, -22),
@@ -157,7 +161,7 @@ test_that("a pair outside the time or distance window, or of two vessels, is not
     c(FALSE, FALSE)
   )
   expect_equal(
-    .rb_whack_duplicates(
+    .rb_whack_duplicates_is(
       c(1, 1),
       t0 + c(0, 5),
       c(-22, -22 + dlon(200)),
@@ -167,7 +171,7 @@ test_that("a pair outside the time or distance window, or of two vessels, is not
     c(FALSE, FALSE)
   )
   expect_equal(
-    .rb_whack_duplicates(
+    .rb_whack_duplicates_is(
       c(1, 2),
       t0 + c(0, 1),
       c(-22, -22),
@@ -178,7 +182,7 @@ test_that("a pair outside the time or distance window, or of two vessels, is not
   )
   # the window is kn_max over max_dt_s: 128.6 m at the defaults
   expect_equal(
-    .rb_whack_duplicates(
+    .rb_whack_duplicates_is(
       c(1, 1),
       t0 + c(0, 1),
       c(-22, -22 + dlon(120)),
@@ -188,7 +192,7 @@ test_that("a pair outside the time or distance window, or of two vessels, is not
     c(FALSE, TRUE)
   )
   expect_equal(
-    .rb_whack_duplicates(
+    .rb_whack_duplicates_is(
       c(1, 1),
       t0 + c(0, 1),
       c(-22, -22 + dlon(140)),
@@ -201,7 +205,7 @@ test_that("a pair outside the time or distance window, or of two vessels, is not
 
 test_that("same-feed and unranked pairs are left alone; an unranked feed loses to a ranked one", {
   expect_equal(
-    .rb_whack_duplicates(
+    .rb_whack_duplicates_is(
       c(1, 1),
       t0 + c(0, 0),
       c(-22, -22),
@@ -211,7 +215,7 @@ test_that("same-feed and unranked pairs are left alone; an unranked feed loses t
     c(FALSE, FALSE)
   )
   expect_equal(
-    .rb_whack_duplicates(
+    .rb_whack_duplicates_is(
       c(1, 1),
       t0 + c(0, 1),
       c(-22, -22),
@@ -221,7 +225,7 @@ test_that("same-feed and unranked pairs are left alone; an unranked feed loses t
     c(FALSE, FALSE)
   )
   expect_equal(
-    .rb_whack_duplicates(
+    .rb_whack_duplicates_is(
       c(1, 1),
       t0 + c(0, 1),
       c(-22, -22),
@@ -239,20 +243,20 @@ test_that("three feeds on one fix keep only the top one, whatever the input orde
   lat <- rep(64, 4)
   feed <- c("stk", "astd", "astdB", "astd")
   expect_equal(
-    .rb_whack_duplicates(vid, time, lon, lat, feed),
+    .rb_whack_duplicates_is(vid, time, lon, lat, feed),
     c(FALSE, TRUE, TRUE, FALSE)
   )
   o <- c(4, 2, 1, 3)
   expect_equal(
-    .rb_whack_duplicates(vid[o], time[o], lon[o], lat[o], feed[o]),
+    .rb_whack_duplicates_is(vid[o], time[o], lon[o], lat[o], feed[o]),
     c(FALSE, TRUE, TRUE, FALSE)[o]
   )
 })
 
 test_that("short and NA input do not fail", {
-  expect_equal(.rb_whack_duplicates(1, t0, -22, 64, "stk"), FALSE)
+  expect_equal(.rb_whack_duplicates_is(1, t0, -22, 64, "stk"), FALSE)
   expect_equal(
-    .rb_whack_duplicates(
+    .rb_whack_duplicates_is(
       numeric(0),
       t0[0],
       numeric(0),
@@ -262,7 +266,7 @@ test_that("short and NA input do not fail", {
     logical(0)
   )
   expect_equal(
-    .rb_whack_duplicates(
+    .rb_whack_duplicates_is(
       c(1, 1),
       t0 + c(0, 1),
       c(-22, NA),
