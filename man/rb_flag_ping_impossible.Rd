@@ -6,13 +6,14 @@
 \usage{
 rb_flag_ping_impossible(
   x,
-  method = c("clean", "sda", "forward", "fwdbwd", "sequential"),
+  method = c("clean", "forward", "local", "sda", "fwdbwd", "sequential"),
   kn_max = 25,
   min_dt_s = 10,
   max_gap_h = 4,
   ...,
   feed = NULL,
   noise_nm = 0.3,
+  speed = NULL,
   evidence = FALSE,
   vid = vid,
   time = time,
@@ -26,32 +27,42 @@ rb_flag_ping_impossible(
 
 \item{method}{The rule:
 \itemize{
-\item \code{"clean"} (default): the recommended two-stage filter: speed-distance-angle ("vmask", "spike"),
-which judges each ping from both sides, then a forward scan against the last kept ping
-("forward"), which resolves runs and interleaved streams.
-\item \code{"sda"}: the speed-distance-angle stage alone ("vmask", "spike"); the algorithm of
-\code{argosfilter::sdafilter()} (Freitas et al. 2008), re-implemented in C++.
+\item \code{"clean"} (default): a two-stage filter at the fixed limit \code{kn_max}: speed-distance-angle ("vmask",
+"spike"), which judges each ping from both sides, the algorithm of \code{argosfilter::sdafilter()} (Freitas et al.
+2008) re-implemented in C++; then a forward scan against the last kept ping ("forward"), which resolves runs
+and interleaved streams.
 \item \code{"forward"}: the forward scan alone ("forward"): each ping is judged against the last
 \emph{retained} ping, so consecutive clusters are caught.
-\item \code{"fwdbwd"}: a ping too fast both from the previous and to the next ("fwdbwd"): isolated
-spikes only; consecutive clusters pass.
-\item \code{"sequential"}: the cluster-aware sequential filter ("sequential"): iteratively removes
-the first too-fast segment and recomputes, in-memory only.
+\item \code{"local"}: each leg judged against the vessel's own speed, from its recorded speed over ground (\code{speed}), with
+no heading. The local speed of a ping is the median recorded speed of the \code{k} pings on each side (5), its own
+left out; a leg is impossible when longer than \code{margin_m} (50 m) plus \code{factor} (1.5) times the local speed plus
+\code{margin_kn} (5 knots), times its time step. Where no ping near has a recorded speed, the limit is \code{margin_m}
+plus \code{kn_max} times the time step (basis \code{"track"}). Two stages: a ping whose two legs are both impossible
+while the leg that skips it is not ("local_spike"; the first and last ping of a track or of a stretch after a
+gap: their one leg), repeated on the pings left; then a forward scan with the same limit ("local_forward").
+The constants are set by hand, passed in \code{...} (\code{k}, \code{factor}, \code{margin_kn}, \code{margin_m}).
+\item \code{"sda"}, \code{"fwdbwd"} and \code{"sequential"}: withdrawn; they warn, and go in the next release. \code{"sda"} is
+\code{"clean"}'s first stage alone; \code{"fwdbwd"} a ping too fast both from the previous and to the next; \code{"sequential"}
+equals \code{"forward"} at 30 times its time.
 }}
 
-\item{kn_max}{Speed threshold, knots.}
+\item{kn_max}{Speed threshold, knots: the fixed limit (for \code{"local"}, where no recorded speed is near).}
 
 \item{min_dt_s}{A time step shorter than this counts as this many seconds.}
 
 \item{max_gap_h}{For \code{"clean"} and \code{"forward"}: after a gap longer than this the scan restarts.}
 
-\item{...}{Passed to the method (e.g. \code{ang}, \code{distlim} for \code{"sda"}).}
+\item{...}{Passed to the method (\code{k}, \code{factor}, \code{margin_kn} and \code{margin_m} for \code{"local"}; \code{ang}, \code{distlim} for
+\code{"clean"}'s first stage).}
 
 \item{feed}{The column naming the feed of each ping, for the noise floor \code{noise_nm}. Default \code{NULL}: no
-floor. A ping with no feed (\code{NA}) never takes part in it. For the methods \code{"clean"}, \code{"sda"} and
-\code{"forward"}.}
+floor. A ping with no feed (\code{NA}) never takes part in it. Not for \code{"fwdbwd"} and \code{"sequential"}.}
 
 \item{noise_nm}{The noise floor between feeds, nautical miles (1852 m). Only with \code{feed}.}
+
+\item{speed}{For \code{"local"}: the column of the recorded speed over ground, knots (\code{NA} where none; below 0 or 102.3
+or more counts as none, AIS's "not available"). Default \code{NULL}: none, and every leg is judged at the fixed
+limit.}
 
 \item{evidence}{\code{TRUE} adds the evidence columns, see Details. Default \code{FALSE}.}
 
@@ -60,15 +71,24 @@ floor. A ping with no feed (\code{NA}) never takes part in it. For the methods \
 \item{batch_pings}{For a lazy table: pings per batch.}
 }
 \value{
-\code{x} with \code{ping_flag} added or updated: the same type, the same rows; with \code{evidence = TRUE}, the
-evidence columns too.
+\code{x} with \code{ping_flag} and \code{ping_flag_basis} added or updated: the same type, the same rows; with \code{evidence = TRUE}, the evidence columns too. The basis of a flag this call makes is \code{"recorded"} where the vessel's recorded
+speed set the limit (\code{"local"}), and \code{"track"} where the fixed limit did.
 }
 \description{
 Step 0 of the fishing-activity flow. A position or jump that implies an impossible speed is flagged
-in \code{ping_flag} with the stage that caught it. Only rows not yet flagged are tested, so invalid and
-duplicate pings never serve as anchors. No row is dropped.
+in \code{ping_flag} with the stage that caught it, and in \code{ping_flag_basis} with the evidence that judged it. Only
+rows not yet flagged are tested, so invalid and duplicate pings never serve as anchors. No row is dropped.
 }
 \details{
+Which method: with a recorded speed over ground, \code{"local"}, given the column (\verb{speed = }). On ramb's planted
+faults (\code{rb_read_example("dansk_planted")}) it caught the most wrong positions at every ping rate from 10 s to
+1 h, out-and-backs under \code{kn_max} included, and kept the truly fast vessels, which every fixed limit flags. Its
+cost in good fishing pings is the copies of reports interleaved with the track, so take them out first
+(\code{\link[=rb_flag_ping_duplicate]{rb_flag_ping_duplicate()}} with \code{speed}). Without a recorded speed, \code{"local"} judges at the fixed limit and still
+caught more than \code{"clean"} and \code{"forward"} at every rate; of those two, neither is best everywhere: \code{"clean"}
+erodes good pings beside a fault it cannot resolve, \code{"forward"} loses a stretch when the first ping after a gap is
+wrong (fishycode plan 062 step 3, decision 276).
+
 Two opt-in arguments serve a track merged from several feeds (a national AIS network and a commercial
 one, terrestrial and satellite, AIS and VMS). Their defaults leave the rule as it was.
 \itemize{
@@ -83,7 +103,9 @@ pings is judged against the pings that stay):
 with \code{next}; and \code{ping_flag_side}, which of the two legs is impossible on the rule above (a leg
 within the noise floor, or longer than \code{max_gap_h}, is not): \code{"prev"}, \code{"next"}, \code{"both"}, or
 \code{"none"} when neither is (the flag came from the rms speed or the angle of the ping, or the ping has
-no neighbour on that side). The columns are \code{NA} for pings this call did not flag.
+no neighbour on that side). For \code{"local"} a leg is impossible on its own limit, at the local speed the ping was
+judged by, which is \code{ping_flag_speed_kn} (\code{NA} under the fixed limit). The columns are \code{NA} for pings this call
+did not flag.
 }
 }
 \examples{

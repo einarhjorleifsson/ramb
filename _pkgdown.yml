@@ -30,6 +30,7 @@ reference:
   - rb_flag_ping_invalid
   - rb_flag_ping_duplicate
   - rb_flag_ping_impossible
+  - rb_add_ping_speed
   - rb_flag_ping_port
 - title: "Trip (step 1)"
   contents:

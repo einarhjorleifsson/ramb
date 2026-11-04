@@ -96,6 +96,30 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// whack_local_cpp
+List whack_local_cpp(NumericVector lon, NumericVector lat, NumericVector time, IntegerVector vessel, NumericVector sog_ms, IntegerVector feed, double kn_max_ms, double min_dt, double gap_s, int K, double factor, double margin_ms, double margin_m, double noise_m);
+RcppExport SEXP _ramb_whack_local_cpp(SEXP lonSEXP, SEXP latSEXP, SEXP timeSEXP, SEXP vesselSEXP, SEXP sog_msSEXP, SEXP feedSEXP, SEXP kn_max_msSEXP, SEXP min_dtSEXP, SEXP gap_sSEXP, SEXP KSEXP, SEXP factorSEXP, SEXP margin_msSEXP, SEXP margin_mSEXP, SEXP noise_mSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type lon(lonSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type lat(latSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type time(timeSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type vessel(vesselSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type sog_ms(sog_msSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type feed(feedSEXP);
+    Rcpp::traits::input_parameter< double >::type kn_max_ms(kn_max_msSEXP);
+    Rcpp::traits::input_parameter< double >::type min_dt(min_dtSEXP);
+    Rcpp::traits::input_parameter< double >::type gap_s(gap_sSEXP);
+    Rcpp::traits::input_parameter< int >::type K(KSEXP);
+    Rcpp::traits::input_parameter< double >::type factor(factorSEXP);
+    Rcpp::traits::input_parameter< double >::type margin_ms(margin_msSEXP);
+    Rcpp::traits::input_parameter< double >::type margin_m(margin_mSEXP);
+    Rcpp::traits::input_parameter< double >::type noise_m(noise_mSEXP);
+    rcpp_result_gen = Rcpp::wrap(whack_local_cpp(lon, lat, time, vessel, sog_ms, feed, kn_max_ms, min_dt, gap_s, K, factor, margin_ms, margin_m, noise_m));
+    return rcpp_result_gen;
+END_RCPP
+}
 // whack_sda_cpp
 IntegerVector whack_sda_cpp(NumericVector lat, NumericVector lon, NumericVector time, IntegerVector grp, double vmax, NumericVector ang, NumericVector distlim, NumericVector speedlim, double vmask_min_dist, double min_dt, IntegerVector feed, double noise_m);
 RcppExport SEXP _ramb_whack_sda_cpp(SEXP latSEXP, SEXP lonSEXP, SEXP timeSEXP, SEXP grpSEXP, SEXP vmaxSEXP, SEXP angSEXP, SEXP distlimSEXP, SEXP speedlimSEXP, SEXP vmask_min_distSEXP, SEXP min_dtSEXP, SEXP feedSEXP, SEXP noise_mSEXP) {
@@ -125,6 +149,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_ramb_cnr_cut_cpp", (DL_FUNC) &_ramb_cnr_cut_cpp, 9},
     {"_ramb_cnr_join_cpp", (DL_FUNC) &_ramb_cnr_join_cpp, 9},
     {"_ramb_whack_forward_cpp", (DL_FUNC) &_ramb_whack_forward_cpp, 8},
+    {"_ramb_whack_local_cpp", (DL_FUNC) &_ramb_whack_local_cpp, 14},
     {"_ramb_whack_sda_cpp", (DL_FUNC) &_ramb_whack_sda_cpp, 12},
     {NULL, NULL, 0}
 };

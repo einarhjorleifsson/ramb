@@ -58,12 +58,12 @@ test_that("a lazy DuckDB table gives the same labels as a data frame", {
   expect_s3_class(lz, "tbl_lazy")
   lz <- dplyr::collect(lz)
   expect_equal(lz$ping_flag[order(lz$rid)], df$ping_flag[order(df$rid)])
-  for (m in c("sda", "forward", "fwdbwd", "sequential")) {
-    a <- rb_flag_ping_impossible(d, method = m)
-    b <- dplyr::collect(rb_flag_ping_impossible(
+  for (m in c("sda", "forward", "local", "fwdbwd", "sequential")) {
+    a <- suppress_withdrawn(rb_flag_ping_impossible(d, method = m))
+    b <- dplyr::collect(suppress_withdrawn(rb_flag_ping_impossible(
       as_lazy(d),
       method = m
-    ))
+    )))
     expect_equal(b$ping_flag[order(b$rid)], a$ping_flag[order(a$rid)], info = m)
   }
 })
@@ -93,10 +93,13 @@ test_that("pings of one second at two places do not make the flags depend on row
   d$key <- seq_len(nrow(d))
   rev_d <- d[rev(seq_len(nrow(d))), ]
   flags <- function(x, m) {
-    r <- dplyr::collect(rb_flag_ping_impossible(x, method = m))
+    r <- dplyr::collect(suppress_withdrawn(rb_flag_ping_impossible(
+      x,
+      method = m
+    )))
     r$ping_flag[order(r$key)]
   }
-  for (m in c("clean", "sda", "forward", "fwdbwd", "sequential")) {
+  for (m in c("clean", "sda", "forward", "local", "fwdbwd", "sequential")) {
     a <- flags(d, m)
     expect_identical(flags(rev_d, m), a, info = m)
     expect_identical(flags(as_lazy(rev_d), m), a, info = m)
@@ -129,8 +132,10 @@ test_that("flags already set are kept, rows are never dropped, other column name
     lon = x,
     lat = y
   )
-  expect_equal(names(r2), names(e))
+  expect_equal(names(r2), c(names(e), "ping_flag_basis"))
   expect_equal(r2$ping_flag, r$ping_flag)
+  # a flag set before the basis existed keeps none; the new ones say what decided them
+  expect_equal(r$ping_flag_basis[2:3], c("recorded", NA))
 })
 
 test_that("the flag chain does not warn", {
@@ -243,7 +248,8 @@ test_that("the defaults are the rule as it was: no feed, no evidence columns", {
       evidence = FALSE
     )
   )
-  expect_identical(names(a), c(names(d), "ping_flag"))
+  expect_identical(names(a), c(names(d), "ping_flag", "ping_flag_basis"))
+  expect_equal(a$ping_flag_basis[!is.na(a$ping_flag)], "track")
   # the cross-feed ping 5 s after ping 30, 300 m away, is 58 knots on the step rule: flagged without a floor
   expect_equal(sum(!is.na(a$ping_flag)), 1L)
   expect_equal(a$feed[!is.na(a$ping_flag)], "b")
@@ -509,4 +515,217 @@ test_that("rb_flag_ping_invalid() flags a ping stamped after its receipt, only w
     rb_flag_ping_invalid(d[names(d) != "receipt"], rules = "after_receipt"),
     "receipt"
   )
+})
+
+# fishycode plan 062 step 4 (2026.11.04): the cascade -------------------------------------------------------------
+
+test_that("the withdrawn methods warn once per session, and still run", {
+  ramb:::.rb_reset_renamed()
+  d <- two_feeds()
+  expect_warning(
+    rb_flag_ping_impossible(d, method = "sda"),
+    class = "ramb_withdrawn"
+  )
+  expect_no_warning(rb_flag_ping_impossible(d, method = "sda"))
+  expect_warning(
+    rb_flag_ping_impossible(d, method = "fwdbwd"),
+    class = "ramb_withdrawn"
+  )
+  expect_no_warning(rb_flag_ping_impossible(d, method = "clean"))
+})
+
+# a vessel towing at 3 knots, a ping every minute; ping 20 moved 1 km off, under 25 knots both ways
+towing <- function() {
+  n <- 40
+  data.frame(
+    vid = 1L,
+    time = as.POSIXct("2024-01-01", tz = "UTC") + 60 * (seq_len(n) - 1),
+    lon = -20 + 0.0021 * seq_len(n),
+    lat = 64,
+    speed = 3
+  )
+}
+
+test_that("\"local\" judges a leg against the vessel's recorded speed, else at the fixed limit", {
+  d <- towing()
+  # 1 km north, its legs 2 min each: 16 knots there and back
+  d$lat[20] <- d$lat[20] + 0.009
+  d$time[20:40] <- d$time[20:40] + 60
+  d$time[21:40] <- d$time[21:40] + 60
+  l <- rb_flag_ping_impossible(d, method = "local", speed = speed)
+  expect_equal(which(!is.na(l$ping_flag)), 20L)
+  expect_equal(l$ping_flag[20], "local_spike")
+  expect_equal(l$ping_flag_basis[20], "recorded")
+  # an out-and-back under 25 knots: every fixed limit keeps it
+  expect_true(all(is.na(
+    rb_flag_ping_impossible(d, method = "clean")$ping_flag
+  )))
+  # with no recorded speed, the fixed limit
+  f <- rb_flag_ping_impossible(d, method = "local")
+  expect_true(all(is.na(f$ping_flag)))
+  d$lat[20] <- d$lat[20] + 0.02
+  f <- rb_flag_ping_impossible(d, method = "local")
+  expect_equal(f$ping_flag_basis[!is.na(f$ping_flag)], "track")
+  # the evidence: the legs, and the speed the ping was judged by
+  e <- rb_flag_ping_impossible(
+    d,
+    method = "local",
+    speed = speed,
+    evidence = TRUE
+  )
+  expect_equal(e$ping_flag_speed_kn[20], 3)
+  expect_equal(e$ping_flag_side[20], "both")
+  expect_error(
+    rb_flag_ping_impossible(d, method = "clean", speed = speed),
+    "local"
+  )
+})
+
+test_that("\"local\" keeps a vessel truly fast, which a fixed limit flags", {
+  d <- towing()
+  d$lon <- -20 + 0.0245 * seq_len(nrow(d)) # 35 knots
+  d$speed <- 35
+  expect_true(all(is.na(
+    rb_flag_ping_impossible(d, method = "local", speed = speed)$ping_flag
+  )))
+  expect_gt(
+    sum(!is.na(rb_flag_ping_impossible(d, method = "clean")$ping_flag)),
+    0
+  )
+})
+
+# one feed: a vessel steaming at 10 knots, reports every minute, with recorded speeds that vary
+steaming <- function(n = 30) {
+  data.frame(
+    vid = 1L,
+    time = as.POSIXct("2024-01-01", tz = "UTC") + 60 * (seq_len(n) - 1),
+    lon = -20 + 0.0071 * seq_len(n),
+    lat = 64,
+    speed = 10 + (seq_len(n) %% 7) / 10,
+    course = 90 + (seq_len(n) %% 3) / 10,
+    provider = "a"
+  )
+}
+
+test_that("a report sent twice within a feed: the later one is a duplicate, on its recorded values", {
+  d <- steaming()
+  d <- rbind(d, transform(d[10, ], time = time + 1))
+  r <- rb_flag_ping_duplicate(d, speed = speed, course = course)
+  expect_equal(which(!is.na(r$ping_flag)), 31L)
+  expect_equal(r$ping_flag_basis[31], "recorded")
+  # without speed, the rule within a feed does not run
+  expect_true(all(is.na(rb_flag_ping_duplicate(d)$ping_flag)))
+})
+
+test_that("a stretch sent again a day later: a repeat in one feed, decided by a second feed, by priority in two", {
+  d <- steaming()
+  copy <- transform(d[11:15, ], time = time + 86400)
+  one <- rbind(d, copy)
+  r <- rb_flag_ping_duplicate(one, speed = speed, course = course)
+  # one feed, no witness: both kept, labelled
+  expect_true(all(is.na(r$ping_flag)))
+  expect_equal(r$ping_repeat_dt_s[11:15], rep(86400, 5))
+  expect_equal(r$ping_repeat_dt_s[31:35], rep(-86400, 5))
+  expect_true(all(is.na(r$ping_repeat_dt_s[-c(11:15, 31:35)])))
+  # a second feed hears the vessel on the day of the true stretch: the copy is shifted, on the witness
+  w <- transform(
+    d[c(12, 14), ],
+    time = time + 5,
+    lon = lon + 0.001,
+    provider = "b",
+    speed = speed + 0.05
+  )
+  r <- rb_flag_ping_duplicate(
+    rbind(one, w),
+    priority = c("a", "b"),
+    speed = speed,
+    course = course
+  )
+  expect_equal(which(r$ping_flag %in% "shifted"), 31:35)
+  expect_equal(unique(r$ping_flag_basis[31:35]), "witness")
+  expect_true(all(is.na(r$ping_repeat_dt_s)))
+  # the copy in a second feed: the lower-ranked feed's
+  two <- rbind(d, transform(copy, provider = "b"))
+  r <- rb_flag_ping_duplicate(
+    two,
+    priority = c("a", "b"),
+    speed = speed,
+    course = course
+  )
+  expect_equal(which(!is.na(r$ping_flag)), 31:35)
+  expect_equal(unique(stats::na.omit(r$ping_flag)), "shifted")
+  expect_equal(unique(r$ping_flag_basis), c(NA, "priority"))
+  expect_error(rb_flag_ping_duplicate(two, speed = speed), "priority")
+})
+
+test_that("a vessel passing the same place again is no copy: its speed and course differ", {
+  d <- steaming()
+  back <- transform(d[11:15, ], time = time + 86400, speed = speed + 0.3)
+  r <- rb_flag_ping_duplicate(rbind(d, back), speed = speed, course = course)
+  expect_true(all(is.na(r$ping_flag)) && all(is.na(r$ping_repeat_dt_s)))
+})
+
+test_that("the copy rule and \"local\" give the same on a lazy table as on a data frame", {
+  d <- steaming()
+  d <- rbind(
+    d,
+    transform(d[11:15, ], time = time + 86400),
+    transform(d[3, ], time = time + 1)
+  )
+  d$lat[25] <- d$lat[25] + 0.02
+  d$rid <- seq_len(nrow(d))
+  chain2 <- function(x) {
+    x |>
+      rb_flag_ping_duplicate(speed = speed, course = course) |>
+      rb_flag_ping_impossible(method = "local", speed = speed, evidence = TRUE)
+  }
+  a <- chain2(d)
+  b <- dplyr::collect(chain2(as_lazy(d)))
+  b <- b[order(b$rid), ]
+  for (k in c(
+    "ping_flag",
+    "ping_flag_basis",
+    "ping_repeat_dt_s",
+    "ping_flag_side",
+    "ping_flag_speed_kn"
+  )) {
+    expect_equal(b[[k]], a[[k]], info = k)
+  }
+})
+
+test_that("the lazy route gives back every column as it was, and the pings with no vessel", {
+  con <- DBI::dbConnect(duckdb::duckdb())
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE))
+  d <- towing()
+  d$lat[20] <- d$lat[20] + 0.05
+  d$vid[3] <- NA
+  duckdb::duckdb_register(con, "d0", d)
+  DBI::dbExecute(
+    con,
+    "CREATE TABLE d AS SELECT *, CAST(vid AS BIGINT) AS big, CAST(speed AS DECIMAL(6, 2)) AS dec,
+                         CAST(time AS DATE) AS day, timezone('UTC', time) AS tz FROM d0"
+  )
+  x <- dplyr::tbl(con, "d")
+  r <- rb_flag_ping_impossible(x, method = "local", speed = speed)
+  ty <- DBI::dbGetQuery(con, paste("DESCRIBE", dbplyr::sql_render(r)))
+  ty0 <- DBI::dbGetQuery(con, "DESCRIBE d")
+  expect_equal(
+    ty$column_type[match(ty0$column_name, ty$column_name)],
+    ty0$column_type
+  )
+  r <- dplyr::collect(r)
+  expect_equal(nrow(r), nrow(d))
+  expect_equal(sum(is.na(r$vid)), 1L)
+  expect_equal(r$ping_flag[r$lat > 64.01 & !is.na(r$lat)], "local_spike")
+  # a column R cannot give back as it was: the labels are joined back instead, and they are the same
+  DBI::dbExecute(
+    con,
+    "CREATE TABLE d2 AS SELECT *, CAST('12:00:00' AS TIME) AS tod FROM d"
+  )
+  r2 <- dplyr::collect(rb_flag_ping_impossible(
+    dplyr::tbl(con, "d2"),
+    method = "local",
+    speed = speed
+  ))
+  expect_equal(r2$ping_flag[order(r2$time)], r$ping_flag[order(r$time)])
 })

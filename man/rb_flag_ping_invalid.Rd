@@ -31,7 +31,8 @@ receipt). A clock a second or two fast is common and harmless.}
 \item{ahead_s}{For \code{"after_receipt"}: seconds after the receipt that are tolerated.}
 }
 \value{
-\code{x} with \code{ping_flag} added or updated: the same type, the same rows.
+\code{x} with \code{ping_flag} and \code{ping_flag_basis} added or updated (\code{"recorded"}: the ping's own values decide):
+the same type, the same rows.
 }
 \description{
 Step 0 of the fishing-activity flow. A position that is a placeholder, not a fix, is flagged

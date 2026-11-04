@@ -641,6 +641,43 @@ etiquette_cases <- local({
       note = "feed column `provider`; 267 pings, every third copied 1 s later by a second feed."
     ),
     list(
+      fn = "rb_flag_ping_duplicate",
+      main = "x",
+      args = function() {
+        x <- data.frame(
+          vid = 1L,
+          time = utc("2024-01-01") + c(60 * 0:19, 86400 + 60 * 5:9, 61),
+          lon = -20 + 0.0071 * c(1:20, 6:10, 2),
+          lat = 64,
+          speed = 10 + (c(1:20, 6:10, 2) %% 7) / 10,
+          course = 90,
+          provider = "a"
+        )
+        list(
+          x = add_rid(tibble::as_tibble(x)),
+          speed = quote(speed),
+          course = quote(course)
+        )
+      },
+      shape = "same",
+      lazy = TRUE,
+      sf = TRUE,
+      note = "one feed: a stretch sent again a day later (repeats, labelled) and a report sent twice 1 s apart."
+    ),
+    list(
+      fn = "rb_flag_ping_impossible",
+      main = "x",
+      args = function() {
+        x <- fresh(whacks1)
+        x$speed <- 8
+        list(x = x, method = "local", speed = quote(speed))
+      },
+      shape = "same",
+      lazy = TRUE,
+      sf = TRUE,
+      note = "whacks1 with a recorded speed of 8 knots."
+    ),
+    list(
       fn = "rb_flag_ping_impossible",
       main = "x",
       args = function() list(x = fresh(whacks1), method = "clean"),

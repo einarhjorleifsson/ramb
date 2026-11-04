@@ -120,7 +120,7 @@
     "step",
     "x",
     c("lon", "lat"),
-    "ping_flag"
+    c("ping_flag", "ping_flag_basis")
   ),
   .rb_step(
     "rb_flag_ping_duplicate",
@@ -128,7 +128,7 @@
     "step",
     "x",
     c("vid", "time", "lon", "lat"),
-    "ping_flag",
+    c("ping_flag", "ping_flag_basis"),
     after = "rb_flag_ping_invalid"
   ),
   .rb_step(
@@ -137,7 +137,7 @@
     "step",
     "x",
     c("vid", "time", "lon", "lat"),
-    "ping_flag",
+    c("ping_flag", "ping_flag_basis"),
     after = "rb_flag_ping_duplicate"
   ),
   # step 0: the speed of the pings left, within each stream (fishycode plan 062 step 4b)

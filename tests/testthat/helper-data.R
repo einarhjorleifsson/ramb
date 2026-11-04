@@ -23,3 +23,10 @@ as_lazy <- function(x, con = .rb_connection()) {
   DBI::dbWriteTable(con, nm, as.data.frame(x), temporary = TRUE)
   dplyr::tbl(con, nm)
 }
+
+# The methods withdrawn in 2026.11.04 warn once per session; tests that still score them do not count it.
+suppress_withdrawn <- function(expr) {
+  withCallingHandlers(expr, ramb_withdrawn = function(w) {
+    invokeRestart("muffleWarning")
+  })
+}

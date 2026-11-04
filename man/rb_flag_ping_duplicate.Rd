@@ -2,7 +2,7 @@
 % Please edit documentation in R/ping.R
 \name{rb_flag_ping_duplicate}
 \alias{rb_flag_ping_duplicate}
-\title{Flag a second feed's copy of a ping}
+\title{Flag a copy of a report}
 \usage{
 rb_flag_ping_duplicate(
   x,
@@ -11,6 +11,10 @@ rb_flag_ping_duplicate(
   max_dt_s = 10,
   kn_max = 25,
   n_neighbours = 3,
+  speed = NULL,
+  course = NULL,
+  copy_m = 20,
+  near_s = 2,
   vid = vid,
   time = time,
   lon = lon,
@@ -22,25 +26,70 @@ rb_flag_ping_duplicate(
 \item{x}{A data frame or a lazy DuckDB table with \code{vid}, \code{time}, \code{lon}, \code{lat} and the feed column.}
 
 \item{priority}{The feeds, highest priority first. A feed not listed ranks last. No default: the
-order is a judgement about the feeds.}
+order is a judgement about the feeds. It may be left out where the data hold one feed.}
 
 \item{feed}{The column naming the feed.}
 
 \item{max_dt_s, kn_max, n_neighbours}{Seconds apart, speed in knots that sets the distance, neighbours compared.}
+
+\item{speed, course}{The columns of the recorded speed over ground (knots) and course over ground (degrees), for the
+second rule. Default \code{NULL}: the first rule only. A speed of 102.3 knots or more counts as none.}
+
+\item{copy_m, near_s}{For the second rule: how far apart two reports may lie and still be one (metres), and how
+far apart in time a report sent twice in one feed may be (seconds).}
 
 \item{vid, time, lon, lat}{The columns, if named otherwise.}
 
 \item{batch_pings}{For a lazy table: pings per batch.}
 }
 \value{
-\code{x} with \code{ping_flag} added or updated: the same type, the same rows.
+\code{x} with \code{ping_flag} and \code{ping_flag_basis} added or updated, and with \code{speed}, \code{ping_repeat_dt_s}: the same
+type, the same rows.
 }
 \description{
-Step 0 of the fishing-activity flow. When several feeds (e.g. a national AIS network and a commercial
-one) report the same fix, the lower-priority feed's copy is flagged \code{"duplicate"} in \code{ping_flag}: a
-ping of the same vessel from a higher-priority feed lies within \code{max_dt_s} seconds and the distance
-\code{kn_max} covers in that time, among the \code{n_neighbours} neighbours on each side in time order. Only rows not yet
-flagged are tested, and they are not used as anchors. No row is dropped.
+Step 0 of the fishing-activity flow. A report a vessel's track holds twice is flagged in \code{ping_flag}, with what
+decided it in \code{ping_flag_basis}. Only rows not yet flagged are tested, and they are not used as anchors. No row is
+dropped.
+}
+\details{
+Two rules, the second with a recorded speed (fishycode plan 062's cascade: each copy is decided by the best
+evidence there is):
+\itemize{
+\item \strong{Across feeds, at one time.} When several feeds (a national AIS network and a commercial one) report the
+same fix, the lower-priority feed's copy is \code{"duplicate"} (basis \code{"priority"}): a ping of the same vessel from a
+higher-priority feed lies within \code{max_dt_s} seconds and the distance \code{kn_max} covers in that time, among the
+\code{n_neighbours} neighbours on each side in time order.
+\item \strong{One report twice, at any time} (with \code{speed}, and \code{course} where the feed has it). A copy repeats a report's
+position (within \code{copy_m} metres), its recorded speed (exactly) and its course (within 0.5 degrees); a vessel
+that passes the same place again does not repeat its speed and course to the decimal. Pings moving under 1 knot
+are not compared. Of such a pair, in one feed and \code{near_s} seconds apart or less, the later is \code{"duplicate"}
+(basis \code{"recorded"}): the report sent twice. In two feeds, the lower-priority feed's (basis \code{"priority"}):
+\code{"duplicate"} within \code{max_dt_s} of the other, else \code{"shifted"}, a copy stamped at another time. In one feed
+further apart, which one is the copy is decided by a second feed, a witness that places the vessel at one of
+them (a ping of another feed within 120 s and 300 m plus what its recorded speed covers in the time between): the
+other is \code{"shifted"} (basis \code{"witness"}). The pairs of one run, one vessel at one shift, are decided together,
+and only when every pair that a witness decides agrees. Otherwise both pings stay, unflagged, and
+\code{ping_repeat_dt_s} gives each the seconds to the other: a label, not a removal. On one feed with no time of
+receipt, which of two identical reports is the copy is not in the data; the track around is no witness, since
+where copies are many it fits the copy as well as the true ping (fishycode decision 276).
+}
+
+Take the copies out before \code{\link[=rb_flag_ping_impossible]{rb_flag_ping_impossible()}}: a true ping between two copies looks as wrong as a copy,
+and on ramb's planted faults the copies were most of the good fishing pings its \code{"local"} method took.
+}
+\examples{
+t0 <- as.POSIXct("2024-01-01", tz = "UTC")
+# one feed; a stretch of the track sent again a day later, stamped with the later time
+d <- data.frame(
+  vid = 1,
+  time = t0 + c(60 * 0:4, 86400 + 60 * 1:2),
+  lon = -20 + 0.004 * c(0:4, 1:2),
+  lat = 64,
+  speed = c(10.1, 10.2, 10.3, 10.2, 10.1, 10.2, 10.3),
+  course = 90,
+  provider = "a"
+)
+rb_flag_ping_duplicate(d, speed = speed, course = course)[, c("time", "ping_flag", "ping_repeat_dt_s")]
 }
 \seealso{
 Other flag pings:

@@ -27,7 +27,7 @@ fishing-activity flow. Functions are typically drafted in fishycode
   `"jepol"`, `"cnr"`, `"iapesca"`).
 - One function per task: variants are a `method`, `part`, `list` or
   `from`/`to` argument, never a new name
-  (`rb_flag_ping_impossible(method = "sda")`,
+  (`rb_flag_ping_impossible(method = "local")`,
   `rb_encode_ices_rectangle(method = "vmstools")`). A grouping is a `by`
   argument.
 - Internal functions are dot-prefixed (`.rb_*`, `.whack_*`), are not
@@ -121,7 +121,10 @@ the function takes them. A new exported function that takes a table gets a case 
   (lon, lat) order to the C library's (lat, lon)). A lazy geodesic is
   possible — DuckDB spatial's `ST_Distance_Spheroid` (plan 013 measured
   0.12 s per million legs) — but is not built; the filters and every lazy
-  path stay Haversine-only for now.
+  path stay Haversine-only for now, with one exception: `rb_add_ping_speed()`
+  derives its speed on the WGS84 ellipsoid's local radii, in SQL on both routes,
+  within 0.1 % of Karney (the maintainer, 2026-11-04, fishycode plan 062 ask 1;
+  `test-ping_speed.R` pins it to `rb_calc_distance(method = "geodesic")`).
 - DuckDB's `LEAST()`/`GREATEST()` ignore NULLs: never use them as an
   `ASIN`-domain clamp in SQL — NULL coordinates would silently become the
   antipodal distance. Unclamped, NULL propagates correctly.

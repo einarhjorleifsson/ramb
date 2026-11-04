@@ -386,3 +386,219 @@
   }
   dup[order(o)]
 }
+
+# .rb_whack_local -------------------------------------------------------------
+# Each leg judged against the vessel's own speed (compiled, src/whack_local.cpp): rb_flag_ping_impossible(method =
+# "local"). The local speed of a ping is the median of the recorded speeds over ground of the `k` pings on each side;
+# a leg is impossible when longer than margin_m + (factor x local speed + margin_kn) x its time step, and where no
+# ping near has a recorded speed, longer than margin_m + kn_max x its time step. Stage 1, "local_spike": both legs
+# impossible and the leg that skips the ping possible (the first and last ping of a track or stretch: their one leg),
+# repeated on the pings left; stage 2, "local_forward": a forward scan from the last ping kept. Hand-set (fishycode plan
+# 062, decided e), from the prototype of its step 3, which caught the most faults at every ping rate on ramb's planted
+# faults and kept the truly fast vessels; tuning on half the vessels changed little (fishycode decision 276).
+#
+# A recorded speed below 0 or of 102.3 knots or more is none: AIS writes 102.3 for "not available".
+# noise_m, with `.rb_feed`, is the other engines' noise floor between feeds.
+#
+# x: data frame with vid, time, lon, lat and `.rb_speed` (knots, NA where none). Returns x sorted by (vid, time, lon,
+# lat) with whack_local (NA, "local_spike" or "local_forward"), whack_basis ("recorded" or "track") and whack_v (the
+# local speed in knots a flag was judged by, NA under the fixed limit).
+.rb_whack_local <- function(
+  x,
+  kn_max = 25,
+  min_dt_s = 10,
+  max_gap_h = 4,
+  noise_m = 0,
+  k = 5,
+  factor = 1.5,
+  margin_kn = 5,
+  margin_m = 50
+) {
+  grp_vars <- dplyr::group_vars(x)
+  x <- dplyr::arrange(dplyr::ungroup(x), vid, time, lon, lat)
+  sog <- if (".rb_speed" %in% names(x)) {
+    as.numeric(x$.rb_speed)
+  } else {
+    rep(NA_real_, nrow(x))
+  }
+  sog[!is.na(sog) & (sog < 0 | sog >= 102.3)] <- NA_real_
+  r <- whack_local_cpp(
+    as.numeric(x$lon),
+    as.numeric(x$lat),
+    as.numeric(x$time),
+    match(x$vid, unique(x$vid)),
+    sog * 0.514444,
+    .rb_feed_codes(x),
+    kn_max * 0.514444,
+    min_dt_s,
+    max_gap_h * 3600,
+    as.integer(k),
+    factor,
+    margin_kn * 0.514444,
+    margin_m,
+    noise_m
+  )
+  x$whack_local <- c(NA_character_, "local_spike", "local_forward")[r$code + 1L]
+  x$whack_basis <- c(NA_character_, "recorded", "track")[r$basis + 1L]
+  x$whack_v <- r$v / 0.514444
+  if (length(grp_vars) > 0) {
+    x <- dplyr::group_by(x, dplyr::across(dplyr::all_of(grp_vars)))
+  }
+  x
+}
+
+# .rb_whack_copies ------------------------------------------------------------
+# One report twice (fishycode plan 062 step 4a; the prototype of its step 3, scripts/copy_rule.R, with the misfit's
+# vote at 0: on one feed only a second feed decides). Internal engine behind rb_flag_ping_duplicate(speed = ).
+#
+# A copy repeats a report's position (within copy_m metres), its recorded speed (exactly) and its course (within
+# 0.5 degrees, where both have one); a vessel that passes the same place again does not repeat its speed and course to
+# the decimal. Only pings moving 1 knot or more are compared: at rest every report repeats. Of a pair of one vessel:
+#   * in one feed, near_s seconds apart or less: the later is a "duplicate" (basis "recorded"), the report sent twice;
+#   * in two feeds ranked apart in `priority`: the lower-ranked feed's is flagged (basis "priority"), "duplicate" when
+#     within max_dt_s of the other, "shifted" (a copy stamped at another time) beyond;
+#   * in one feed (or two of equal rank) further apart: which one is the copy is decided by a second feed, a witness:
+#     a ping of another feed of the vessel's within 120 s that places it within 300 m plus what its recorded speed
+#     covers in the time between. The copy, stamped at a time the vessel was elsewhere, has none. The pairs of one run
+#     (one vessel, one shift, to 10 s) are decided together, and only when every decisive pair agrees: the copy is
+#     "shifted" (basis "witness"). Otherwise both pings stay, unflagged, labelled repeats (the maintainer, 2026-11-03:
+#     on one feed with no time of receipt, which of two identical reports is the copy is not in the data).
+# The track around is no witness: on fishycode's reload of 2026-10-12 to 10-14, the fit to the neighbours picked the
+# live ping as the copy (decision 276).
+#
+# The pairs are found in DuckDB on a grid of 200 m cells in which each ping also looks into the cells within 25 m of
+# it, so a batch of millions of pings never compares a vessel's pings at one speed all against all.
+#
+# Returns, in input order: flag (NA, "duplicate", "shifted"), basis (NA, "recorded", "priority", "witness") and
+# repeat_dt_s (for an undecided pair's pings: the seconds to the other ping, NA otherwise). A ping already flagged by
+# one pair keeps that flag.
+.rb_whack_copies <- function(
+  vid,
+  time,
+  lon,
+  lat,
+  feed,
+  priority,
+  speed,
+  course = NULL,
+  copy_m = 20,
+  near_s = 2,
+  max_dt_s = 10,
+  min_kn = 1,
+  course_tol = 0.5,
+  witness_s = 120,
+  witness_m = 300
+) {
+  n <- length(vid)
+  flag <- basis <- rep(NA_character_, n)
+  rdt <- rep(NA_real_, n)
+  if (n < 2L) {
+    return(list(flag = flag, basis = basis, repeat_dt_s = rdt))
+  }
+  t <- as.numeric(time)
+  o <- order(vid, t, lon, lat)
+  y <- data.frame(
+    i = seq_len(n),
+    vid = match(vid[o], unique(vid[o])),
+    t = t[o],
+    lon = as.numeric(lon[o]),
+    lat = as.numeric(lat[o]),
+    feed = as.character(feed[o]),
+    rnk = match(as.character(feed[o]), priority),
+    speed = as.numeric(speed[o]),
+    course = if (is.null(course)) NA_real_ else as.numeric(course[o])
+  )
+  y$rnk[is.na(y$rnk)] <- length(priority) + 1L
+  con <- .rb_connection()
+  .rb_scope()
+  nm <- .rb_register(con, y, "rb_copy_")
+  hav <- function(a, b) {
+    .rb_fill(
+      "2 * 6371000 * asin(sqrt(pow(sin(radians({b}.lat - {a}.lat) / 2), 2) + cos(radians({a}.lat)) * cos(radians({b}.lat)) * pow(sin(radians({b}.lon - {a}.lon) / 2), 2)))"
+    )
+  }
+  # each ping's 200 m cell: a band of latitude, and in it a cell of longitude as wide as 200 m at the band's middle
+  lonm <- function(band) {
+    .rb_fill(
+      "lon * 111320.0 * cos(radians(least(89.9, greatest(-89.9, ({band} + 0.5) * 200 / 111320.0))))"
+    )
+  }
+  pr <- DBI::dbGetQuery(
+    con,
+    .rb_fill(
+      "
+WITH y AS (SELECT *, lat * 111320.0 AS ym FROM {nm}
+           WHERE speed >= {min_kn} AND speed < 102.3 AND lon IS NOT NULL AND lat IS NOT NULL AND t IS NOT NULL),
+b AS (SELECT *, CAST(floor(ym / 200) AS BIGINT) AS cy FROM y),
+tg AS (SELECT *, CAST(floor({lonm('cy')} / 200) AS BIGINT) AS cx FROM b),
+pb AS (SELECT b.*, b.cy + d.dy AS py FROM b CROSS JOIN (VALUES (-1), (0), (1)) AS d(dy)
+       WHERE d.dy = 0 OR (d.dy = -1 AND b.ym - b.cy * 200 < 25) OR (d.dy = 1 AND (b.cy + 1) * 200 - b.ym < 25)),
+px AS (SELECT *, {lonm('py')} AS xm FROM pb),
+pc AS (SELECT px.*, CAST(floor(xm / 200) AS BIGINT) + d.dx AS pxc FROM px CROSS JOIN (VALUES (-1), (0), (1)) AS d(dx)
+       WHERE d.dx = 0 OR (d.dx = -1 AND xm - floor(xm / 200) * 200 < 25) OR (d.dx = 1 AND (floor(xm / 200) + 1) * 200 - xm < 25))
+SELECT a.i, b.i AS j, b.t - a.t AS dt, a.feed AS fa, b.feed AS fb, a.rnk AS ra, b.rnk AS rb
+FROM pc a JOIN tg b ON a.vid = b.vid AND a.speed = b.speed AND a.py = b.cy AND a.pxc = b.cx AND a.i < b.i
+WHERE (a.course IS NULL OR b.course IS NULL OR
+       least(abs(a.course - b.course), 360 - abs(a.course - b.course)) <= {course_tol})
+  AND {hav('a', 'b')} <= {copy_m}"
+    )
+  )
+  if (!nrow(pr)) {
+    return(list(flag = flag, basis = basis, repeat_dt_s = rdt))
+  }
+  f <- rep(NA_character_, n)
+  bs <- rep(NA_character_, n)
+  # label the pings k not yet labelled, the first of a ping named twice
+  put <- function(k, lab, why) {
+    lab <- rep_len(lab, length(k))
+    ok <- is.na(f[k]) & !duplicated(k)
+    f[k[ok]] <<- lab[ok]
+    bs[k[ok]] <<- why
+  }
+  near <- pr$fa == pr$fb & abs(pr$dt) <= near_s
+  put(ifelse(pr$dt[near] >= 0, pr$j[near], pr$i[near]), "duplicate", "recorded")
+  rp <- pr[!near, ]
+  two <- rp$fa != rp$fb & rp$ra != rp$rb
+  lo <- ifelse(rp$ra[two] > rp$rb[two], rp$i[two], rp$j[two])
+  put(
+    lo,
+    ifelse(abs(rp$dt[two]) <= max_dt_s, "duplicate", "shifted"),
+    "priority"
+  )
+  one <- rp[!two, ]
+  rep_i <- integer(0)
+  rep_dt <- numeric(0)
+  if (nrow(one)) {
+    m <- unique(c(one$i, one$j))
+    nm_m <- .rb_register(con, data.frame(i = m), "rb_copym_")
+    w <- DBI::dbGetQuery(
+      con,
+      .rb_fill(
+        "
+WITH a AS (SELECT y.*, CAST(floor(y.t / {witness_s}) AS BIGINT) + d.k AS tb
+           FROM {nm} y JOIN {nm_m} USING (i) CROSS JOIN (VALUES (-1), (0), (1)) AS d(k)),
+b AS (SELECT *, CAST(floor(t / {witness_s}) AS BIGINT) AS tb FROM {nm} WHERE lon IS NOT NULL AND lat IS NOT NULL)
+SELECT DISTINCT a.i FROM a JOIN b ON a.vid = b.vid AND a.tb = b.tb AND b.feed <> a.feed
+WHERE abs(b.t - a.t) <= {witness_s}
+  AND {hav('a', 'b')} <= {witness_m} + coalesce(a.speed, 0) * 0.514444 * abs(b.t - a.t)"
+      )
+    )$i
+    wi <- one$i %in% w
+    wj <- one$j %in% w
+    # each pair's vote, + where j is the copy; the pairs of one run share its shift
+    vote <- 3 * (wi & !wj) - 3 * (wj & !wi)
+    run <- paste(y$vid[one$i], round(one$dt / 10))
+    tot <- stats::ave(vote, run, FUN = sum)
+    split_run <- stats::ave(vote, run, FUN = function(v) {
+      any(v > 0) & any(v < 0)
+    })
+    ok <- tot != 0 & !split_run
+    put(ifelse(tot > 0, one$j, one$i)[ok], "shifted", "witness")
+    rep_i <- c(one$i[!ok], one$j[!ok])
+    rep_dt <- c(one$dt[!ok], -one$dt[!ok])
+  }
+  keep <- is.na(f[rep_i]) & !duplicated(rep_i)
+  rdt[rep_i[keep]] <- rep_dt[keep]
+  # back to input order
+  list(flag = f[order(o)], basis = bs[order(o)], repeat_dt_s = rdt[order(o)])
+}

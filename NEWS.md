@@ -8,6 +8,34 @@ Step 0 revised (fishycode plan 062, step 4; built 2026-11-04 by Claude (AI), not
   copy of a report (`"duplicate"`) gets none but stays a neighbour in its stream. The distance is the WGS84
   ellipsoid's, on its local radii, within 0.1 % of Karney's geodesic, and the same on a data frame and a lazy table.
   It replaces the speed fishycode derived in its union before any flag.
+- **The cascade.** Each flag takes the best evidence the ping has and says which, in a new column of every flagger,
+  `ping_flag_basis`: `"recorded"` (the ping's own recorded values: an invalid position, a report sent twice, a limit
+  set by the vessel's recorded speed), `"track"` (the positions and times against the fixed limit), `"priority"` (the
+  caller's order of the feeds) or `"witness"` (a second feed). A flag made by an older ramb has none.
+- `rb_flag_ping_impossible(method = "local", speed = )` (new method, opt-in): each leg judged against the vessel's own
+  speed, the median recorded speed over ground of the 5 pings on each side, with no heading; where no ping near has a
+  recorded speed, at the fixed limit `kn_max`. On ramb's planted faults it caught the most wrong positions at every ping
+  rate from 10 s to 1 h (1 km or more off: 99, 97, 82, 41 %, against `"clean"`'s 98, 88, 61, 18), out-and-backs under
+  25 knots included, and kept the truly fast vessels; at the fixed limit alone it still caught more than `"clean"` and
+  `"forward"` (99, 94, 64, 25 %). With `evidence = TRUE` it adds `ping_flag_speed_kn`, the local speed a ping was judged
+  by. A compiled port of fishycode plan 062's prototype, equal to it ping for ping on the planted faults.
+- `rb_flag_ping_duplicate(speed = , course = )` (new arguments): one report twice, at any time, told by its position,
+  its recorded speed (exactly) and its course. Within 2 s in one feed, the later is `"duplicate"`; in two feeds, the
+  lower-ranked feed's, `"shifted"` when it is stamped more than `max_dt_s` from the other; in one feed further apart,
+  a second feed that places the vessel at one of the two decides, and the other is `"shifted"`. Undecided, both pings
+  stay unflagged and `ping_repeat_dt_s` gives each the seconds to the other (the maintainer, 2026-11-03: on one feed
+  with no time of receipt, which of two identical reports is the copy is not in the data). Take the copies out before
+  the speed rule. `priority` may be left out where the data hold one feed. Equal to the prototype ping for ping on the
+  planted faults.
+- **Withdrawn:** `rb_flag_ping_impossible(method = "sda")`, `"fwdbwd"` and `"sequential"` warn once per session (class
+  `ramb_withdrawn`) and go in the next release (fishycode plan 062, Decided k). `"sda"` is `"clean"`'s first stage
+  alone; `"sequential"` equals `"forward"` at 30 times its time; `"fwdbwd"` caught the fewest. `"clean"` and
+  `"forward"` stay, each best at some ping rates.
+- The lazy route of the flaggers writes each batch of whole vessels whole, every column cast back to its type, instead
+  of writing the labels and joining them back by row number (the join cost more than the flagging on a year of
+  Icelandic AIS, fishycode plan 062 step 1). Each batch is sorted in a total order, every column, so which of two
+  copies is flagged no longer depends on the route. A table with a column R cannot give back as it was (a list, a
+  struct, a time of day) still takes the join.
 - The engine behind `rb_flag_ping_duplicate()` no longer takes Iceland's feeds as its default order (the exported
   function never did).
 

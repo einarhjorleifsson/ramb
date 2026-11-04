@@ -75,13 +75,16 @@ A few conventions make the package predictable:
   Columns added by the flow use the flow's names: `trip_id`,
   `record_id`, `fishing`, `port_id`, `<stage>_basis`.
 * **One task, one function.** Variants are a `method` argument, never a
-  new name: [rb_flag_ping_impossible()](../reference/rb_flag_ping_impossible.html) `(method = "sda")`,
+  new name: [rb_flag_ping_impossible()](../reference/rb_flag_ping_impossible.html) `(method = "local")`,
   [rb_encode_ices_rectangle()](../reference/rb_encode_ices_rectangle.html) `(method = "vmstools")`.
 * **Grouping is a `by` argument**, not a new function.
 * **Basis values** say where a value came from:
   `recorded | derived | reconstructed | synthesised | none` — recorded
   in a logbook, computed from recorded values, rebuilt from the track,
-  model-predicted, or not found.
+  model-predicted, or not found. A step 0 flag's basis says what decided
+  it: `recorded | track | priority | witness` — the ping's own recorded
+  values, the track against a fixed limit, the order of the feeds, or a
+  second feed.
 * **Nothing is dropped silently.** Flag functions set a column
   (`ping_flag`), they do not remove rows.
 
