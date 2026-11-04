@@ -1,3 +1,17 @@
+# ramb 2026.11.04.3
+
+- `rb_map_bundle(grids = )`: a grid layer in a bundle, its filters working with no server. Its rows (a data frame or a
+  lazy table on DuckDB, a row per cell and combination of the filters' values) are summed by cell at a few cell sizes
+  and written in blocks of 128 x 128 cells, compressed; the page makes each tile from the blocks under it, at the size
+  that makes a cell one to two screen pixels, keeps the rows its filters pass, sums them by cell, and hands MapLibre a
+  vector tile with the fields the server's would have (a sum, or a sum per km²), so the colours, histogram and popup
+  work as served. A filter its rows have no column for is left out, with a message.
+- A vector layer from `rb_map_tiles_table()` is carried by a bundle: the tiles that hold a feature, to the bundle's
+  `maxzoom`. `rb_map_tiles_table()`'s tiles list them, `tiles_at(z)`.
+- A tile its function cannot make is left out of a bundle with a message, as its server would refuse it, where it
+  stopped the bundle.
+- Built 2026-11-04 by Claude (AI), not yet checked by a person.
+
 # ramb 2026.11.04.2
 
 - `rb_map_bundle()` (new): a map written as a folder whose `index.html` opens with a double click, with no R and no

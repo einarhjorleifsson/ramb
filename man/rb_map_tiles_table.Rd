@@ -31,7 +31,8 @@ too small to see; \code{NULL} for none.}
 }
 \value{
 A function of \code{z}, \code{x}, \code{y} returning a tile (raw bytes), with the number of features as its \code{count}
-attribute and the temporary table's name as its \code{table} attribute.
+attribute, the temporary table's name as its \code{table} attribute, and as \code{tiles_at} a function of a zoom giving the
+tiles that hold a feature (\code{x}, \code{y}), by which \code{\link[=rb_map_bundle]{rb_map_bundle()}} writes only those.
 }
 \description{
 Makes a tile function for a \code{"vector"} \code{\link[=rb_map_layer]{rb_map_layer()}} from a table of points, lines or areas: the table is copied

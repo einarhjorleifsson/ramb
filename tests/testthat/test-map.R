@@ -1140,18 +1140,102 @@ test_that("a bundle: the page, its data and tiles as scripts, the tiles once for
   expect_error(rb_map_bundle(rb_map(rb_map_group("g", "G", list(no_bounds))), tempfile()), "needs its `bounds`")
 })
 
-test_that("a bundle leaves out the layers a server draws, with a message", {
+test_that("a bundle leaves out the layers a server draws, with a message, and keeps a table's tiles", {
   skip_if_not_installed("jsonlite")
   skip_if_no_spatial()
   d <- tempfile("bundle_")
   on.exit(unlink(d, recursive = TRUE))
-  expect_message(rb_map_bundle(example_map(), d), "Left out of the bundle, as their tiles are made by a server: pings, harbours")
+  expect_message(rb_map_bundle(example_map(), d, maxzoom = 8), "Left out of the bundle, as their tiles are made by a server: pings[.]")
   page <- paste(readLines(file.path(d, "index.html"), encoding = "UTF-8"), collapse = "\n")
   config <- jsonlite::fromJSON(
     sub('(?s).*<script id="config" type="application/json">(.*?)</script>.*', "\\1", page, perl = TRUE),
     simplifyVector = FALSE
   )
-  expect_equal(vapply(config$layers, `[[`, "", "id"), "outline")
+  expect_equal(vapply(config$layers, `[[`, "", "id"), c("harbours", "outline"))
   expect_equal(vapply(config$groups, `[[`, "", "id"), "ref") # the grid's group, left empty, is gone
   expect_true(file.exists(file.path(d, "data", "outline.js")))
+  # the harbours' tiles: only those that hold one, to zoom 8, the page drawing zoom 8's larger past it
+  expect_equal(config$layers[[1]]$maxzoom, 8L)
+  at <- attr(rb_read_example("dansk_harbours") |> rb_map_tiles_table(properties = "SI_HARB"), "tiles_at")(8)
+  expect_true(nrow(at) > 0)
+  written <- list.files(file.path(d, "tiles", "harbours", "8"), recursive = TRUE)
+  expect_setequal(written, sprintf("%.0f/%.0f.js", at$x, at$y))
+})
+
+test_that("a bundle's grid: its rows summed by cell at each level, in blocks the page reads", {
+  skip_if_not_installed("jsonlite")
+  rows <- data.frame(
+    x = c(0L, 1L, 2L, -1L, 300L), y = c(0L, 0L, 1L, -1L, 200L),
+    behaviour = c("F", "F", "O", "F", NA), n = c(1, 2, 4, 8, 16), h = c(0.5, 0.5, 1, 1, 2)
+  )
+  grid <- rb_map_layer(
+    "cells", "grid", label = "Cells", tiles = function(z, x, y, p) raw(0),
+    meta = list(options = list(behaviour = data.frame(value = c("F", "O"))), v = 1),
+    filters = list(
+      list(id = "behaviour", label = "Behaviour", options = list(list(value = "", label = "all")), meta = TRUE),
+      list(id = "speed", label = "Speed", options = list(list(value = "any"), list(value = "slow"))),
+      list(id = "metric", type = "metric", label = "Metric")
+    ),
+    metrics = list(list(field = "n", label = "count"), list(field = "h_km2", label = "hours per km2"))
+  )
+  m <- rb_map(rb_map_group("g", "G", list(grid)))
+  spec <- list(rows = rows, unit = 0.01, levels = c(1, 2), columns = c(behaviour = "behaviour"), sums = c("n", "h"),
+               fields = list(n = "n", h_km2 = c("h", "km2")))
+  d <- tempfile("bundle_")
+  on.exit(unlink(d, recursive = TRUE))
+  expect_message(rb_map_bundle(m, d, grids = list(cells = spec)), "left out of the bundle, as its rows have no column for them: speed")
+  page <- paste(readLines(file.path(d, "index.html"), encoding = "UTF-8"), collapse = "\n")
+  block <- function(id) {
+    jsonlite::fromJSON(
+      sub(sprintf('(?s).*<script id="%s" type="application/json">(.*?)</script>.*', id), "\\1", page, perl = TRUE),
+      simplifyVector = FALSE
+    )
+  }
+  config <- block("config")
+  g <- block("bundle")$grids$cells
+  expect_equal(vapply(config$layers[[1]]$filters, `[[`, "", "id"), c("behaviour", "metric"))
+  expect_equal(unlist(g$levels), c(1, 2))
+  expect_equal(g$block, 128)
+  expect_equal(g$columns[[1]][c("id", "range", "bytes")], list(id = "behaviour", range = FALSE, bytes = 1))
+  expect_equal(g$columns[[1]]$values, list("F", "O", NULL)) # NA last, as null
+  expect_equal(g$fields, list(n = list("n"), h_km2 = list("h", "km2")))
+  expect_setequal(unlist(g$blocks[["1"]]), c("0_0", "-1_-1", "2_1"))
+  expect_setequal(unlist(g$blocks[["2"]]), c("0_0", "-1_-1", "1_0"))
+
+  # a block read as the page reads it: rows, each sum (float32), the cell in the block (uint16), the codes (uint8)
+  read_block <- function(key, sums = 2) {
+    js <- readLines(file.path(d, "grids", "cells", paste0(key, ".js")))
+    expect_match(js, sprintf('^RB_BUNDLE\\("grids/cells/%s",', key))
+    bytes <- memDecompress(jsonlite::base64_dec(sub('^RB_BUNDLE\\("[^"]+","(.*)"\\);$', "\\1", js)), "gzip")
+    con <- rawConnection(bytes)
+    on.exit(close(con))
+    n <- readBin(con, "integer", 1, size = 4, endian = "little")
+    s <- lapply(seq_len(sums), function(i) readBin(con, "double", n, size = 4, endian = "little"))
+    cell <- readBin(con, "integer", n, size = 2, signed = FALSE, endian = "little")
+    code <- readBin(con, "integer", n, size = 1, signed = FALSE)
+    data.frame(cell = cell, code = code, n = s[[1]], h = s[[2]])
+  }
+  b <- read_block("2/0_0")
+  # level 2: x 0 and 1 in cell 0 (F, n 1 + 2), x 2 at y 1 in cell 1 (O, n 4)
+  expect_equal(b[order(b$cell), ], data.frame(cell = c(0L, 1L), code = c(0L, 1L), n = c(3, 4), h = c(1, 1)),
+               ignore_attr = TRUE)
+  b <- read_block("1/-1_-1") # x -1, y -1: the block to the south-west, its north-east corner
+  expect_equal(b$cell, 127L * 128L + 127L)
+  b <- read_block("1/2_1") # x 300, y 200, no behaviour: block 2, 1, its code the last
+  expect_equal(b[c("cell", "code", "n")], data.frame(cell = (200L - 128L) * 128L + (300L - 256L), code = 2L, n = 16))
+
+  # its checks
+  bad <- function(msg, ...) {
+    g <- spec
+    v <- list(...)
+    g[names(v)] <- v
+    expect_error(rb_map_bundle(m, tempfile(), grids = list(cells = g)), msg)
+  }
+  bad("rising", levels = c(2, 1))
+  bad("metric h_km2", fields = list(n = "n"))
+  bad("`fields`", fields = list(n = "x", h_km2 = c("h", "km2")))
+  bad("names the layer's filters", columns = c(colour = "behaviour"))
+  bad("`sums`", sums = "speed")
+  expect_error(rb_map_bundle(m, tempfile(), grids = list(other = spec)), "names no grid layer")
+  expect_message(rb_map_bundle(m, tempfile()), "made by a server: cells")
 })

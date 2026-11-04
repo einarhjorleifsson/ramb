@@ -10,21 +10,38 @@ rb_map_bundle(
   maxzoom = NULL,
   fit = list(probs = c(0.02, 0.98), n = 25, nodata = 0, slope = list(k = 2, p = 0.9, min
     = 0.3, max = 1)),
+  grids = list(),
   overwrite = FALSE
 )
 }
 \arguments{
 \item{map}{An \code{\link[=rb_map]{rb_map()}}.}
 
-\item{dir}{The folder to write. If it already holds a bundle (\code{index.html}, \verb{tiles/} or \verb{data/}), \code{overwrite}
-replaces those and leaves the rest of the folder as it is.}
+\item{dir}{The folder to write. If it already holds a bundle (\code{index.html}, \verb{tiles/}, \verb{data/} or \verb{grids/}),
+\code{overwrite} replaces those and leaves the rest of the folder as it is.}
 
-\item{maxzoom}{The deepest zoom of the tiles written, at most each layer's own; \code{NULL} for each layer's own.}
+\item{maxzoom}{The deepest zoom of the tiles written (dem, contour and vector layers), at most each layer's own;
+\code{NULL} for each layer's own.}
 
 \item{fit}{A view's fit in the browser: \code{probs}, the percentiles (0-1) of the floor and the cap, with \code{n} quantiles
 from one to the other (for colours in equal shares and contour levels); \code{nodata}, an elevation that means no value
 (\code{NULL} for none); \code{slope}, a shading's intensity: \code{k} over the \code{p} percentile of the slope in degrees, kept
 between \code{min} and \code{max}. Any left out keeps its default: those of a depth map whose tiles hold 0 on land.}
+
+\item{grids}{A grid layer's rows for the browser, by the layer's id, each a list of:
+\itemize{
+\item \code{rows}: a data frame or a lazy table (\code{\link[dplyr:tbl]{dplyr::tbl()}} on DuckDB), a row for each cell and combination of the
+filters' values, with the cell's south-west corner as whole numbers \code{x} and \code{y} of \code{unit} degrees;
+\item \code{unit}: the degrees of one step of \code{x} and \code{y};
+\item \code{levels}: the cell sizes written, in steps of \code{unit}, rising, each a multiple of the rows' own cell;
+\item \code{columns}: a named character vector, a filter's id to the column it selects on (a range filter's column holds
+the values its two parameters bound);
+\item \code{sums}: the columns added up within a cell;
+\item \code{fields}: a named list, each of the tile's fields a sum's column, or \verb{c(<column>, "km2")} for that sum per
+square kilometre of the cell;
+\item \code{x}, \code{y}: the corner's columns, \code{"x"} and \code{"y"} unless given;
+\item \code{px}: the filter that scales the cells to that many screen pixels, if any.
+}}
 
 \item{overwrite}{Whether to replace a bundle already in \code{dir}.}
 }
@@ -45,10 +62,15 @@ What a bundle carries:
 \item a dem or contour layer, its tiles from its \code{minzoom} to its \code{maxzoom} inside its \code{bounds}, written once for the
 layers that read one file (the \code{source} of \code{\link[=rb_map_tiles_mbtiles]{rb_map_tiles_mbtiles()}}). Past the deepest zoom written, the map draws
 that zoom's tiles larger. A view's fit (a colour's, the contours' or a shading's \code{fit}) is made in the browser from
-the layer's tiles in view, by the rules in \code{fit}, not by the layer's R function, which needs a server.
+the layer's tiles in view, by the rules in \code{fit}, not by the layer's R function, which needs a server;
+\item a vector layer from \code{\link[=rb_map_tiles_table]{rb_map_tiles_table()}}, the tiles that hold a feature, to the deepest zoom written;
+\item a grid layer named in \code{grids}, its rows: summed by cell at a few cell sizes and written in blocks of cells
+(\verb{grids/}), from which the page makes each tile, its filters applied and its cells summed in the browser, with the
+fields its server would send. Its cells hold one to two screen pixels (the filter \code{px} times that), from the
+cell sizes written. A filter the rows have no column for is left out, with a message.
 }
 
-A grid or vector layer is left out, with a message: their tiles are made by a server.
+Another vector layer, or a grid layer not in \code{grids}, is left out, with a message: their tiles are made by a server.
 }
 \examples{
 places <- sf::st_as_sf(

@@ -985,18 +985,36 @@ rb_map_stop <- function(port = NULL) {
 #' * a dem or contour layer, its tiles from its `minzoom` to its `maxzoom` inside its `bounds`, written once for the
 #'   layers that read one file (the `source` of [rb_map_tiles_mbtiles()]). Past the deepest zoom written, the map draws
 #'   that zoom's tiles larger. A view's fit (a colour's, the contours' or a shading's `fit`) is made in the browser from
-#'   the layer's tiles in view, by the rules in `fit`, not by the layer's R function, which needs a server.
+#'   the layer's tiles in view, by the rules in `fit`, not by the layer's R function, which needs a server;
+#' * a vector layer from [rb_map_tiles_table()], the tiles that hold a feature, to the deepest zoom written;
+#' * a grid layer named in `grids`, its rows: summed by cell at a few cell sizes and written in blocks of cells
+#'   (`grids/`), from which the page makes each tile, its filters applied and its cells summed in the browser, with the
+#'   fields its server would send. Its cells hold one to two screen pixels (the filter `px` times that), from the
+#'   cell sizes written. A filter the rows have no column for is left out, with a message.
 #'
-#' A grid or vector layer is left out, with a message: their tiles are made by a server.
+#' Another vector layer, or a grid layer not in `grids`, is left out, with a message: their tiles are made by a server.
 #'
 #' @param map An [rb_map()].
-#' @param dir The folder to write. If it already holds a bundle (`index.html`, `tiles/` or `data/`), `overwrite`
-#'   replaces those and leaves the rest of the folder as it is.
-#' @param maxzoom The deepest zoom of the tiles written, at most each layer's own; `NULL` for each layer's own.
+#' @param dir The folder to write. If it already holds a bundle (`index.html`, `tiles/`, `data/` or `grids/`),
+#'   `overwrite` replaces those and leaves the rest of the folder as it is.
+#' @param maxzoom The deepest zoom of the tiles written (dem, contour and vector layers), at most each layer's own;
+#'   `NULL` for each layer's own.
 #' @param fit A view's fit in the browser: `probs`, the percentiles (0-1) of the floor and the cap, with `n` quantiles
 #'   from one to the other (for colours in equal shares and contour levels); `nodata`, an elevation that means no value
 #'   (`NULL` for none); `slope`, a shading's intensity: `k` over the `p` percentile of the slope in degrees, kept
 #'   between `min` and `max`. Any left out keeps its default: those of a depth map whose tiles hold 0 on land.
+#' @param grids A grid layer's rows for the browser, by the layer's id, each a list of:
+#'   * `rows`: a data frame or a lazy table ([dplyr::tbl()] on DuckDB), a row for each cell and combination of the
+#'     filters' values, with the cell's south-west corner as whole numbers `x` and `y` of `unit` degrees;
+#'   * `unit`: the degrees of one step of `x` and `y`;
+#'   * `levels`: the cell sizes written, in steps of `unit`, rising, each a multiple of the rows' own cell;
+#'   * `columns`: a named character vector, a filter's id to the column it selects on (a range filter's column holds
+#'     the values its two parameters bound);
+#'   * `sums`: the columns added up within a cell;
+#'   * `fields`: a named list, each of the tile's fields a sum's column, or `c(<column>, "km2")` for that sum per
+#'     square kilometre of the cell;
+#'   * `x`, `y`: the corner's columns, `"x"` and `"y"` unless given;
+#'   * `px`: the filter that scales the cells to that many screen pixels, if any.
 #' @param overwrite Whether to replace a bundle already in `dir`.
 #' @return `dir`, invisibly, with the number of tiles written (`tiles`) and the bundle's size in bytes (`bytes`) as
 #'   attributes.
@@ -1022,6 +1040,7 @@ rb_map_bundle <- function(
   dir,
   maxzoom = NULL,
   fit = list(probs = c(0.02, 0.98), n = 25, nodata = 0, slope = list(k = 2, p = 0.9, min = 0.3, max = 1)),
+  grids = list(),
   overwrite = FALSE
 ) {
   if (!inherits(map, "rb_map")) {
@@ -1041,7 +1060,10 @@ rb_map_bundle <- function(
     stop("`overwrite` is TRUE or FALSE.", call. = FALSE)
   }
   fit <- .rb_map_bundle_fit(fit)
-  parts <- file.path(dir, c("index.html", "tiles", "data"))
+  if (!is.list(grids) || (length(grids) && (is.null(names(grids)) || any(!nzchar(names(grids)))))) {
+    stop("`grids` is a list of a grid layer's rows, by the layer's id.", call. = FALSE)
+  }
+  parts <- file.path(dir, c("index.html", "tiles", "data", "grids"))
   if (any(file.exists(parts))) {
     if (!overwrite) {
       stop(sprintf("%s holds a bundle: `overwrite = TRUE` replaces it.", dir), call. = FALSE)
@@ -1056,7 +1078,12 @@ rb_map_bundle <- function(
   # the layers a bundle carries, and the config without the others
   layers <- map$layers
   kind <- vapply(layers, function(l) l$config$kind, "")
-  out <- names(layers)[kind %in% c("grid", "vector")]
+  unknown <- setdiff(names(grids), names(layers)[kind == "grid"])
+  if (length(unknown)) {
+    stop(sprintf("`grids` names no grid layer of the map: %s.", paste(unknown, collapse = ", ")), call. = FALSE)
+  }
+  listed <- vapply(layers, function(l) is.function(attr(l$tiles, "tiles_at")), logical(1))
+  out <- names(layers)[(kind == "vector" & !listed) | (kind == "grid" & !names(layers) %in% names(grids))]
   if (length(out)) {
     message(sprintf(
       "Left out of the bundle, as their tiles are made by a server: %s.",
@@ -1086,9 +1113,24 @@ rb_map_bundle <- function(
     }
   }
 
-  # the tiles: once for the layers on one source, from the least of their zooms to the most
+  # a grid's rows, summed by cell and written in blocks; its filters without a column left out
+  grid_specs <- list()
+  for (id in names(grids)) {
+    i <- which(vapply(config$layers, `[[`, "", "id") == id)
+    spec <- .rb_map_bundle_grid_spec(grids[[id]], config$layers[[i]])
+    dropped <- setdiff(vapply(config$layers[[i]]$filters, `[[`, "", "id"), spec$filters)
+    if (length(dropped)) {
+      message(sprintf("Layer %s: left out of the bundle, as its rows have no column for them: %s.", id,
+                      paste(dropped, collapse = ", ")))
+    }
+    config$layers[[i]]$filters <- Filter(function(f) f$id %in% spec$filters, config$layers[[i]]$filters)
+    grid_specs[[id]] <- .rb_map_bundle_grid(spec, config$layers[[i]], dir, id)
+  }
+
+  # the tiles: once for the layers on one source, from the least of their zooms to the most; a dem or contour layer's
+  # inside its bounds, a vector layer's those that hold a feature (its tiles' `tiles_at`)
   ids <- vapply(config$layers, `[[`, "", "id")
-  dem <- which(vapply(config$layers, function(l) l$kind %in% c("dem", "contour"), logical(1)))
+  dem <- which(vapply(config$layers, function(l) l$kind %in% c("dem", "contour", "vector"), logical(1)))
   for (i in dem) {
     lc <- config$layers[[i]]
     z1 <- c(unlist(lc$maxzoom), maxzoom)
@@ -1096,7 +1138,7 @@ rb_map_bundle <- function(
       stop(sprintf("Layer %s: its tiles' deepest zoom is unknown: give `maxzoom`.", lc$id), call. = FALSE)
     }
     z1 <- min(z1)
-    if (is.null(lc$bounds)) {
+    if (lc$kind != "vector" && is.null(lc$bounds)) {
       stop(sprintf("Layer %s: a dem or contour layer in a bundle needs its `bounds`.", lc$id), call. = FALSE)
     }
     config$layers[[i]]$maxzoom <- as.integer(z1)
@@ -1107,14 +1149,14 @@ rb_map_bundle <- function(
   for (s in unique(source)) {
     on <- dem[source == s]
     lcs <- config$layers[on]
-    b <- vapply(lcs, function(lc) as.numeric(unlist(lc$bounds)), numeric(4))
+    b <- if (lcs[[1]]$kind != "vector") vapply(lcs, function(lc) as.numeric(unlist(lc$bounds)), numeric(4))
     n_tiles <- n_tiles + .rb_map_bundle_tiles(
       layers[[ids[on[1]]]]$tiles,
       dir,
       ids[on[1]],
       min(vapply(lcs, function(lc) as.integer(.rb_or(lc$minzoom, 0L)), integer(1))),
       max(vapply(lcs, function(lc) lc$maxzoom, integer(1))),
-      c(min(b[1, ]), min(b[2, ]), max(b[3, ]), max(b[4, ]))
+      if (!is.null(b)) c(min(b[1, ]), min(b[2, ]), max(b[3, ]), max(b[4, ]))
     )
     for (i in on) {
       folder[[ids[i]]] <- ids[on[1]]
@@ -1141,7 +1183,8 @@ rb_map_bundle <- function(
   bundle <- list(
     meta = list(engine = .rb_map_engine, layers = Filter(Negate(is.null), .rb_map_metas(layers[keep]))),
     tiles = folder,
-    fit = fit
+    fit = fit,
+    grids = if (length(grid_specs)) grid_specs else stats::setNames(list(), character())
   )
   writeLines(
     enc2utf8(.rb_map_page(.rb_map_json(config), .rb_map_json(bundle))),
@@ -1186,37 +1229,189 @@ rb_map_bundle <- function(
   v
 }
 
-# A source's tiles inside `bounds` (west, south, east, north) from zoom z0 to z1, each a script handing its bytes in
-# base64 to RB_BUNDLE(): tiles/<key>/<z>/<x>/<y>.js. Its count
-.rb_map_bundle_tiles <- function(tiles, dir, key, z0, z1, bounds) {
+# A source's tiles from zoom z0 to z1, inside `bounds` (west, south, east, north), or with no bounds those its
+# `tiles_at` lists, each a script handing its bytes in base64 to RB_BUNDLE(): tiles/<key>/<z>/<x>/<y>.js. Its count
+.rb_map_bundle_tiles <- function(tiles, dir, key, z0, z1, bounds = NULL) {
   col <- function(lon, z) min(2^z - 1, max(0, floor((lon + 180) / 360 * 2^z)))
   row <- function(lat, z) {
     r <- max(-85.0511, min(85.0511, lat)) * pi / 180
     min(2^z - 1, max(0, floor((1 - log(tan(r) + 1 / cos(r)) / pi) / 2 * 2^z)))
   }
   n <- 0L
+  failed <- character()
   for (z in seq(z0, z1)) {
-    for (x in seq(col(bounds[1], z), col(bounds[3], z))) {
-      made <- FALSE
-      for (y in seq(row(bounds[4], z), row(bounds[2], z))) {
-        t <- tiles(z, x, y)
-        if (is.null(t) || !length(t)) {
-          next
-        }
-        f <- file.path(dir, "tiles", key, z, x, paste0(y, ".js"))
-        if (!made) {
-          dir.create(dirname(f), recursive = TRUE, showWarnings = FALSE)
-          made <- TRUE
-        }
-        writeLines(
-          sprintf('RB_BUNDLE("tiles/%s/%d/%d/%d","%s");', key, z, x, y, gsub("\n", "", jsonlite::base64_enc(t), fixed = TRUE)),
-          f
-        )
-        n <- n + 1L
+    at <- if (is.null(bounds)) {
+      attr(tiles, "tiles_at")(z)
+    } else {
+      expand.grid(y = seq(row(bounds[4], z), row(bounds[2], z)), x = seq(col(bounds[1], z), col(bounds[3], z)))
+    }
+    for (k in seq_len(nrow(at))) {
+      x <- at$x[k]
+      y <- at$y[k]
+      # a tile its function cannot make is left out, as its server would refuse it
+      t <- tryCatch(tiles(z, x, y), error = function(e) {
+        failed <<- c(failed, sprintf("%d/%.0f/%.0f (%s)", z, x, y, sub("\n.*", "", trimws(conditionMessage(e)))))
+        NULL
+      })
+      if (is.null(t) || !length(t)) {
+        next
       }
+      f <- file.path(dir, "tiles", key, z, x, paste0(y, ".js"))
+      dir.create(dirname(f), recursive = TRUE, showWarnings = FALSE)
+      writeLines(
+        sprintf('RB_BUNDLE("tiles/%s/%d/%d/%d","%s");', key, z, x, y, gsub("\n", "", jsonlite::base64_enc(t), fixed = TRUE)),
+        f
+      )
+      n <- n + 1L
     }
   }
+  if (length(failed)) {
+    message(sprintf("%s: %d tile(s) its function could not make, left out: %s.", key, length(failed),
+                    paste(utils::head(failed, 5), collapse = "; ")))
+  }
   n
+}
+
+# A grid's rows for a bundle, checked against its layer: the filters it can apply (those with a column, the metric
+# and the cell scale) in `filters`
+.rb_map_bundle_grid_spec <- function(g, lc) {
+  bad <- function(what) stop(sprintf("`grids$%s`: %s", lc$id, what), call. = FALSE)
+  allowed <- c("rows", "unit", "levels", "columns", "sums", "fields", "x", "y", "px")
+  if (!is.list(g) || is.null(names(g)) || length(setdiff(names(g), allowed))) {
+    bad(sprintf("a list of any of %s.", paste(allowed, collapse = ", ")))
+  }
+  lazy <- inherits(g$rows, "tbl_sql")
+  if (!lazy && !is.data.frame(g$rows)) {
+    bad("`rows` is a data frame or a lazy table.")
+  }
+  have <- colnames(g$rows)
+  x <- .rb_or(g$x, "x")
+  y <- .rb_or(g$y, "y")
+  if (!all(c(x, y) %in% have)) {
+    bad(sprintf("`rows` has no column %s.", paste(setdiff(c(x, y), have), collapse = " or ")))
+  }
+  if (!is.numeric(g$unit) || length(g$unit) != 1 || is.na(g$unit) || g$unit <= 0) {
+    bad("`unit` is the degrees of one step of x and y, above 0.")
+  }
+  lv <- g$levels
+  if (!is.numeric(lv) || !length(lv) || anyNA(lv) || any(lv < 1) || any(lv != round(lv)) || is.unsorted(lv, strictly = TRUE)) {
+    bad("`levels` are whole numbers of steps, rising.")
+  }
+  filters <- lc$filters
+  fid <- vapply(filters, `[[`, "", "id")
+  ftype <- vapply(filters, function(f) .rb_or(f$type, "options"), "")
+  cl <- g$columns
+  if (length(cl) && (!is.character(cl) || is.null(names(cl)) || !all(names(cl) %in% fid[ftype %in% c("options", "range")]))) {
+    bad("`columns` names the layer's filters (not its metric), each its column.")
+  }
+  if (!all(cl %in% have)) {
+    bad(sprintf("`rows` has no column %s.", paste(setdiff(cl, have), collapse = ", ")))
+  }
+  if (!is.character(g$sums) || !length(g$sums) || !all(g$sums %in% have)) {
+    bad("`sums` are columns of `rows`, to be added up within a cell.")
+  }
+  fl <- g$fields
+  ok <- is.list(fl) && length(fl) && !is.null(names(fl)) && all(vapply(fl, function(f) {
+    is.character(f) && length(f) %in% 1:2 && f[1] %in% g$sums && (length(f) == 1 || identical(f[2], "km2"))
+  }, logical(1)))
+  if (!ok) {
+    bad("`fields` are the tile's fields by name, each a sum's column, or c(<column>, \"km2\") per square kilometre.")
+  }
+  metrics <- vapply(lc$metrics, `[[`, "", "field")
+  if (!all(metrics %in% names(fl))) {
+    bad(sprintf("the layer's metric %s is not among `fields`.", paste(setdiff(metrics, names(fl)), collapse = ", ")))
+  }
+  if (!is.null(g$px) && !(is.character(g$px) && length(g$px) == 1 && g$px %in% fid)) {
+    bad("`px` is the id of the layer's filter that scales its cells.")
+  }
+  list(
+    rows = g$rows, lazy = lazy, unit = g$unit, levels = as.integer(lv), columns = cl, sums = g$sums, fields = fl,
+    x = x, y = y, px = g$px, range = names(cl) %in% fid[ftype == "range"],
+    filters = c(names(cl), fid[ftype == "metric"], g$px)
+  )
+}
+
+# A grid's rows summed by cell at each level, from the finest level that divides it, written in blocks of 128 x 128
+# cells: grids/<id>/<level>/<bx>_<by>.js, each handing RB_BUNDLE() its rows compressed (zlib) and in base64: their
+# number (uint32), each sum (float32), the cell within the block (uint16, row by row from the south-west), and each
+# filter's column as codes into its values (uint16, then uint8), all little-endian. The page's account of them
+.rb_map_bundle_grid <- function(spec, lc, dir, id) {
+  B <- 128L
+  if (spec$lazy) {
+    con <- dbplyr::remote_con(spec$rows)
+    src <- as.character(dbplyr::sql_render(spec$rows))
+  } else {
+    con <- DBI::dbConnect(duckdb::duckdb())
+    on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
+    duckdb::duckdb_register(con, "rb_grid_rows", spec$rows)
+    src <- "SELECT * FROM rb_grid_rows"
+  }
+  qi <- function(x) as.character(DBI::dbQuoteIdentifier(con, x))
+  get <- function(...) DBI::dbGetQuery(con, sprintf(...))
+  run <- function(...) invisible(DBI::dbExecute(con, sprintf(...)))
+  cols <- unname(spec$columns)
+  values <- lapply(cols, function(cn) get("SELECT DISTINCT %s AS v FROM (%s) ORDER BY 1 NULLS LAST", qi(cn), src)$v)
+  bytes <- vapply(values, function(v) if (length(v) <= 256) 1L else if (length(v) <= 65536) 2L else NA_integer_, 1L)
+  if (anyNA(bytes)) {
+    stop(sprintf("`grids$%s`: a filter's column holds more than 65,536 values.", id), call. = FALSE)
+  }
+  keys <- paste(c(vapply(cols, qi, ""), vapply(spec$sums, qi, "")), collapse = ", ")
+  dims <- paste(vapply(cols, qi, ""), collapse = ", ")
+  sums <- paste(sprintf("sum(%1$s) AS %1$s", vapply(spec$sums, qi, "")), collapse = ", ")
+  stem <- sprintf("rb_grid_%s_%d", gsub("[^A-Za-z0-9]", "_", id), as.integer(stats::runif(1, 1, 1e9)))
+  made <- integer()
+  on.exit(for (L in made) DBI::dbExecute(con, sprintf("DROP TABLE IF EXISTS %s_%d", stem, L)), add = TRUE, after = FALSE)
+  blocks <- list()
+  for (L in spec$levels) {
+    from <- rev(made[L %% made == 0])[1]
+    sel <- if (is.na(from)) {
+      sprintf("SELECT CAST(floor(%s / %d) AS BIGINT) AS cx, CAST(floor(%s / %d) AS BIGINT) AS cy%s, %s FROM (%s) GROUP BY ALL",
+              qi(spec$x), L, qi(spec$y), L, if (nzchar(dims)) paste0(", ", dims) else "", sums, src)
+    } else {
+      sprintf("SELECT CAST(floor(cx / %d) AS BIGINT) AS cx, CAST(floor(cy / %d) AS BIGINT) AS cy%s, %s FROM %s_%d GROUP BY ALL",
+              L %/% from, L %/% from, if (nzchar(dims)) paste0(", ", dims) else "", sums, stem, from)
+    }
+    run("CREATE TEMP TABLE %s_%d AS SELECT *, CAST(floor(cx / %d) AS BIGINT) AS blx, CAST(floor(cy / %d) AS BIGINT) AS bly
+         FROM (%s) ORDER BY blx, bly, cx, cy", stem, L, B, B, sel)
+    made <- c(made, L)
+    bl <- get("SELECT DISTINCT blx, bly FROM %s_%d ORDER BY blx, bly", stem, L)
+    folder <- file.path(dir, "grids", id, L)
+    dir.create(folder, recursive = TRUE, showWarnings = FALSE)
+    for (k in seq_len(nrow(bl))) {
+      r <- get("SELECT cx, cy, %s FROM %s_%d WHERE blx = %.0f AND bly = %.0f ORDER BY cx, cy%s",
+               keys, stem, L, bl$blx[k], bl$bly[k], if (nzchar(dims)) paste0(", ", dims) else "")
+      cell <- as.integer((r$cy - bl$bly[k] * B) * B + (r$cx - bl$blx[k] * B))
+      code <- lapply(seq_along(cols), function(j) match(r[[cols[j]]], values[[j]]) - 1L)
+      f32 <- function(v) {
+        v <- as.double(v)
+        v[is.na(v)] <- 0
+        writeBin(v, raw(), size = 4, endian = "little")
+      }
+      u16 <- function(v) writeBin(ifelse(v > 32767L, v - 65536L, v), raw(), size = 2, endian = "little")
+      payload <- c(
+        writeBin(nrow(r), raw(), size = 4, endian = "little"),
+        unlist(lapply(spec$sums, function(s) f32(r[[s]]))),
+        u16(cell),
+        unlist(lapply(which(bytes == 2L), function(j) u16(code[[j]]))),
+        unlist(lapply(which(bytes == 1L), function(j) as.raw(code[[j]])))
+      )
+      key <- sprintf("grids/%s/%d/%.0f_%.0f", id, L, bl$blx[k], bl$bly[k])
+      writeLines(
+        sprintf('RB_BUNDLE("%s","%s");', key, gsub("\n", "", jsonlite::base64_enc(memCompress(payload, "gzip")), fixed = TRUE)),
+        file.path(dir, paste0(key, ".js"))
+      )
+    }
+    blocks[[as.character(L)]] <- as.list(sprintf("%.0f_%.0f", bl$blx, bl$bly))
+  }
+  list(
+    unit = spec$unit, levels = as.list(spec$levels), block = B, px = spec$px, layer = .rb_or(lc$source_layer, "cells"),
+    sums = as.list(spec$sums), fields = lapply(spec$fields, as.list),
+    columns = lapply(seq_along(cols), function(j) {
+      list(id = names(spec$columns)[j], range = spec$range[j], bytes = bytes[j],
+           values = as.list(ifelse(is.na(values[[j]]), NA, as.character(values[[j]]))))
+    }),
+    blocks = blocks
+  )
 }
 
 # The temporary tables of the map served on a port, dropped when it stops or is replaced, unless a map on another
@@ -1252,7 +1447,8 @@ rb_map_bundle <- function(
 #' @param points The tile layer of a point on every feature (`ST_PointOnSurface()`), for the zooms where an area is
 #'   too small to see; `NULL` for none.
 #' @return A function of `z`, `x`, `y` returning a tile (raw bytes), with the number of features as its `count`
-#'   attribute and the temporary table's name as its `table` attribute.
+#'   attribute, the temporary table's name as its `table` attribute, and as `tiles_at` a function of a zoom giving the
+#'   tiles that hold a feature (`x`, `y`), by which [rb_map_bundle()] writes only those.
 #' @export
 #' @examples
 #' \donttest{
@@ -1368,6 +1564,25 @@ rb_map_tiles_table <- function(
     })
     out <- c(r$a[[1]], if (!is.null(points)) r$b[[1]])
     if (is.null(out)) raw(0) else out
+  }
+  # the tiles at zoom z that hold a feature, x and y (y from the north), for a bundle (rb_map_bundle())
+  attr(tile, "tiles_at") <- function(z) {
+    if (!DBI::dbExistsTable(con, nm)) {
+      make()
+    }
+    w <- 20037508.342789244
+    k <- function(v) sprintf("CAST(floor(%s) AS BIGINT)", v)
+    cl <- function(v) sprintf("greatest(0, least(%.0f, %s))", 2^z - 1, v)
+    DBI::dbGetQuery(con, sprintf(
+      "WITH r AS (SELECT %s AS x0, %s AS x1, %s AS y0, %s AS y1 FROM %s),
+            a AS (SELECT unnest(range(x0, x1 + 1)) AS x, y0, y1 FROM r)
+       SELECT DISTINCT x, y FROM (SELECT x, unnest(range(y0, y1 + 1)) AS y FROM a) ORDER BY x, y",
+      cl(k(sprintf("(xmin + %.17e) / %.17e * %.0f", w, 2 * w, 2^z))),
+      cl(k(sprintf("(xmax + %.17e) / %.17e * %.0f", w, 2 * w, 2^z))),
+      cl(k(sprintf("(%.17e - ymax) / %.17e * %.0f", w, 2 * w, 2^z))),
+      cl(k(sprintf("(%.17e - ymin) / %.17e * %.0f", w, 2 * w, 2^z))),
+      nm
+    ))
   }
   attr(tile, "count") <- n
   attr(tile, "table") <- nm

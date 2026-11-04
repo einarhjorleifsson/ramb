@@ -181,6 +181,144 @@ const bundleTiles = l => `tiles/${BUNDLE.tiles?.[l.id] ?? l.id}`;
 if (BUNDLE) maplibregl.addProtocol("bundle", async p => ({ data: fromBase64(await bundleLoad(p.url.slice("bundle://".length))) }));
 // a layer's tiles: the server's, or the bundle's
 const layerTiles = (l, ext, v) => BUNDLE ? `bundle://${bundleTiles(l)}/{z}/{x}/{y}` : `${location.origin}/tiles/${l.id}/{z}/{x}/{y}.${ext}?v=${v}`;
+// A bundle's grid (rb_map_bundle()'s `grids`): its rows by cell at a few cell sizes, in blocks of cells. Each tile the
+// map asks for is made here, as its server would: the blocks under it at the size that makes a cell one to two screen
+// pixels (the `px` filter times that), their rows kept by the filters in the tile's address and summed by cell, sent
+// as a vector tile with the server's fields. The blocks read are kept, 256 MB at most, the least recently used let go
+const GRID = (G && BUNDLE?.grids?.[G.id]) || null;
+const gridBlocks = new Map();
+let gridBytes = 0;
+function gridBlock(L, b) {
+  const key = `grids/${G.id}/${L}/${b}`, hit = gridBlocks.get(key);
+  if (hit) { gridBlocks.delete(key); gridBlocks.set(key, hit); return hit.p; }
+  const e = {};
+  e.p = bundleLoad(key).then(async s => {
+    const buf = await new Response(new Blob([fromBase64(s)]).stream().pipeThrough(new DecompressionStream("deflate"))).arrayBuffer();
+    const n = new DataView(buf).getUint32(0, true);
+    let o = 4;
+    const sums = GRID.sums.map(() => { const a = new Float32Array(buf, o, n); o += 4 * n; return a; });
+    const cell = new Uint16Array(buf, o, n), codes = {};
+    o += 2 * n;
+    for (const c of GRID.columns) if (c.bytes === 2) { codes[c.id] = new Uint16Array(buf, o, n); o += 2 * n; }
+    for (const c of GRID.columns) if (c.bytes === 1) { codes[c.id] = new Uint8Array(buf, o, n); o += n; }
+    e.bytes = buf.byteLength;
+    gridBytes += e.bytes;
+    for (const [k, v] of gridBlocks) {
+      if (gridBytes <= 256e6 || v === e) break;
+      if (v.bytes) { gridBlocks.delete(k); gridBytes -= v.bytes; }
+    }
+    return { n, sums, cell, codes };
+  }).catch(err => { gridBlocks.delete(key); throw err; });
+  gridBlocks.set(key, e);
+  return e.p;
+}
+async function gridTile(url) {
+  const m = url.match(/\/(\d+)\/(\d+)\/(\d+)(?:\?(.*))?$/), z = +m[1], x = +m[2], y = +m[3], q = new URLSearchParams(m[4] ?? "");
+  const px = Math.max(0.25, +(GRID.px ? q.get(GRID.px) : 1) || 1);
+  const target = 360 / 2 ** z / 512 * px / GRID.unit * 2;
+  const L = [...GRID.levels].reverse().find(l => l <= target) ?? GRID.levels[0];
+  const side = L * GRID.unit, n = 2 ** z, B = GRID.block, S = GRID.sums.length;
+  const lon0 = x / n * 360 - 180, lon1 = (x + 1) / n * 360 - 180;
+  const latOf = t => Math.atan(Math.sinh(Math.PI * (1 - 2 * t / n))) * 180 / Math.PI;
+  const lat0 = latOf(y + 1), lat1 = latOf(y);
+  const cx0 = Math.floor(lon0 / side) - 1, cx1 = Math.floor(lon1 / side) + 1;
+  const cy0 = Math.floor(lat0 / side) - 1, cy1 = Math.floor(lat1 / side) + 1;
+  const W = cx1 - cx0 + 1, H = cy1 - cy0 + 1;
+  // the codes each filter keeps, or none where it keeps all: a range between its two values, a list of values, an
+  // empty value all of them, or a filter with no "all" its default
+  const keep = GRID.columns.map(c => {
+    const f = G.filters.find(g => g.id === c.id);
+    if (c.range) {
+      const [p1, p2] = f.params;
+      if (!q.has(p1) || !q.has(p2)) return null;
+      const a = Math.min(+q.get(p1), +q.get(p2)), b = Math.max(+q.get(p1), +q.get(p2));
+      return Uint8Array.from(c.values, v => v !== null && +v >= a && +v <= b);
+    }
+    let v = q.get(c.id) ?? "";
+    if (v === "" && !f.meta && !(f.options ?? []).some(o => o.value === "")) v = String(f.default ?? f.options?.[0]?.value ?? "");
+    if (v === "") return null;
+    const set = new Set(v.split(","));
+    return Uint8Array.from(c.values, x => x !== null && set.has(x));
+  });
+  const want = new Set(GRID.blocks[L] ?? []), jobs = [];
+  for (let bx = Math.floor(cx0 / B); bx <= Math.floor(cx1 / B); bx++)
+    for (let by = Math.floor(cy0 / B); by <= Math.floor(cy1 / B); by++) if (want.has(`${bx}_${by}`)) jobs.push([bx, by]);
+  const blocks = await Promise.all(jobs.map(([bx, by]) => gridBlock(L, `${bx}_${by}`)));
+  const acc = new Float64Array(W * H * S), seen = new Uint8Array(W * H);
+  blocks.forEach((b, j) => {
+    const tests = GRID.columns.map((c, i) => keep[i] && [b.codes[c.id], keep[i]]).filter(Boolean);
+    const ox = jobs[j][0] * B - cx0, oy = jobs[j][1] * B - cy0;
+    for (let i = 0; i < b.n; i++) {
+      const gx = ox + b.cell[i] % B, gy = oy + ((b.cell[i] / B) | 0);
+      if (gx < 0 || gx >= W || gy < 0 || gy >= H) continue;
+      let pass = true;
+      for (const [codes, mask] of tests) if (!mask[codes[i]]) { pass = false; break; }
+      if (!pass) continue;
+      const at = gy * W + gx;
+      seen[at] = 1;
+      for (let s = 0; s < S; s++) acc[at * S + s] += b.sums[s][i];
+    }
+  });
+  // each cell a rectangle in the tile's units (4,096, 64 beyond its edges), its fields a sum or a sum per km²
+  const ext = 4096, clamp = v => Math.max(-64, Math.min(ext + 64, v));
+  const merc = lat => Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)), mN = merc(lat1), mS = merc(lat0);
+  const tx = lon => clamp(Math.round((lon - lon0) / (lon1 - lon0) * ext)), ty = lat => clamp(Math.round((mN - merc(lat)) / (mN - mS) * ext));
+  const names = Object.keys(GRID.fields), from = names.map(k => [GRID.sums.indexOf(GRID.fields[k][0]), GRID.fields[k][1] === "km2"]);
+  const feats = [];
+  for (let gy = 0; gy < H; gy++) {
+    const la0 = (cy0 + gy) * side, la1 = la0 + side, top = ty(la1), bottom = ty(la0);
+    if (top === bottom) continue;
+    const km2 = side * 111.32 * Math.cos((la0 + la1) / 2 * Math.PI / 180) * side * 110.574;
+    for (let gx = 0; gx < W; gx++) {
+      const at = gy * W + gx;
+      if (!seen[at]) continue;
+      const left = tx((cx0 + gx) * side), right = tx((cx0 + gx + 1) * side);
+      if (left === right) continue;
+      feats.push([left, top, right, bottom, from.map(([s, per]) => per ? acc[at * S + s] / km2 : acc[at * S + s])]);
+    }
+  }
+  return mvtRectangles(GRID.layer, names, feats);
+}
+// A vector tile of one layer of rectangles, each [left, top, right, bottom, values] in tile units, its values doubles
+function pbfWriter() {
+  let buf = new Uint8Array(256), pos = 0;
+  const grow = n => { if (pos + n > buf.length) { const b = new Uint8Array(Math.max(2 * buf.length, pos + n)); b.set(buf.subarray(0, pos)); buf = b; } };
+  const w = {
+    reset() { pos = 0; },
+    varint(v) { grow(10); while (v > 127) { buf[pos++] = (v % 128) | 128; v = Math.floor(v / 128); } buf[pos++] = v; },
+    double(v) { grow(8); new DataView(buf.buffer).setFloat64(pos, v, true); pos += 8; },
+    field(tag, bytes) { w.varint(tag); w.varint(bytes.length); grow(bytes.length); buf.set(bytes, pos); pos += bytes.length; },
+    view() { return buf.subarray(0, pos); }
+  };
+  return w;
+}
+function mvtRectangles(name, keys, feats) {
+  const layer = pbfWriter(), feat = pbfWriter(), part = pbfWriter(), text = new TextEncoder();
+  const zz = v => (v << 1) ^ (v >> 31), index = new Map(), values = [];
+  layer.varint(15 << 3); layer.varint(2);
+  layer.field(1 << 3 | 2, text.encode(name));
+  for (const [x0, y0, x1, y1, vals] of feats) {
+    feat.reset(); part.reset();
+    vals.forEach((v, k) => {
+      let i = index.get(v);
+      if (i === undefined) { i = values.length; index.set(v, i); values.push(v); }
+      part.varint(k); part.varint(i);
+    });
+    feat.field(2 << 3 | 2, part.view());
+    feat.varint(3 << 3); feat.varint(3);
+    part.reset();
+    for (const v of [9, zz(x0), zz(y0), 26, zz(x1 - x0), 0, 0, zz(y1 - y0), zz(x0 - x1), 0, 15]) part.varint(v);
+    feat.field(4 << 3 | 2, part.view());
+    layer.field(2 << 3 | 2, feat.view());
+  }
+  for (const k of keys) layer.field(3 << 3 | 2, text.encode(k));
+  for (const v of values) { part.reset(); part.varint(3 << 3 | 1); part.double(v); layer.field(4 << 3 | 2, part.view()); }
+  layer.varint(5 << 3); layer.varint(4096);
+  const tile = pbfWriter();
+  tile.field(3 << 3 | 2, layer.view());
+  return tile.view().slice().buffer;
+}
+if (GRID) maplibregl.addProtocol("bundle-grid", async p => ({ data: await gridTile(p.url) }));
 // maplibre-contour, pinned as MapLibre is, loaded only for a map with contours
 let contourLib = null;
 const loadContour = () => contourLib ??= new Promise((resolve, reject) => {
@@ -631,7 +769,7 @@ function tileUrl() {
     for (const p of f.type === "range" ? f.params : [f.id]) if ($(p).value !== "") q.set(p, $(p).value);
   }
   q.set("v", gridMeta.v ?? 0);
-  return `${location.origin}/tiles/${G.id}/{z}/{x}/{y}.pbf?${q}`;
+  return GRID ? `bundle-grid://${G.id}/{z}/{x}/{y}?${q}` : `${location.origin}/tiles/${G.id}/{z}/{x}/{y}.pbf?${q}`;
 }
 
 const colors = () => (PALETTES.find(p => p.id === $("palette").value) ?? PALETTES[0]).colors;
@@ -952,8 +1090,14 @@ function addLayer(l, meta) {
         url: layerTiles(l, l.format ?? "png", meta.layers?.[l.id]?.v ?? meta.engine),
         encoding: l.encoding ?? "terrarium", maxzoom: l.maxzoom ?? 12, worker: !BUNDLE
       });
-      if (BUNDLE) dem.manager.getTile = url => bundleLoad(url.slice("bundle://".length))
-        .then(b => ({ data: new Blob([fromBase64(b)], { type: `image/${l.format ?? "png"}` }) }));
+      // a tile outside the layer's bounds (maplibre-contour asks for its neighbours) is refused here, not tried as a file
+      const inBounds = url => {
+        const [z, x, y] = url.split("/").slice(-3).map(Number), n = 2 ** z, b = l.bounds;
+        const lat = t => Math.atan(Math.sinh(Math.PI * (1 - 2 * t / n))) * 180 / Math.PI;
+        return !b || (x / n * 360 - 180 < b[2] && (x + 1) / n * 360 - 180 > b[0] && lat(y + 1) < b[3] && lat(y) > b[1]);
+      };
+      if (BUNDLE) dem.manager.getTile = url => inBounds(url) ? bundleLoad(url.slice("bundle://".length))
+        .then(b => ({ data: new Blob([fromBase64(b)], { type: `image/${l.format ?? "png"}` }) })) : Promise.reject(new Error("outside the layer's bounds"));
       dem.setupMaplibre(maplibregl);
       contourDem[l.id] = dem;
       map.addSource(l.id, { type: "vector", maxzoom: 15, ...(l.bounds ? { bounds: l.bounds } : {}),
