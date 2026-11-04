@@ -171,3 +171,10 @@ utils::globalVariables(c(
   "port_call_id",
   "stay_id"
 ))
+
+# The step 0 flags (R/ping.R) set and read by bare name.
+utils::globalVariables(c(
+  ".rb_new",
+  "ping_flag",
+  "ping_flag_basis"
+))
