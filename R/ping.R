@@ -142,24 +142,13 @@
     mapply(cast, schema$column_name, schema$column_type),
     collapse = ", "
   )
-  front <- c("vid", "time", "lon", "lat")
   added <- NULL
   for (i in seq_along(batches)) {
     d <- x |>
       dplyr::filter(vid %in% !!batches[[i]]) |>
       dplyr::collect()
     d <- as.data.frame(d)
-    d <- d[
-      do.call(
-        order,
-        c(
-          unname(as.list(d[c(front, setdiff(names(d), front))])),
-          method = "radix"
-        )
-      ),
-      ,
-      drop = FALSE
-    ]
+    d <- d[.rb_total_order(d), , drop = FALSE]
     out <- fun(d)
     if (is.null(added)) {
       added <- setdiff(names(out), schema$column_name)
@@ -214,6 +203,33 @@
     con,
     dplyr::sql(sprintf("SELECT * FROM read_parquet('%s/*.parquet')", dir))
   )
+}
+
+# A total order of a batch: by vessel, time, lon and lat, and where two pings are alike in all four, by every other
+# column. Only the ties are sorted on the other columns, which on a year of AIS are few: sorting every row of a 5 M-ping
+# batch on 22 columns cost seconds a pass.
+.rb_total_order <- function(d) {
+  front <- c("vid", "time", "lon", "lat")
+  o <- do.call(order, c(unname(as.list(d[front])), method = "radix"))
+  n <- length(o)
+  if (n < 2) {
+    return(o)
+  }
+  same <- rep(TRUE, n - 1)
+  for (k in front) {
+    v <- d[[k]][o]
+    same <- same & ((v[-1] == v[-n]) %in% TRUE | (is.na(v[-1]) & is.na(v[-n])))
+  }
+  if (!any(same)) {
+    return(o)
+  }
+  # the runs of ties, each sorted on the other columns
+  grp <- cumsum(c(TRUE, !same))
+  idx <- which(grp %in% grp[c(same, FALSE) | c(FALSE, same)])
+  sub <- d[o[idx], setdiff(names(d), front), drop = FALSE]
+  r <- do.call(order, c(list(grp[idx]), unname(as.list(sub)), method = "radix"))
+  o[idx] <- o[idx][r]
+  o
 }
 
 # The route of ramb before 2026.11.04, for a table with a column R cannot give back as it was: the labels written
@@ -784,9 +800,17 @@ rb_flag_ping_impossible <- function(
     if (!length(i)) {
       return(d)
     }
+    # the columns the engines read, and no others: a batch of the lazy route carries every column of the table
     s <- dplyr::ungroup(d[
       i,
-      setdiff(names(d), c("ping_flag", "ping_flag_basis", ev_cols)),
+      c(
+        "vid",
+        "time",
+        "lon",
+        "lat",
+        if (has_feed) "feed",
+        if (has_speed) "speed"
+      ),
       drop = FALSE
     ])
     s$.rb_i <- i

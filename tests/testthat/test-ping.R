@@ -729,3 +729,15 @@ test_that("the lazy route gives back every column as it was, and the pings with 
   ))
   expect_equal(r2$ping_flag[order(r2$time)], r$ping_flag[order(r$time)])
 })
+
+test_that("a batch's total order breaks a tie in vessel, time and position by the other columns", {
+  t0 <- as.POSIXct("2024-01-01", tz = "UTC")
+  d <- data.frame(
+    vid = 1,
+    time = t0 + c(60, 0, 0, 0),
+    lon = 0,
+    lat = c(0, 0, 0, 1),
+    z = c("c", "b", "a", "a")
+  )
+  expect_equal(ramb:::.rb_total_order(d), c(3L, 2L, 4L, 1L))
+})

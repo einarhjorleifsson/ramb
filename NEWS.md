@@ -33,8 +33,9 @@ Step 0 revised (fishycode plan 062, step 4; built 2026-11-04 by Claude (AI), not
   `"forward"` stay, each best at some ping rates.
 - The lazy route of the flaggers writes each batch of whole vessels whole, every column cast back to its type, instead
   of writing the labels and joining them back by row number (the join cost more than the flagging on a year of
-  Icelandic AIS, fishycode plan 062 step 1). Each batch is sorted in a total order, every column, so which of two
-  copies is flagged no longer depends on the route. A table with a column R cannot give back as it was (a list, a
+  Icelandic AIS, fishycode plan 062 step 1). Each batch is sorted in a total order (vessel, time, lon, lat, and
+  the other columns where two pings are alike in those four), so which of two copies is flagged no longer depends on
+  the order DuckDB returns the rows in. The engines take only the columns they read. A table with a column R cannot give back as it was (a list, a
   struct, a time of day) still takes the join.
 - The engine behind `rb_flag_ping_duplicate()` no longer takes Iceland's feeds as its default order (the exported
   function never did).
