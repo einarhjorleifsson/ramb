@@ -109,6 +109,7 @@
     <div class="bar" id="bar"></div><canvas id="hist"></canvas><div class="ends"><span id="lolab"></span><span id="midlab"></span><span id="hilab"></span></div></div>
 </template>
 <script id="config" type="application/json">__CONFIG__</script>
+<script id="bundle" type="application/json">__BUNDLE__</script>
 <script>
 // The engine's version: rb_map_serve() sends its own in /meta, and a server older than the page is named as such
 const ENGINE = 2;
@@ -154,6 +155,32 @@ const G = LAYERS.find(l => l.kind === "grid");   // one grid layer at most, with
 const SOURCES = new Set(LAYERS.map(l => l.id));    // each layer's source is named by its id
 const DEM = new Set(LAYERS.filter(l => l.kind === "dem").map(l => l.id));   // elevations, drawn under a grid
 const CONTOUR = new Set(LAYERS.filter(l => l.kind === "contour").map(l => l.id));   // over them, under the labels
+// A bundle (rb_map_bundle()): the page opened as a file, with no server. Its meta is here; its tiles and data are script
+// files beside it, each handing its value to RB_BUNDLE(), since a page opened as a file may load a script where it may
+// not fetch(). Tiles go to MapLibre through the bundle:// protocol; layers on the same tiles share their folder
+const BUNDLE = JSON.parse(document.getElementById("bundle")?.textContent || "null");
+const bundleWait = {};
+window.RB_BUNDLE = (key, v) => { if (bundleWait[key]) bundleWait[key].v = v; };
+function bundleLoad(key) {
+  bundleWait[key] ??= { p: new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    const done = () => {
+      s.remove();
+      const w = bundleWait[key];
+      delete bundleWait[key];
+      if (w && "v" in w) resolve(w.v); else reject(new Error("not in the bundle: " + key));
+    };
+    s.onload = done; s.onerror = done;
+    s.src = key + ".js";
+    document.head.append(s);
+  }) };
+  return bundleWait[key].p;
+}
+const fromBase64 = s => { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u.buffer; };
+const bundleTiles = l => `tiles/${BUNDLE.tiles?.[l.id] ?? l.id}`;
+if (BUNDLE) maplibregl.addProtocol("bundle", async p => ({ data: fromBase64(await bundleLoad(p.url.slice("bundle://".length))) }));
+// a layer's tiles: the server's, or the bundle's
+const layerTiles = (l, ext, v) => BUNDLE ? `bundle://${bundleTiles(l)}/{z}/{x}/{y}` : `${location.origin}/tiles/${l.id}/{z}/{x}/{y}.${ext}?v=${v}`;
 // maplibre-contour, pinned as MapLibre is, loaded only for a map with contours
 let contourLib = null;
 const loadContour = () => contourLib ??= new Promise((resolve, reject) => {
@@ -241,15 +268,98 @@ function applyShade(l) {
   $(l.id + "-exval").textContent = v.ex.toLocaleString(loc(), { minimumFractionDigits: 2 });
   $(l.id + "-opval").textContent = v.op + " %";
 }
+// A view's fit: the server's (the layer's `fit`), or in a bundle the browser's from the layer's own tiles in view
+// (bundleFit); it rejects where the view has no values
+async function viewFit(l) {
+  const b = map.getBounds();
+  if (BUNDLE) return bundleFit(l, b);
+  const box = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map(v => v.toFixed(4)).join(",");
+  const r = await fetch(`/fit/${l.id}?bbox=${box}`);
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+// A bundle's elevation tile in metres (Terrarium or Mapbox), the last 64 kept
+const demCache = new Map();
+function demTile(l, z, x, y) {
+  const key = `${bundleTiles(l)}/${z}/${x}/${y}`;
+  if (!demCache.has(key)) {
+    demCache.set(key, bundleLoad(key).then(async s => {
+      const img = await createImageBitmap(new Blob([fromBase64(s)]), { premultiplyAlpha: "none", colorSpaceConversion: "none" });
+      const c = new OffscreenCanvas(img.width, img.height).getContext("2d", { willReadFrequently: true });
+      c.drawImage(img, 0, 0);
+      const d = c.getImageData(0, 0, img.width, img.height).data, e = new Float32Array(img.width * img.height);
+      const mapbox = l.encoding === "mapbox";
+      for (let i = 0, j = 0; i < e.length; i++, j += 4)
+        e[i] = mapbox ? -10000 + (d[j] * 65536 + d[j + 1] * 256 + d[j + 2]) * 0.1 : d[j] * 256 + d[j + 1] + d[j + 2] / 256 - 32768;
+      return { w: img.width, h: img.height, e };
+    }).catch(() => null));
+    if (demCache.size > 64) demCache.delete(demCache.keys().next().value);
+  }
+  return demCache.get(key);
+}
+// A bundle's fit, by its rules (rb_map_bundle()'s `fit`), from the layer's tiles at the map's zoom (to their deepest)
+// under the view, every so many pixels for a million at most: the values are the elevations, or the depths below sea
+// level for a colour `of` depth or contours with a negative multiplier, an elevation of `nodata` left out. Floor and
+// cap at the rules' percentiles to two figures, with their quantiles between; a shading's intensity `k` over the
+// slope's `p` percentile in degrees (from each pixel to its east and north neighbours), kept between `min` and `max`
+async function bundleFit(l, b) {
+  const F = BUNDLE.fit ?? {}, S = F.slope ?? {};
+  const z = Math.max(l.minzoom ?? 0, Math.min(l.maxzoom ?? 14, Math.floor(map.getZoom()))), n = 2 ** z;
+  const X = lon => (lon + 180) / 360 * n;
+  const Y = lat => { const r = Math.max(-85.05, Math.min(85.05, lat)) * Math.PI / 180; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n; };
+  let [w, s, e, nn] = [Math.max(-180, b.getWest()), b.getSouth(), Math.min(180, b.getEast()), b.getNorth()];
+  if (l.bounds) [w, s, e, nn] = [Math.max(w, l.bounds[0]), Math.max(s, l.bounds[1]), Math.min(e, l.bounds[2]), Math.min(nn, l.bounds[3])];
+  if (w >= e || s >= nn) throw new Error("no values in view");
+  const x0 = X(w), x1 = X(e), y0 = Y(nn), y1 = Y(s), keys = [];
+  for (let tx = Math.floor(x0); tx <= Math.min(n - 1, Math.floor(x1)); tx++)
+    for (let ty = Math.floor(y0); ty <= Math.min(n - 1, Math.floor(y1)); ty++) keys.push([tx, ty]);
+  const tiles = await Promise.all(keys.map(([tx, ty]) => demTile(l, z, tx, ty)));
+  const sign = l.colour?.of === "depth" || (l.contours?.multiplier ?? 1) < 0 ? -1 : 1;
+  const nodata = F.nodata ?? null, ok = v => nodata === null || v !== nodata;
+  const wantQ = !!(l.colour?.fit || l.contours?.fit), wantS = !!l.shade?.fit;
+  const size = tiles.find(t => t)?.w ?? 512, step = Math.max(1, Math.ceil(Math.sqrt((x1 - x0) * (y1 - y0) * size * size / 1e6)));
+  const vals = [], slopes = [];
+  tiles.forEach((t, k) => {
+    if (!t) return;
+    const [tx, ty] = keys[k];
+    const i0 = Math.max(0, Math.floor((x0 - tx) * t.w)), i1 = Math.min(t.w - 1, Math.floor((x1 - tx) * t.w));
+    const j0 = Math.max(0, Math.floor((y0 - ty) * t.h)), j1 = Math.min(t.h - 1, Math.floor((y1 - ty) * t.h));
+    for (let j = j0; j <= j1; j += step) {
+      // a pixel's side in metres at its latitude
+      const m = 40075016.686 * Math.cos(Math.atan(Math.sinh(Math.PI * (1 - 2 * (ty + (j + 0.5) / t.h) / n)))) / (n * t.w);
+      for (let i = i0; i <= i1; i += step) {
+        const c = t.e[j * t.w + i];
+        if (!ok(c)) continue;
+        if (wantQ && (sign > 0 || c < 0)) vals.push(sign * c);
+        if (wantS && i + 1 < t.w && j > 0) {
+          const ce = t.e[j * t.w + i + 1], cn = t.e[(j - 1) * t.w + i];
+          if (ok(ce) && ok(cn)) slopes.push(Math.atan(Math.hypot((ce - c) / m, (cn - c) / m)) * 180 / Math.PI);
+        }
+      }
+    }
+  });
+  const quant = (a, p) => { const h = (a.length - 1) * p, f = Math.floor(h); return a[f] + (h - f) * (a[Math.min(f + 1, a.length - 1)] - a[f]); };
+  const out = {};
+  if (wantQ && vals.length) {
+    const a = Float64Array.from(vals).sort(), [p0, p1] = F.probs ?? [0.02, 0.98], k = F.n ?? 25;
+    const q = Array.from({ length: k }, (_, i) => quant(a, p0 + (p1 - p0) * i / (k - 1))), two = x => Number(x.toPrecision(2));
+    out.floor = Math.max(1, two(q[0]));
+    out.cap = Math.min(10000, Math.max(out.floor * 1.5, two(q[k - 1])));
+    out.q = q.map(x => Math.round(x * 10) / 10);
+  }
+  if (wantS && slopes.length) {
+    const p = quant(Float64Array.from(slopes).sort(), S.p ?? 0.9);
+    if (p > 0) out.exaggeration = Math.min(S.max ?? 1, Math.max(S.min ?? 0.3, (S.k ?? 2) / p));
+  }
+  if (!Object.keys(out).length) throw new Error("no values in view");
+  return out;
+}
 // the intensity following the view: the server's for the view's relief (the layer's `fit`), each time the map settles
 const shadeTimers = {};
 const shadeFollowing = l => !!l.shade?.fit && !!$(`${l.id}-auto`)?.checked;
 async function followShade(l) {
-  const b = map.getBounds(), box = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map(v => v.toFixed(4)).join(",");
   try {
-    const r = await fetch(`/fit/${l.id}?bbox=${box}`);
-    if (!r.ok) return;
-    const f = await r.json();
+    const f = await viewFit(l);
     if (typeof f.exaggeration !== "number" || !shadeFollowing(l)) return;
     $(`${l.id}-ex`).value = Math.round(f.exaggeration * 20) / 20;
     applyShade(l); writeAddress();
@@ -368,11 +478,8 @@ const fitTimers = {};
 const following = l => !!l.colour?.fit && !!$(`${l.id}-cauto`)?.checked;
 // `keep`: the quantiles only, the floor and cap left as they are (not following, colours in equal shares)
 async function fitColour(l, quiet = false, keep = false) {
-  const b = map.getBounds(), box = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map(v => v.toFixed(4)).join(",");
   try {
-    const r = await fetch(`/fit/${l.id}?bbox=${box}`);
-    if (!r.ok) throw new Error(r.status);
-    const f = await r.json();
+    const f = await viewFit(l);
     if (f.q) colourQ[l.id] = f.q;
     if (!keep) {
       $(`${l.id}-clo`).value = Math.log10(Math.min(Math.max(1, f.floor), 10000));
@@ -396,20 +503,28 @@ function contourLevels(q) {
   const levels = [...new Set(q.filter((_, i) => i % 2 === 0).map(x => Math.round(x / step) * step))].filter(x => x > 0).sort((a, b) => a - b);
   return { step, levels };
 }
-function setContourLevels(l, step = null, levels = null) {
-  const dem = contourDem[l.id], src = map.getSource(l.id);
-  if (!dem || !src) return;
-  src.setTiles([dem.contourProtocolUrl({ multiplier: l.contours.multiplier ?? 1, thresholds: step ? { 0: [step] } : l.contours.thresholds,
+// Tiles still loading when the lines' address changes are finished with the old one, and keep the old levels' lines:
+// the levels are set once the layer's tiles are in, the latest asked winning. The view's step holds from one zoom out
+// of the view's own: the far zooms' tiles kept for zooming out are not remade at a step that is not theirs
+const contourAsk = {};
+async function setContourLevels(l, step = null, levels = null) {
+  const dem = contourDem[l.id], ask = contourAsk[l.id] = (contourAsk[l.id] ?? 0) + 1;
+  if (!dem) return;
+  while (map.getSource(l.id) && !map.isSourceLoaded(l.id)) {
+    await new Promise(r => map.once("sourcedata", r));
+    if (ask !== contourAsk[l.id]) return;
+  }
+  const src = map.getSource(l.id);
+  if (!src) return;
+  const from = Math.max(0, Math.floor(map.getZoom()) - 1);
+  src.setTiles([dem.contourProtocolUrl({ multiplier: l.contours.multiplier ?? 1, thresholds: step ? { [from]: [step] } : l.contours.thresholds,
                                          contourLayer: "contours", elevationKey: "ele", levelKey: "level" })]);
   for (const st of l.style) if (map.getLayer(st.id))
     map.setFilter(st.id, levels ? ["in", ["get", "ele"], ["literal", levels]] : st.filter ?? null);
 }
 async function followContours(l) {
-  const b = map.getBounds(), box = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map(v => v.toFixed(4)).join(",");
   try {
-    const r = await fetch(`/fit/${l.id}?bbox=${box}`);
-    if (!r.ok) return;
-    const f = await r.json();
+    const f = await viewFit(l);
     if (!f.q?.length || !contourFollowing(l)) return;
     const { step, levels } = contourLevels(f.q);
     setContourLevels(l, step, levels);
@@ -450,6 +565,13 @@ function layerRow(l) {
   if (l.variants) row.insertAdjacentHTML("beforeend", `<div class="when-on"><div class="row">` +
     `<label for="${l.id}-by" data-t="${esc(l.variants.label ?? "")}"></label><select id="${l.id}-by">` +
     l.variants.options.map(o => `<option value="${esc(o.value)}" data-t="${esc(o.label)}"></option>`).join("") + "</select></div></div>");
+  // the layer's state, values its styles read: a list to choose from, or a checkbox
+  for (const s of l.state ?? []) row.insertAdjacentHTML("beforeend", `<div class="when-on"><div class="row">` + (s.options
+    ? `<label for="${l.id}-s-${s.id}" data-t="${esc(s.label)}"></label><select id="${l.id}-s-${s.id}">` +
+      s.options.map(o => `<option value="${esc(String(o.value))}"${String(o.value) === String(s.default) ? " selected" : ""}` +
+                         ` data-t="${esc(o.label)}"></option>`).join("") + "</select>"
+    : `<label class="auto"><input type="checkbox" id="${l.id}-s-${s.id}"${s.default ? " checked" : ""}><span data-t="${esc(s.label)}"></span></label>`) +
+    "</div></div>");
   if (l.legend || l.variants?.options.some(o => o.legend))
     row.insertAdjacentHTML("beforeend", `<div class="when-on swatches" id="${l.id}-legend">${legendHtml(l.legend ?? [])}</div>`);
   return row;
@@ -660,7 +782,7 @@ $("bases").addEventListener("change", e => { popup?.remove(); setBase(e.target.v
 
 // The first view: /meta, then the address ----------------------------------------------------------------------------
 const optionLabel = (f, o) => `${o.name ?? (f.unnamed ? tr(f.unnamed) + " " : "") + o.value}${o.code ? " (" + o.code + ")" : ""}`;
-Promise.all([fetch("/meta").then(r => r.json()), styleLoaded]).then(([meta]) => {
+Promise.all([BUNDLE ? BUNDLE.meta : fetch("/meta").then(r => r.json()), styleLoaded]).then(([meta]) => {
   const q = new URLSearchParams(location.search);
   if (G) {
     gridMeta = meta.layers?.[G.id] ?? {};
@@ -702,6 +824,11 @@ Promise.all([fetch("/meta").then(r => r.json()), styleLoaded]).then(([meta]) => 
     $(l.id).checked = !l.visible; $("lyr-" + l.id).classList.toggle("off", !$(l.id).checked);
   }
   for (const l of OTHER) if (l.variants && l.variants.options.some(o => o.value === q.get(l.id + "_by"))) $(l.id + "-by").value = q.get(l.id + "_by");
+  for (const l of OTHER) for (const s of l.state ?? []) {
+    const v = q.get(stateKey(l, s)), el = $(`${l.id}-s-${s.id}`);
+    if (s.options) { if (s.options.some(o => String(o.value) === v)) el.value = v; }
+    else if (["0", "1"].includes(v)) el.checked = v === "1";
+  }
   for (const l of OTHER) if (l.shade) readShade(l, q);
   for (const l of OTHER) if (l.colour) readColour(l, q);
   for (const l of OTHER) if (l.contours?.fit && ["0", "1"].includes(q.get(l.id + "_auto"))) $(`${l.id}-kauto`).checked = q.get(l.id + "_auto") === "1";
@@ -749,6 +876,10 @@ function addressNow() {
   }
   for (const l of LAYERS) if (!$(l.id).disabled && $(l.id).checked !== !!l.visible) q.set(l.id, $(l.id).checked ? "1" : "0");
   for (const l of OTHER) if (l.variants) put(l.id + "_by", $(l.id + "-by").value, l.variants.options[0].value);
+  for (const l of OTHER) for (const s of l.state ?? []) {
+    const text = v => s.options ? String(v) : v ? "1" : "0";
+    put(stateKey(l, s), text(stateNow(l, s)), text(s.default));
+  }
   for (const l of OTHER) if (l.shade) {
     const v = shadeNow(l), d = shadeDefaults(l);
     put(l.id + "_method", v.method, d.method);
@@ -790,6 +921,7 @@ function addLayer(l, meta) {
     const firstSymbol = () => map.getStyle().layers.find(x => x.type === "symbol" && !SOURCES.has(x.source))?.id;
     const before = DEM.has(l.id) ? (G && map.getLayer(G.id) ? G.id : firstSymbol())
                  : CONTOUR.has(l.id) ? firstSymbol() : undefined;
+    applyState(l);   // before the styles that read it
     for (const st of l.style) {
       const spec = { ...st, source: l.id };
       if (spec.type === "symbol" && spec.layout?.["text-field"] && !spec.layout["text-font"]) spec.layout = { ...spec.layout, "text-font": FONT };
@@ -804,21 +936,24 @@ function addLayer(l, meta) {
     const n = meta.layers?.[l.id]?.count ?? 0;
     if (!n) return missing(l);
     counts[l.id] = n;
-    map.addSource(l.id, { type: "vector", tiles: [`${location.origin}/tiles/${l.id}/{z}/{x}/{y}.pbf?v=${meta.layers[l.id].v ?? meta.engine}`],
+    map.addSource(l.id, { type: "vector", tiles: [layerTiles(l, "pbf", meta.layers[l.id].v ?? meta.engine)],
                           minzoom: l.minzoom ?? 0, maxzoom: l.maxzoom ?? 14 });
     draw();
   } else if (l.kind === "dem") {
     map.addSource(l.id, { type: "raster-dem", encoding: l.encoding ?? "terrarium", tileSize: l.tile_size ?? 512,
-                          tiles: [`${location.origin}/tiles/${l.id}/{z}/{x}/{y}.${l.format ?? "png"}?v=${meta.layers?.[l.id]?.v ?? meta.engine}`],
+                          tiles: [layerTiles(l, l.format ?? "png", meta.layers?.[l.id]?.v ?? meta.engine)],
                           minzoom: l.minzoom ?? 0, maxzoom: l.maxzoom ?? 14, ...(l.bounds ? { bounds: l.bounds } : {}) });
     draw();
   } else if (l.kind === "contour") {
     // the lines are made in the browser from the elevation tiles, at the layer's intervals by zoom
     loadContour().then(mlcontour => {
+      // in a bundle on the page's own thread, its tiles read from the bundle where it would fetch them
       const dem = new mlcontour.DemSource({
-        url: `${location.origin}/tiles/${l.id}/{z}/{x}/{y}.${l.format ?? "png"}?v=${meta.layers?.[l.id]?.v ?? meta.engine}`,
-        encoding: l.encoding ?? "terrarium", maxzoom: l.maxzoom ?? 12, worker: true
+        url: layerTiles(l, l.format ?? "png", meta.layers?.[l.id]?.v ?? meta.engine),
+        encoding: l.encoding ?? "terrarium", maxzoom: l.maxzoom ?? 12, worker: !BUNDLE
       });
+      if (BUNDLE) dem.manager.getTile = url => bundleLoad(url.slice("bundle://".length))
+        .then(b => ({ data: new Blob([fromBase64(b)], { type: `image/${l.format ?? "png"}` }) }));
       dem.setupMaplibre(maplibregl);
       contourDem[l.id] = dem;
       map.addSource(l.id, { type: "vector", maxzoom: 15, ...(l.bounds ? { bounds: l.bounds } : {}),
@@ -828,7 +963,7 @@ function addLayer(l, meta) {
       if (contourFollowing(l)) followContours(l);
     }).catch(() => missing(l));
   } else if (l.kind === "geojson") {
-    fetch(`/data/${l.id}.geojson`).then(r => r.ok ? r.json() : Promise.reject(r.status)).then(data => {
+    (BUNDLE ? bundleLoad(`data/${l.id}`) : fetch(`/data/${l.id}.geojson`).then(r => r.ok ? r.json() : Promise.reject(r.status))).then(data => {
       map.addSource(l.id, { type: "geojson", data });
       const w = l.count?.where;
       counts[l.id] = w ? data.features.filter(f => f.properties[w[0]] === w[1]).length : data.features.length;
@@ -863,6 +998,16 @@ function applyVariant(l) {
   }
 }
 for (const l of OTHER) if (l.variants) $(l.id + "-by").addEventListener("change", () => { popup?.remove(); applyVariant(l); });
+// A layer's state: each control's value in MapLibre's global state as <id>_<name>, read by the layer's styles; it is
+// the style's, so it stays through a change of base map, and nothing is fetched again
+function stateKey(l, s) { return `${l.id}_${s.id}`; }
+function stateNow(l, s) {
+  const el = $(`${l.id}-s-${s.id}`);
+  return s.options ? (s.options.find(o => String(o.value) === el.value) ?? s.options[0]).value : el.checked;
+}
+function applyState(l) { for (const s of l.state ?? []) map.setGlobalStateProperty(stateKey(l, s), stateNow(l, s)); }
+for (const l of OTHER) for (const s of l.state ?? [])
+  $(`${l.id}-s-${s.id}`).addEventListener("change", () => { popup?.remove(); applyState(l); });
 for (const l of OTHER) if (l.shade)
   for (const x of ["method", ...Object.keys(SHADE_RANGES), "shadow", "light"]) $(l.id + "-" + x).addEventListener("input", () => applyShade(l));
 for (const l of OTHER) if (l.colour) for (const x of COLOUR_KEYS) $(`${l.id}-c${x}`).addEventListener("input", () => applyColour(l));
@@ -1019,7 +1164,7 @@ map.on("error", async e => {
   if (!s || tileError) return;
   tileError = tr("refused", s);
   const why = await e.error.body?.text?.().catch(() => "") ?? "";
-  const engine = await fetch("/meta").then(r => r.json()).then(m => m.engine).catch(() => null);
+  const engine = BUNDLE ? BUNDLE.meta.engine : await fetch("/meta").then(r => r.json()).then(m => m.engine).catch(() => null);
   tileError = engine !== ENGINE ? tr("older", engine ?? "?", ENGINE) : `${tr("refused", s)}${why ? ": " + why : ""}`;
   $("status").textContent = tileError;
 });

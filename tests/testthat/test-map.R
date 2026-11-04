@@ -475,6 +475,61 @@ test_that("a layer's variants: styles to choose between in the page, checked as 
   )
 })
 
+test_that("a layer's state: values its style reads, checked as they are made", {
+  skip_if_not_installed("jsonlite")
+  gj <- '{"type": "FeatureCollection", "features": []}'
+  st <- list(
+    list(id = "n-area", type = "fill", filter = list("global-state", "n_areas")),
+    list(id = "n-label", type = "symbol",
+         filter = list("<=", list("-", list("get", "min_zoom"), list("global-state", "n_early")), list("zoom")),
+         paint = list("text-color" = list("global-state", "n_colour")))
+  )
+  state <- list(
+    list(id = "areas", label = "Areas", default = FALSE),
+    list(id = "early", label = "Names appear",
+         options = list(list(value = -1, label = "later"), list(value = 0, label = "as set"),
+                        list(value = 1))),
+    list(id = "colour", options = list(list(value = "#0b3954", label = "dark blue"),
+                                       list(value = "#ffffff", label = "white")), default = "#ffffff")
+  )
+  n <- rb_map_layer("n", "geojson", data = gj, style = st, state = state)
+  s <- n$config$state
+  expect_equal(vapply(s, `[[`, "", "id"), c("areas", "early", "colour"))
+  expect_equal(s[[2]]$default, -1) # the first option's value when not given
+  expect_equal(s[[2]]$options[[3]]$label, "1") # a label defaults to the value
+  expect_equal(s[[3]]$label, "colour") # and a control's to its id
+  cfg <- jsonlite::fromJSON(
+    .rb_map_app(rb_map(rb_map_group("g", layers = list(n))))$call(
+      list(REQUEST_METHOD = "GET", PATH_INFO = "/config.json", QUERY_STRING = "")
+    )$body,
+    simplifyVector = FALSE
+  )
+  expect_identical(cfg$layers[[1]]$state[[1]]$default, FALSE)
+  expect_identical(cfg$layers[[1]]$state[[2]]$options[[1]]$value, -1L) # a number stays a number in the page
+  bad <- function(state, style = st, id = "n") {
+    rb_map_layer(id, "geojson", data = gj, style = style, state = state)
+  }
+  expect_error(bad(list(list(id = "nope", default = TRUE))), "read by none")
+  expect_error(bad(state[1], style = st[2]), "global-state")
+  expect_error(bad(list(list(id = "areas"))), "TRUE or FALSE")
+  expect_error(bad(list(list(id = "areas", default = "yes"))), "TRUE or FALSE")
+  expect_error(bad(list(list(id = "Areas", default = TRUE))), "lower-case")
+  expect_error(bad(list(list(id = "by", default = TRUE))), "own controls")
+  expect_error(bad(list(state[[1]], state[[1]])), "once")
+  expect_error(bad(list(list(id = "early", options = list(list(value = 1), list(value = 1))))), "distinct")
+  expect_error(bad(list(list(id = "early", options = list(list(value = 1)), default = 2))), "one of its options")
+  expect_error(bad(list(list(id = "early", options = list(list(value = c(1, 2)))))), "options")
+  expect_error(bad("areas"), "list of controls")
+  expect_error(bad(list()), "list of controls")
+  expect_error(
+    rb_map_layer("g", "grid", tiles = function(z, x, y, p) raw(0), metrics = list(list(field = "n")), state = state),
+    "drawn by the page"
+  )
+  # a layer named as another's state would share its place in the address
+  other <- rb_map_layer("n_areas", "geojson", data = gj, style = list(list(id = "o", type = "fill")))
+  expect_error(rb_map(rb_map_group("g", layers = list(n, other))), "another layer's state")
+})
+
 test_that("pings on a map, coloured by a column", {
   skip_if_no_spatial()
   d <- rb_read_example("dansk")
@@ -1001,4 +1056,102 @@ test_that("a shading's intensity from the view: its fit answered by the route, o
   expect_error(rb_map_layer("d", "dem", tiles = dem, style = both, shade = list(fit = fit), colour = list(fit = fit)),
                "one fit")
   expect_error(rb_map_layer("relief", "dem", tiles = dem, style = shade_style, shade = list(fit = "x")), "a function")
+})
+
+test_that("a bundle: the page, its data and tiles as scripts, the tiles once for layers on one file", {
+  skip_if_not_installed("RSQLite")
+  skip_if_not_installed("jsonlite")
+  f <- tempfile(fileext = ".mbtiles")
+  d <- tempfile("bundle_")
+  on.exit(unlink(c(f, d), recursive = TRUE))
+  con <- DBI::dbConnect(RSQLite::SQLite(), f)
+  DBI::dbWriteTable(con, "metadata", data.frame(
+    name = c("format", "encoding", "bounds", "minzoom", "maxzoom"),
+    value = c("png", "terrarium", "-30,60,-5,70", "0", "2")
+  ))
+  DBI::dbExecute(con, "CREATE TABLE tiles (zoom_level INTEGER, tile_column INTEGER, tile_row INTEGER, tile_data BLOB)")
+  # the tiles inside the bounds: zoom 0 the world, zoom 1 its north-west, zoom 2 two (rows counted from the south)
+  for (t in list(c(0, 0, 0), c(1, 0, 1), c(2, 1, 3), c(2, 1, 2))) {
+    DBI::dbExecute(con, "INSERT INTO tiles VALUES (?, ?, ?, ?)", params = list(t[1], t[2], t[3], list(as.raw(c(t, 9)))))
+  }
+  DBI::dbDisconnect(con)
+  expect_equal(attr(rb_map_tiles_mbtiles(f), "source"), normalizePath(f))
+
+  # two layers on one file, each from its own reader, and a geojson layer
+  depth <- rb_map_layer("depth", "dem", tiles = rb_map_tiles_mbtiles(f), style = list(list(id = "d", type = "hillshade")))
+  relief <- rb_map_layer("relief", "dem", tiles = rb_map_tiles_mbtiles(f), style = list(list(id = "r", type = "hillshade")))
+  gj <- '{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"Þórshöfn"},"geometry":{"type":"Point","coordinates":[-15.3,66.2]}}]}'
+  places <- rb_map_layer("places", "geojson", data = gj, style = list(list(id = "p", type = "circle")))
+  m <- rb_map(rb_map_group("g", "G", list(depth, relief, places)))
+  out <- rb_map_bundle(m, d, maxzoom = 1)
+  expect_equal(attr(out, "tiles"), 2L) # zooms 0 and 1, once for both layers
+  expect_true(attr(out, "bytes") > 0)
+  expect_false(dir.exists(file.path(d, "tiles", "relief")))
+  expect_false(dir.exists(file.path(d, "tiles", "depth", "2"))) # past maxzoom
+  js <- readLines(file.path(d, "tiles", "depth", "1", "0", "0.js"))
+  expect_length(js, 1)
+  expect_identical(
+    jsonlite::base64_dec(sub('^RB_BUNDLE\\("tiles/depth/1/0/0","(.*)"\\);$', "\\1", js)),
+    as.raw(c(1, 0, 1, 9))
+  )
+  data <- paste(readLines(file.path(d, "data", "places.js"), encoding = "UTF-8"), collapse = "\n")
+  expect_match(data, '^RB_BUNDLE\\("data/places",\\{')
+  expect_match(data, "Þórshöfn", fixed = TRUE)
+
+  page <- paste(readLines(file.path(d, "index.html"), encoding = "UTF-8"), collapse = "\n")
+  block <- function(id) {
+    jsonlite::fromJSON(
+      sub(sprintf('(?s).*<script id="%s" type="application/json">(.*?)</script>.*', id), "\\1", page, perl = TRUE),
+      simplifyVector = FALSE
+    )
+  }
+  config <- block("config")
+  bundle <- block("bundle")
+  expect_equal(vapply(config$layers, `[[`, "", "id"), c("depth", "relief", "places"))
+  expect_equal(config$layers[[1]]$maxzoom, 1L) # the map draws zoom 1's tiles larger past it
+  expect_equal(bundle$tiles, list(depth = "depth", relief = "depth"))
+  expect_equal(bundle$fit$probs, list(0.02, 0.98))
+  expect_equal(bundle$fit$slope$k, 2)
+  expect_equal(names(bundle$meta$layers), c("depth", "relief"))
+  expect_false(grepl("__BUNDLE__", page, fixed = TRUE))
+  # the server's page has none
+  expect_match(.rb_map_page("{}"), '<script id="bundle" type="application/json">null</script>', fixed = TRUE)
+
+  # a bundle is written over only when asked, and then only its own files go
+  writeLines("the caller's", file.path(d, "README.md"))
+  expect_error(rb_map_bundle(m, d), "holds a bundle")
+  rb_map_bundle(m, d, maxzoom = 2, overwrite = TRUE)
+  expect_true(file.exists(file.path(d, "README.md")))
+  expect_true(file.exists(file.path(d, "tiles", "depth", "2", "1", "0.js")))
+  expect_true(file.exists(file.path(d, "tiles", "depth", "2", "1", "1.js")))
+
+  # its arguments checked
+  expect_error(rb_map_bundle(list(), d), "rb_map")
+  expect_error(rb_map_bundle(m, d, maxzoom = 1.5, overwrite = TRUE), "whole number")
+  expect_error(rb_map_bundle(m, d, overwrite = NA), "TRUE or FALSE")
+  expect_error(rb_map_bundle(m, d, fit = list(probs = c(0.9, 0.1)), overwrite = TRUE), "probs out of range")
+  expect_error(rb_map_bundle(m, d, fit = list(slope = list(q = 1)), overwrite = TRUE), "a list of any of")
+  expect_error(rb_map_bundle(m, d, fit = list(n = 1), overwrite = TRUE), "n out of range")
+  v <- .rb_map_bundle_fit(list(nodata = NULL, slope = list(k = 3)))
+  expect_null(v$nodata) # no value left out
+  expect_equal(v$slope, list(k = 3, p = 0.9, min = 0.3, max = 1))
+  no_bounds <- rb_map_layer("depth", "dem", tiles = function(z, x, y) NULL, maxzoom = 2,
+                            style = list(list(id = "d", type = "hillshade")))
+  expect_error(rb_map_bundle(rb_map(rb_map_group("g", "G", list(no_bounds))), tempfile()), "needs its `bounds`")
+})
+
+test_that("a bundle leaves out the layers a server draws, with a message", {
+  skip_if_not_installed("jsonlite")
+  skip_if_no_spatial()
+  d <- tempfile("bundle_")
+  on.exit(unlink(d, recursive = TRUE))
+  expect_message(rb_map_bundle(example_map(), d), "Left out of the bundle, as their tiles are made by a server: pings, harbours")
+  page <- paste(readLines(file.path(d, "index.html"), encoding = "UTF-8"), collapse = "\n")
+  config <- jsonlite::fromJSON(
+    sub('(?s).*<script id="config" type="application/json">(.*?)</script>.*', "\\1", page, perl = TRUE),
+    simplifyVector = FALSE
+  )
+  expect_equal(vapply(config$layers, `[[`, "", "id"), "outline")
+  expect_equal(vapply(config$groups, `[[`, "", "id"), "ref") # the grid's group, left empty, is gone
+  expect_true(file.exists(file.path(d, "data", "outline.js")))
 })

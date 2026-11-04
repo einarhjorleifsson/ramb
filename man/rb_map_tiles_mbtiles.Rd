@@ -13,7 +13,8 @@ south, and \code{tile_data}) and a \code{metadata} table of \code{name} and \cod
 \value{
 A function \verb{function(z, x, y)} (\code{y} from the north, as the page asks) returning a tile's bytes, or \code{NULL}
 where the file has none; with the file's \code{format}, \code{bounds}, \code{minzoom}, \code{maxzoom}, \code{encoding} and \code{tile_size} as
-attributes where its metadata give them, which \code{\link[=rb_map_layer]{rb_map_layer()}} takes for a dem layer.
+attributes where its metadata give them, which \code{\link[=rb_map_layer]{rb_map_layer()}} takes for a dem layer, and \code{source}, the file's
+path, by which \code{\link[=rb_map_bundle]{rb_map_bundle()}} writes the tiles of layers on one file once.
 }
 \description{
 A tile function for an \code{\link[=rb_map_layer]{rb_map_layer()}} that reads its tiles from an MBTiles file (SQLite), such as the image tiles

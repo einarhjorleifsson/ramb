@@ -112,6 +112,13 @@
 #'   `TRUE` by default; `<id>_auto` in the address): about a dozen levels at round values near the view's quantiles,
 #'   so the lines fall where the area is, drawn at a step of 1, 2 or 5 times a power of ten that makes some 40 of the
 #'   view's range; unticked, the `thresholds` and the style's filters.
+#' @param state For a vector, geojson, dem or contour layer: values in the reader's hands that its `style` reads, in
+#'   a filter, a paint or a layout property, as `list("global-state", "<id>_<name>")` (MapLibre's global state), such
+#'   as whether a style is drawn, its colour, or a shift of the zoom it starts at. A list of controls, each with `id`
+#'   (`<name>` above: lower-case letters and digits) and `label`, and either `options` (a list of `value`, a single
+#'   number, text or `TRUE`/`FALSE`, and `label`), a list to choose from, with `default` one of the values (the first
+#'   when not given); or no `options` and `default` `TRUE` or `FALSE`, a checkbox. Each applies as it changes, nothing
+#'   fetched again, and goes into the page's address as `<id>_<name>`. Every one must be read by the style.
 #' @return An `rb_map_layer`, for [rb_map_group()].
 #' @seealso [rb_map()], [rb_map_tiles_table()]
 #' @export
@@ -176,7 +183,8 @@ rb_map_layer <- function(
   bounds = NULL,
   shade = NULL,
   colour = NULL,
-  contours = NULL
+  contours = NULL,
+  state = NULL
 ) {
   kind <- match.arg(kind)
   if (!is.character(id) || length(id) != 1 || !grepl("^[a-z][a-z0-9_]*$", id)) {
@@ -352,6 +360,9 @@ rb_map_layer <- function(
       stop("`colour$scale` \"equal\" needs `colour$fit`, which gives the values' quantiles in view.", call. = FALSE)
     }
   }
+  if (!is.null(state)) {
+    state <- .rb_map_state(state, id, kind, style)
+  }
   config <- list(
     id = id,
     kind = kind,
@@ -376,7 +387,8 @@ rb_map_layer <- function(
     format = format,
     shade = shade,
     colour = colour,
-    contours = contours
+    contours = contours,
+    state = state
   )
   structure(
     list(
@@ -501,6 +513,14 @@ rb_map <- function(
   ) {
     stop("A map has one grid layer at most.", call. = FALSE)
   }
+  # a layer's state goes into the address and MapLibre's global state as <id>_<name>
+  state_keys <- unlist(lapply(layers, function(l) {
+    if (length(l$config$state)) paste0(l$config$id, "_", vapply(l$config$state, `[[`, "", "id"))
+  }))
+  if (length(clash <- intersect(state_keys, ids))) {
+    stop(sprintf("A layer is named as another layer's state, %s: rename one.", paste(clash, collapse = ", ")),
+         call. = FALSE)
+  }
   if (!is.null(palette) && !palette %in% vapply(palettes, `[[`, "", "id")) {
     stop("`palette` is an id of `palettes`.", call. = FALSE)
   }
@@ -525,6 +545,7 @@ rb_map <- function(
     taken <- c(
       ids,
       paste0(ids, "_by"),
+      state_keys,
       "metric",
       "palette",
       "stretch",
@@ -952,6 +973,252 @@ rb_map_stop <- function(port = NULL) {
   invisible(as.integer(ports))
 }
 
+#' Write a map as a folder that opens with no R and no server
+#'
+#' `rb_map_bundle()` writes an [rb_map()] as a folder whose `index.html` opens in a browser with a double click, on any
+#' system, with no R and no server: the page with the map's config, and beside it the layers' tiles and data as script
+#' files (`tiles/`, `data/`), which a page opened as a file (`file://`) may load where it may not fetch them. It needs
+#' the internet only for MapLibre and maplibre-contour (from jsdelivr) and for the base maps.
+#'
+#' What a bundle carries:
+#' * a geojson layer, its data;
+#' * a dem or contour layer, its tiles from its `minzoom` to its `maxzoom` inside its `bounds`, written once for the
+#'   layers that read one file (the `source` of [rb_map_tiles_mbtiles()]). Past the deepest zoom written, the map draws
+#'   that zoom's tiles larger. A view's fit (a colour's, the contours' or a shading's `fit`) is made in the browser from
+#'   the layer's tiles in view, by the rules in `fit`, not by the layer's R function, which needs a server.
+#'
+#' A grid or vector layer is left out, with a message: their tiles are made by a server.
+#'
+#' @param map An [rb_map()].
+#' @param dir The folder to write. If it already holds a bundle (`index.html`, `tiles/` or `data/`), `overwrite`
+#'   replaces those and leaves the rest of the folder as it is.
+#' @param maxzoom The deepest zoom of the tiles written, at most each layer's own; `NULL` for each layer's own.
+#' @param fit A view's fit in the browser: `probs`, the percentiles (0-1) of the floor and the cap, with `n` quantiles
+#'   from one to the other (for colours in equal shares and contour levels); `nodata`, an elevation that means no value
+#'   (`NULL` for none); `slope`, a shading's intensity: `k` over the `p` percentile of the slope in degrees, kept
+#'   between `min` and `max`. Any left out keeps its default: those of a depth map whose tiles hold 0 on land.
+#' @param overwrite Whether to replace a bundle already in `dir`.
+#' @return `dir`, invisibly, with the number of tiles written (`tiles`) and the bundle's size in bytes (`bytes`) as
+#'   attributes.
+#' @seealso [rb_map_serve()], which serves the map from this R session instead.
+#' @export
+#' @examples
+#' places <- sf::st_as_sf(
+#'   data.frame(name = c("Skagen", "Hirtshals"), lon = c(10.59, 9.96), lat = c(57.72, 57.59)),
+#'   coords = c("lon", "lat"), crs = 4326
+#' )
+#' layer <- rb_map_layer(
+#'   "places", "geojson", label = "Places", data = places,
+#'   style = list(list(id = "places-dot", type = "circle", paint = list("circle-color" = "#d9822b"))),
+#'   popup = list(click = "places-dot", title = "name")
+#' )
+#' m <- rb_map(rb_map_group("ref", "Reference", list(layer)),
+#'             title = "Two harbours", view = list(center = c(10.3, 57.6), zoom = 8))
+#' d <- rb_map_bundle(m, file.path(tempdir(), "two_harbours"), overwrite = TRUE)
+#' list.files(d, recursive = TRUE)
+#' # utils::browseURL(file.path(d, "index.html"))  # opens it in a browser
+rb_map_bundle <- function(
+  map,
+  dir,
+  maxzoom = NULL,
+  fit = list(probs = c(0.02, 0.98), n = 25, nodata = 0, slope = list(k = 2, p = 0.9, min = 0.3, max = 1)),
+  overwrite = FALSE
+) {
+  if (!inherits(map, "rb_map")) {
+    stop("`map` is an rb_map().", call. = FALSE)
+  }
+  if (!is.character(dir) || length(dir) != 1 || is.na(dir) || !nzchar(dir)) {
+    stop("`dir` is the path of a folder.", call. = FALSE)
+  }
+  if (
+    !is.null(maxzoom) &&
+      !(is.numeric(maxzoom) && length(maxzoom) == 1 && !is.na(maxzoom) && maxzoom >= 0 && maxzoom <= 22 &&
+        maxzoom == round(maxzoom))
+  ) {
+    stop("`maxzoom` is a whole number from 0 to 22, or NULL.", call. = FALSE)
+  }
+  if (!isTRUE(overwrite) && !isFALSE(overwrite)) {
+    stop("`overwrite` is TRUE or FALSE.", call. = FALSE)
+  }
+  fit <- .rb_map_bundle_fit(fit)
+  parts <- file.path(dir, c("index.html", "tiles", "data"))
+  if (any(file.exists(parts))) {
+    if (!overwrite) {
+      stop(sprintf("%s holds a bundle: `overwrite = TRUE` replaces it.", dir), call. = FALSE)
+    }
+    unlink(parts, recursive = TRUE)
+  }
+  dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+  if (!dir.exists(dir)) {
+    stop(sprintf("Could not make the folder %s.", dir), call. = FALSE)
+  }
+
+  # the layers a bundle carries, and the config without the others
+  layers <- map$layers
+  kind <- vapply(layers, function(l) l$config$kind, "")
+  out <- names(layers)[kind %in% c("grid", "vector")]
+  if (length(out)) {
+    message(sprintf(
+      "Left out of the bundle, as their tiles are made by a server: %s.",
+      paste(out, collapse = ", ")
+    ))
+  }
+  keep <- setdiff(names(layers), out)
+  config <- map$config
+  config$layers <- Filter(function(l) l$id %in% keep, config$layers)
+  config$groups <- Filter(
+    function(g) length(g$layers) > 0,
+    lapply(config$groups, function(g) {
+      g$layers <- as.list(intersect(unlist(g$layers), keep))
+      g
+    })
+  )
+  if (!is.null(config$choose$fields)) {
+    config$choose$fields <- Filter(
+      function(f) length(f$layers) > 0,
+      lapply(config$choose$fields, function(f) {
+        f$layers <- as.list(intersect(unlist(f$layers), keep))
+        f
+      })
+    )
+    if (!length(config$choose$fields)) {
+      config$choose <- NULL
+    }
+  }
+
+  # the tiles: once for the layers on one source, from the least of their zooms to the most
+  ids <- vapply(config$layers, `[[`, "", "id")
+  dem <- which(vapply(config$layers, function(l) l$kind %in% c("dem", "contour"), logical(1)))
+  for (i in dem) {
+    lc <- config$layers[[i]]
+    z1 <- c(unlist(lc$maxzoom), maxzoom)
+    if (!length(z1)) {
+      stop(sprintf("Layer %s: its tiles' deepest zoom is unknown: give `maxzoom`.", lc$id), call. = FALSE)
+    }
+    z1 <- min(z1)
+    if (is.null(lc$bounds)) {
+      stop(sprintf("Layer %s: a dem or contour layer in a bundle needs its `bounds`.", lc$id), call. = FALSE)
+    }
+    config$layers[[i]]$maxzoom <- as.integer(z1)
+  }
+  source <- vapply(ids[dem], function(id) .rb_or(attr(layers[[id]]$tiles, "source"), paste0("layer:", id)), "")
+  folder <- stats::setNames(list(), character())
+  n_tiles <- 0L
+  for (s in unique(source)) {
+    on <- dem[source == s]
+    lcs <- config$layers[on]
+    b <- vapply(lcs, function(lc) as.numeric(unlist(lc$bounds)), numeric(4))
+    n_tiles <- n_tiles + .rb_map_bundle_tiles(
+      layers[[ids[on[1]]]]$tiles,
+      dir,
+      ids[on[1]],
+      min(vapply(lcs, function(lc) as.integer(.rb_or(lc$minzoom, 0L)), integer(1))),
+      max(vapply(lcs, function(lc) lc$maxzoom, integer(1))),
+      c(min(b[1, ]), min(b[2, ]), max(b[3, ]), max(b[4, ]))
+    )
+    for (i in on) {
+      folder[[ids[i]]] <- ids[on[1]]
+    }
+  }
+
+  # a geojson layer's data
+  for (lc in config$layers) {
+    if (lc$kind != "geojson") {
+      next
+    }
+    d <- .rb_map_geojson(layers[[lc$id]])
+    if (is.null(d)) {
+      next
+    }
+    dir.create(file.path(dir, "data"), showWarnings = FALSE)
+    writeLines(
+      enc2utf8(sprintf('RB_BUNDLE("data/%s",%s);', lc$id, paste(d, collapse = "\n"))),
+      file.path(dir, "data", paste0(lc$id, ".js")),
+      useBytes = TRUE
+    )
+  }
+
+  bundle <- list(
+    meta = list(engine = .rb_map_engine, layers = Filter(Negate(is.null), .rb_map_metas(layers[keep]))),
+    tiles = folder,
+    fit = fit
+  )
+  writeLines(
+    enc2utf8(.rb_map_page(.rb_map_json(config), .rb_map_json(bundle))),
+    file.path(dir, "index.html"),
+    useBytes = TRUE
+  )
+  files <- list.files(dir, recursive = TRUE, full.names = TRUE)
+  invisible(structure(dir, tiles = n_tiles, bytes = sum(file.size(files))))
+}
+
+# A bundle's rules of fit: the defaults where `fit` leaves one out, each checked
+.rb_map_bundle_fit <- function(fit) {
+  d <- list(probs = c(0.02, 0.98), n = 25, nodata = 0, slope = list(k = 2, p = 0.9, min = 0.3, max = 1))
+  if (!is.list(fit) || (length(fit) && is.null(names(fit))) || length(setdiff(names(fit), names(d))) ||
+        (!is.null(fit$slope) && (!is.list(fit$slope) || length(setdiff(names(fit$slope), names(d$slope)))))) {
+    stop("`fit` is a list of any of probs, n, nodata and slope (a list of any of k, p, min and max).", call. = FALSE)
+  }
+  if ("slope" %in% names(fit)) {
+    fit$slope <- utils::modifyList(d$slope, fit$slope)
+  }
+  v <- utils::modifyList(d, fit)
+  num <- function(x, n = 1) is.numeric(x) && length(x) == n && !anyNA(x)
+  s <- v$slope
+  ok <- c(
+    probs = num(v$probs, 2) && v$probs[1] >= 0 && v$probs[1] < v$probs[2] && v$probs[2] <= 1,
+    n = num(v$n) && v$n >= 2 && v$n == round(v$n),
+    nodata = is.null(v$nodata) || num(v$nodata),
+    slope = num(s$k) && s$k > 0 && num(s$p) && s$p > 0 && s$p < 1 && num(s$min) && num(s$max) && s$min >= 0 &&
+      s$min <= s$max
+  )
+  if (!all(ok)) {
+    stop(
+      sprintf(
+        "`fit`: %s out of range (probs two rising numbers from 0 to 1; n a whole number of 2 or more; nodata a number or NULL; slope's k above 0, p between 0 and 1, min and max from 0 with min no more than max).",
+        paste(names(ok)[!ok], collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  v$probs <- as.list(v$probs)
+  v$n <- as.integer(v$n)
+  v
+}
+
+# A source's tiles inside `bounds` (west, south, east, north) from zoom z0 to z1, each a script handing its bytes in
+# base64 to RB_BUNDLE(): tiles/<key>/<z>/<x>/<y>.js. Its count
+.rb_map_bundle_tiles <- function(tiles, dir, key, z0, z1, bounds) {
+  col <- function(lon, z) min(2^z - 1, max(0, floor((lon + 180) / 360 * 2^z)))
+  row <- function(lat, z) {
+    r <- max(-85.0511, min(85.0511, lat)) * pi / 180
+    min(2^z - 1, max(0, floor((1 - log(tan(r) + 1 / cos(r)) / pi) / 2 * 2^z)))
+  }
+  n <- 0L
+  for (z in seq(z0, z1)) {
+    for (x in seq(col(bounds[1], z), col(bounds[3], z))) {
+      made <- FALSE
+      for (y in seq(row(bounds[4], z), row(bounds[2], z))) {
+        t <- tiles(z, x, y)
+        if (is.null(t) || !length(t)) {
+          next
+        }
+        f <- file.path(dir, "tiles", key, z, x, paste0(y, ".js"))
+        if (!made) {
+          dir.create(dirname(f), recursive = TRUE, showWarnings = FALSE)
+          made <- TRUE
+        }
+        writeLines(
+          sprintf('RB_BUNDLE("tiles/%s/%d/%d/%d","%s");', key, z, x, y, gsub("\n", "", jsonlite::base64_enc(t), fixed = TRUE)),
+          f
+        )
+        n <- n + 1L
+      }
+    }
+  }
+  n
+}
+
 # The temporary tables of the map served on a port, dropped when it stops or is replaced, unless a map on another
 # port uses them; a map shown again makes them again (rb_map_tiles_table())
 .rb_map_drop <- function(port) {
@@ -1107,6 +1374,70 @@ rb_map_tiles_table <- function(
   .rb_hold(tile)
 }
 
+# A layer's state: controls whose values its style reads as MapLibre's global state, `<id>_<name>`; each checked, and
+# each read by the style, so a control that changes nothing is not offered
+.rb_map_state <- function(state, id, kind, style) {
+  if (kind == "grid") {
+    stop("`state` is for a vector, geojson, dem or contour layer: a grid is drawn by the page.", call. = FALSE)
+  }
+  shape <- "`state` is a list of controls, each a list with `id`, `label`, and `options` (each a `value` and a `label`) or a `default` TRUE or FALSE."
+  if (!is.list(state) || !length(state) || !all(vapply(state, is.list, logical(1)))) {
+    stop(shape, call. = FALSE)
+  }
+  # the names the page's address gives a layer's own controls
+  own <- c("by", "method", "dir", "alt", "ex", "op", "shadow", "light", "pal", "lo", "hi", "scale", "mode", "cut",
+           "cutas", "cop", "auto")
+  scalar <- function(v) length(v) == 1 && !is.na(v) && (is.character(v) || is.numeric(v) || is.logical(v))
+  read <- as.character(jsonlite::toJSON(style, auto_unbox = TRUE))
+  state <- lapply(state, function(s) {
+    if (!is.character(s$id) || length(s$id) != 1 || !grepl("^[a-z][a-z0-9]*$", s$id)) {
+      stop("A state's `id` is lower-case letters and digits, starting with a letter.", call. = FALSE)
+    }
+    if (s$id %in% own) {
+      stop(sprintf("A state's `id` \"%s\" is a name the page's address uses for a layer's own controls.", s$id),
+           call. = FALSE)
+    }
+    key <- paste0(id, "_", s$id)
+    if (!grepl(sprintf("[\"global-state\",\"%s\"]", key), read, fixed = TRUE)) {
+      stop(sprintf("The state \"%s\" is read by none of the layer's styles: read it as list(\"global-state\", \"%s\").",
+                   s$id, key), call. = FALSE)
+    }
+    if (is.null(s$label)) {
+      s$label <- s$id
+    }
+    if (is.null(s$options)) {
+      if (!isTRUE(s$default) && !isFALSE(s$default)) {
+        stop(shape, call. = FALSE)
+      }
+      return(s)
+    }
+    if (!is.list(s$options) || !length(s$options) ||
+          !all(vapply(s$options, function(o) is.list(o) && scalar(o$value), logical(1)))) {
+      stop(shape, call. = FALSE)
+    }
+    values <- vapply(s$options, function(o) as.character(o$value), "")
+    if (anyDuplicated(values)) {
+      stop(sprintf("The options of the state \"%s\" need distinct values.", s$id), call. = FALSE)
+    }
+    if (is.null(s$default)) {
+      s$default <- s$options[[1]]$value
+    } else if (!scalar(s$default) || !as.character(s$default) %in% values) {
+      stop(sprintf("The `default` of the state \"%s\" is one of its options' values.", s$id), call. = FALSE)
+    }
+    s$options <- lapply(s$options, function(o) {
+      if (is.null(o$label)) {
+        o$label <- as.character(o$value)
+      }
+      o
+    })
+    s
+  })
+  if (anyDuplicated(vapply(state, `[[`, "", "id"))) {
+    stop("A layer's state ids are used once each.", call. = FALSE)
+  }
+  state
+}
+
 # A dem layer's relief controls: MapLibre's hillshade defaults for what is not given, each value checked
 .rb_map_shade <- function(shade, kind, style) {
   if (kind != "dem" || !any(vapply(style, function(s) identical(s$type, "hillshade"), logical(1)))) {
@@ -1230,7 +1561,8 @@ rb_map_tiles_table <- function(
 #'   south, and `tile_data`) and a `metadata` table of `name` and `value`.
 #' @return A function `function(z, x, y)` (`y` from the north, as the page asks) returning a tile's bytes, or `NULL`
 #'   where the file has none; with the file's `format`, `bounds`, `minzoom`, `maxzoom`, `encoding` and `tile_size` as
-#'   attributes where its metadata give them, which [rb_map_layer()] takes for a dem layer.
+#'   attributes where its metadata give them, which [rb_map_layer()] takes for a dem layer, and `source`, the file's
+#'   path, by which [rb_map_bundle()] writes the tiles of layers on one file once.
 #' @seealso [rb_map_layer()]
 #' @export
 #' @examples
@@ -1275,7 +1607,8 @@ rb_map_tiles_mbtiles <- function(file) {
     tile_size = int(m$tile_size),
     bounds = if (!is.null(m$bounds)) as.numeric(strsplit(m$bounds, ",", fixed = TRUE)[[1]]),
     minzoom = int(m$minzoom),
-    maxzoom = int(m$maxzoom)
+    maxzoom = int(m$maxzoom),
+    source = normalizePath(file)
   )
 }
 
@@ -2240,8 +2573,18 @@ format.rb_map <- function(x, ...) {
 
 # The server -----------------------------------------------------------------------------------------------------------
 
-# The app behind rb_map_serve(), a list with `call(req)` for httpuv: its routes in the header of this file
-.rb_map_app <- function(map) {
+.rb_map_json <- function(x) {
+  as.character(jsonlite::toJSON(
+    x,
+    auto_unbox = TRUE,
+    null = "null",
+    na = "null",
+    digits = NA
+  ))
+}
+
+# The page with its config, and a bundle's own (rb_map_bundle()) or none; "</" escaped, so neither can close its tag
+.rb_map_page <- function(config, bundle = "null") {
   page <- paste(
     readLines(
       system.file("map", "index.html", package = "ramb"),
@@ -2250,28 +2593,15 @@ format.rb_map <- function(x, ...) {
     ),
     collapse = "\n"
   )
-  json <- function(x) {
-    as.character(jsonlite::toJSON(
-      x,
-      auto_unbox = TRUE,
-      null = "null",
-      na = "null",
-      digits = NA
-    ))
-  }
-  config <- json(map$config)
-  # "</" escaped, so the config cannot close its script tag
-  page <- sub(
-    "__CONFIG__",
-    gsub("</", "<\\/", config, fixed = TRUE),
-    page,
-    fixed = TRUE
-  )
-  layers <- map$layers
-  # a vector layer's tiles carry the server's start in their address, so a server started on other data on the same
-  # port is not hidden by the browser's cache (a grid carries its meta's `v`)
+  page <- sub("__CONFIG__", gsub("</", "<\\/", config, fixed = TRUE), page, fixed = TRUE)
+  sub("__BUNDLE__", gsub("</", "<\\/", bundle, fixed = TRUE), page, fixed = TRUE)
+}
+
+# Each layer's meta. A vector layer's tiles carry the server's start in their address, so a server started on other
+# data on the same port is not hidden by the browser's cache (a grid carries its meta's `v`)
+.rb_map_metas <- function(layers) {
   started <- format(as.numeric(Sys.time()), digits = 15)
-  metas <- lapply(layers, function(l) {
+  lapply(layers, function(l) {
     switch(
       l$config$kind,
       grid = if (is.function(l$meta)) l$meta() else l$meta,
@@ -2288,26 +2618,41 @@ format.rb_map <- function(x, ...) {
       NULL
     )
   })
+}
+
+# A geojson layer's data as GeoJSON text
+.rb_map_geojson <- function(l) {
+  d <- if (is.function(l$data)) l$data() else l$data
+  if (inherits(d, "sf")) {
+    f <- tempfile(fileext = ".geojson")
+    on.exit(unlink(f))
+    sf::st_write(
+      d,
+      f,
+      driver = "GeoJSON",
+      quiet = TRUE,
+      layer_options = "COORDINATE_PRECISION=6"
+    )
+    d <- paste(
+      readLines(f, warn = FALSE, encoding = "UTF-8"),
+      collapse = "\n"
+    )
+  }
+  d
+}
+
+# The app behind rb_map_serve(), a list with `call(req)` for httpuv: its routes in the header of this file
+.rb_map_app <- function(map) {
+  json <- .rb_map_json
+  config <- json(map$config)
+  page <- .rb_map_page(config)
+  layers <- map$layers
+  metas <- .rb_map_metas(layers)
   geojson <- lapply(layers, function(l) {
     if (l$config$kind != "geojson") {
       return(NULL)
     }
-    d <- if (is.function(l$data)) l$data() else l$data
-    if (inherits(d, "sf")) {
-      f <- tempfile(fileext = ".geojson")
-      sf::st_write(
-        d,
-        f,
-        driver = "GeoJSON",
-        quiet = TRUE,
-        layer_options = "COORDINATE_PRECISION=6"
-      )
-      d <- paste(
-        readLines(f, warn = FALSE, encoding = "UTF-8"),
-        collapse = "\n"
-      )
-    }
-    d
+    .rb_map_geojson(l)
   })
   meta <- json(list(
     engine = .rb_map_engine,

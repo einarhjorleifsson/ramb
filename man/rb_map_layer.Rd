@@ -30,7 +30,8 @@ rb_map_layer(
   bounds = NULL,
   shade = NULL,
   colour = NULL,
-  contours = NULL
+  contours = NULL,
+  state = NULL
 )
 }
 \arguments{
@@ -126,6 +127,14 @@ colour's \code{fit} returning a list with the \code{quantiles} of the values in 
 \code{TRUE} by default; \verb{<id>_auto} in the address): about a dozen levels at round values near the view's quantiles,
 so the lines fall where the area is, drawn at a step of 1, 2 or 5 times a power of ten that makes some 40 of the
 view's range; unticked, the \code{thresholds} and the style's filters.}
+
+\item{state}{For a vector, geojson, dem or contour layer: values in the reader's hands that its \code{style} reads, in
+a filter, a paint or a layout property, as \code{list("global-state", "<id>_<name>")} (MapLibre's global state), such
+as whether a style is drawn, its colour, or a shift of the zoom it starts at. A list of controls, each with \code{id}
+(\verb{<name>} above: lower-case letters and digits) and \code{label}, and either \code{options} (a list of \code{value}, a single
+number, text or \code{TRUE}/\code{FALSE}, and \code{label}), a list to choose from, with \code{default} one of the values (the first
+when not given); or no \code{options} and \code{default} \code{TRUE} or \code{FALSE}, a checkbox. Each applies as it changes, nothing
+fetched again, and goes into the page's address as \verb{<id>_<name>}. Every one must be read by the style.}
 }
 \value{
 An \code{rb_map_layer}, for \code{\link[=rb_map_group]{rb_map_group()}}.

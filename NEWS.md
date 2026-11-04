@@ -1,3 +1,28 @@
+# ramb 2026.11.04.2
+
+- `rb_map_bundle()` (new): a map written as a folder whose `index.html` opens with a double click, with no R and no
+  server: the page with the config, and beside it the layers' tiles and data as script files, which a page opened as
+  a file may load where it may not fetch them. It carries geojson layers' data and dem and contour layers' tiles, to a
+  `maxzoom` of the caller's, written once for layers on one file; grid and vector layers are left out, with a message.
+  A view's fit is made in the browser from the tiles in view, by the rules of its `fit` argument (the percentiles of
+  the floor and cap, the shading's intensity from the slope), where the server runs the layer's R function. Contours
+  in a bundle are made on the page's thread, from the bundle's tiles. Opened as a file in headless Chrome and Firefox,
+  the example's bundle and fishycode's bathymetry map draw with no error, the CARTO and Esri base maps included.
+- `rb_map_tiles_mbtiles()` gives its file's path as the attribute `source`.
+- A contour layer's levels from the view are set once its tiles are in, the latest asked winning: levels changed
+  while tiles were loading kept the old levels' lines, as MapLibre finishes a loading tile with the old address (seen
+  in Firefox on a bundle: one level drawn of 13). The view's step now holds from one zoom out of the view's, so the
+  far zooms' tiles kept for zooming out are not remade at a step that is not theirs.
+- Built 2026-11-04 by Claude (AI), not yet checked by a person.
+
+# ramb 2026.11.04.1
+
+- A layer's state in the reader's hands (`rb_map_layer(state = )`, for a vector, geojson, dem or contour layer):
+  values its style reads as MapLibre's global state, `list("global-state", "<id>_<name>")`, in a filter, a paint or a
+  layout property, each set by a checkbox or a list in the page, applied as it changes with nothing fetched again, and
+  kept in the address as `<id>_<name>`. A control no style reads is refused. First used by fishycode's place names,
+  their areas, colour and the zoom they appear at (built 2026-11-04 by Claude (AI), not yet checked by a person).
+
 # ramb 2026.11.04
 
 Step 0 revised (fishycode plan 062, step 4; built 2026-11-04 by Claude (AI), not yet checked by a person).
