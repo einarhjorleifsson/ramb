@@ -17,7 +17,7 @@ rb_map_bundle(
 \arguments{
 \item{map}{An \code{\link[=rb_map]{rb_map()}}.}
 
-\item{dir}{The folder to write. If it already holds a bundle (\code{index.html}, \verb{tiles/}, \verb{data/} or \verb{grids/}),
+\item{dir}{The folder to write. If it already holds a bundle (\code{index.html}, \verb{tiles/}, \verb{data/}, \verb{grids/} or \verb{time/}),
 \code{overwrite} replaces those and leaves the rest of the folder as it is.}
 
 \item{maxzoom}{The deepest zoom of the tiles written (dem, contour and vector layers), at most each layer's own;
@@ -64,6 +64,7 @@ layers that read one file (the \code{source} of \code{\link[=rb_map_tiles_mbtile
 that zoom's tiles larger. A view's fit (a colour's, the contours' or a shading's \code{fit}) is made in the browser from
 the layer's tiles in view, by the rules in \code{fit}, not by the layer's R function, which needs a server;
 \item a vector layer from \code{\link[=rb_map_tiles_table]{rb_map_tiles_table()}}, the tiles that hold a feature, to the deepest zoom written;
+\item a time panel (\code{\link[=rb_map_time]{rb_map_time()}}), each vessel's spans, the whole and each month, a file each (\verb{time/});
 \item a grid layer named in \code{grids}, its rows: summed by cell at a few cell sizes and written in blocks of cells
 (\verb{grids/}), from which the page makes each tile, its filters applied and its cells summed in the browser, with the
 fields its server would send. Its cells hold one to two screen pixels (the filter \code{px} times that), from the

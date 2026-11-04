@@ -62,10 +62,25 @@
   .langs button + button { border-left: 0; }
   .langs button.on { background: var(--bar); border-color: var(--bar); color: #fff; }
   #menu, #close { display: none; }
+  /* the time panel (rb_map_time()): under the map, beside the sidebar */
+  :root { --timeh: clamp(230px, 36vh, 360px); }
+  body.has-time #map { bottom: var(--timeh); }
+  #timep { position: absolute; left: var(--side); right: 0; bottom: 0; height: var(--timeh); z-index: 2; background: #fff;
+           border-top: 1px solid var(--line); display: flex; flex-direction: column; }
+  #timep[hidden] { display: none; }
+  #timep .thead { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; padding: 5px 10px;
+                  border-bottom: 1px solid var(--line); }
+  #timep .thead label { color: var(--muted); display: inline-flex; align-items: center; gap: 5px; }
+  #timep .thead select { font: inherit; max-width: 18em; }
+  #t-cols { display: inline-flex; gap: 10px; }
+  #t-info { flex: 1; min-width: 14em; color: #222; font-variant-numeric: tabular-nums; }
+  #t-chart { flex: 1; min-height: 0; overflow: hidden; }
+  #t-lanes { display: block; width: 100%; flex: none; cursor: pointer; }
   @media (max-width: 700px) {
     #map { left: 0; }
     #side { width: min(330px, 90vw); transform: translateX(-105%); transition: transform .2s; }
     body.side-open #side { transform: none; }
+    #timep { left: 0; }
     #menu { display: block; position: absolute; top: 10px; left: 10px; z-index: 2; font-size: 18px; line-height: 1;
             padding: 6px 10px; background: #fff; border: 0; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
     #close { display: block; border: 0; background: none; font-size: 18px; cursor: pointer; }
@@ -74,6 +89,17 @@
 </head>
 <body>
 <div id="map"></div>
+<section id="timep" hidden>
+  <div class="thead">
+    <label><span data-t="tVessel"></span><select id="t-vessel"></select></label>
+    <label><span data-t="tSpan"></span><select id="t-span"></select></label>
+    <span id="t-cols"></span>
+    <button id="t-whole" data-t="tWholeBtn" data-tt="tWholeTip"></button>
+    <span id="t-info"></span>
+  </div>
+  <div id="t-chart" data-tt="tDrag"></div>
+  <canvas id="t-lanes" height="0"></canvas>
+</section>
 <button id="menu" data-tt="menu">☰</button>
 <aside id="side">
   <header><h1></h1>
@@ -112,7 +138,7 @@
 <script id="bundle" type="application/json">__BUNDLE__</script>
 <script>
 // The engine's version: rb_map_serve() sends its own in /meta, and a server older than the page is named as such
-const ENGINE = 2;
+const ENGINE = 3;
 // The engine's texts, in English; a config adds languages and the texts of its layers ({1}, {2} filled in here)
 const ENGINE_TEXTS = {
   menu: "Layers and filters", close: "Close", copyLink: "Copy a link to this view", copied: "link copied",
@@ -133,7 +159,11 @@ const ENGINE_TEXTS = {
   opacity: "Opacity", fit: "Fit to view", fitTip: "Floor and cap at the 2nd and 98th percentiles of the cells in view",
   chooseAll: "all", chooseAllTip: "Show every value", chooseBack: "The previous one", chooseNext: "The next one",
   legendTip: "The colour scale on a log axis, and below it the cells in view: values below the floor and above the cap in the end bars",
-  yes: "yes", no: "no"
+  yes: "yes", no: "no",
+  tVessel: "Vessel", tSpan: "Span", tWholeBtn: "Whole span", tWholeTip: "Show the whole span; a double click on the chart does the same",
+  tWhole: "whole ({1})", tLoading: "loading the vessel's pings…", tFailed: "the pings did not come: {1}",
+  tWindow: "{1} to {2}{3} · {4} pings", tThinned: "1 in {1} drawn on the map", tNone: "no pings in this span",
+  tDrag: "Drag across the chart to choose a time; double click for the whole span"
 };
 let CONFIG;
 try { CONFIG = JSON.parse(document.getElementById("config").textContent); }
@@ -155,6 +185,10 @@ const G = LAYERS.find(l => l.kind === "grid");   // one grid layer at most, with
 const SOURCES = new Set(LAYERS.map(l => l.id));    // each layer's source is named by its id
 const DEM = new Set(LAYERS.filter(l => l.kind === "dem").map(l => l.id));   // elevations, drawn under a grid
 const CONTOUR = new Set(LAYERS.filter(l => l.kind === "contour").map(l => l.id));   // over them, under the labels
+// The time panel (rb_map_time()), if the map has one; its sources are the page's, kept over a change of base map
+const TP = CONFIG.time ?? null;
+let TS = null, TU = null, TW = null;   // the vessel's span as loaded, its chart, and the window [from, to] in seconds
+if (TP) for (const id of ["rb-time-line", "rb-time-pts", "rb-time-hover"]) SOURCES.add(id);
 // A bundle (rb_map_bundle()): the page opened as a file, with no server. Its meta is here; its tiles and data are script
 // files beside it, each handing its value to RB_BUNDLE(), since a page opened as a file may load a script where it may
 // not fetch(). Tiles go to MapLibre through the bundle:// protocol; layers on the same tiles share their folder
@@ -884,6 +918,7 @@ function applyLang(l) {
   for (const el of document.querySelectorAll("[data-tt]")) el.title = tr(el.dataset.tt);
   for (const b of document.querySelectorAll("[data-lang]")) b.classList.toggle("on", b.dataset.lang === LANG);
   for (const l of OTHER) countText(l);
+  if (TP && TU) timeLang();
   if (!tileError && G && map.getLayer(G.id)) $("status").textContent = zoomText();   // map.loaded() is false while tiles load
   popup?.remove();
   paint();
@@ -985,6 +1020,7 @@ Promise.all([BUNDLE ? BUNDLE.meta : fetch("/meta").then(r => r.json()), styleLoa
     paint();
   }
   for (const l of OTHER) addLayer(l, meta);
+  if (TP) timeSetup(q);
   const base = BASEMAPS.find(b => b.id === q.get("base"));
   if (base && base !== BASEMAPS[0]) { document.querySelector(`#bases input[value="${base.id}"]`).checked = true; setBase(base.id); }
   addressRead = true;
@@ -1034,6 +1070,12 @@ function addressNow() {
   }
   for (const l of OTHER) if (l.contours?.fit) put(`${l.id}_auto`, contourFollowing(l) ? "1" : "0", l.contours.auto === false ? "0" : "1");
   CHOOSE.forEach((f, i) => put(f.field, chosen(i)?.join(",") ?? "", ""));
+  if (TP && TS) {
+    const v = tVes(), t = TS.t;
+    put("tv", v.value, TP.vessels[0].value);
+    put("tspan", $("t-span").value, v.span);
+    if (TW && t.length && (TW[0] > t[0] || TW[1] < t[t.length - 1])) q.set("tw", `${Math.floor(TW[0])},${Math.ceil(TW[1])}`);
+  }
   put("base", document.querySelector("#bases input:checked")?.value, BASEMAPS[0].id);
   put("lang", LANG, LANGS.includes(CONFIG.language) ? CONFIG.language : LANGS.includes("en") ? "en" : LANGS[0]);
   const qs = q.toString().replace(/%2C/g, ",");
@@ -1340,6 +1382,313 @@ if (G) {
   });
   map.on("mouseenter", G.id, () => { map.getCanvas().style.cursor = "pointer"; });
   map.on("mouseleave", G.id, () => { map.getCanvas().style.cursor = ""; });
+}
+
+// The time panel (rb_map_time()) ---------------------------------------------------------------------------------------
+// One vessel's span held whole in the page: its columns over time in a chart (uPlot), its marks and lanes, and on the
+// map the window's track and pings. A drag across the chart sets the window, a double click shows the whole span; a
+// hover marks the ping on the map, a click on a ping of the window marks its time on the chart. The map's window is
+// drawn as new data each time: a filter on a big source re-tiles it (0.3 s on 150,000 pings, fishycode plan 064 step
+// 1) where new data of a day take 17 ms, so the window's pings are thinned to T_MAX, a marked one always kept.
+const T_MAX = 5000, T_GAP = 3600, LANE_H = 20;   // pings drawn at most; a silence that breaks the line (s); a lane's height
+const T_COLS = ["#2c5d87", "#d95f02", "#1b9e77", "#7570b3", "#e7298a", "#66a61e"];   // the page's blue, then Dark2
+const T_MARK = "#e31a1c", LANE_FILL = ["#d9dde1", "#c4c9ce"];
+const LANE_PAL = ["#b3cde3", "#ccebc5", "#fed9a6", "#decbe4", "#fbb4ae", "#ffffcc", "#e5d8bd", "#fddaec"];   // Pastel1
+const INFERNO9 = ["#040404", "#2D1243", "#611163", "#961474", "#C53270", "#EB5C4C", "#F69422", "#F8C952", "#FFFE9E"];
+const EMPTY = { type: "FeatureCollection", features: [] };
+let uplotLib = null, tSeq = 0, tFrame = 0, tPinned = null;   // tPinned: a ping clicked on the map, until the pointer moves
+// uPlot, pinned as MapLibre is, loaded only for a map with a time panel
+const loadUplot = () => uplotLib ??= new Promise((resolve, reject) => {
+  const c = document.createElement("link");
+  c.rel = "stylesheet"; c.href = "https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css";
+  document.head.append(c);
+  const s = document.createElement("script");
+  s.src = "https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.min.js";
+  s.onload = () => window.uPlot ? resolve(window.uPlot) : reject(new Error("uPlot"));
+  s.onerror = reject;
+  document.head.append(s);
+});
+// a time in seconds as the data hold it, in no zone
+const tTime = (s, sec = false) => Number.isFinite(s) ? new Date(s * 1000).toISOString().slice(0, sec ? 19 : 16).replace("T", " ") : "";
+const tNum = v => v == null ? "–" : (+(+v).toPrecision(4)).toLocaleString(loc());
+const tVes = () => TP.vessels.find(v => v.value === $("t-vessel").value) ?? TP.vessels[0];
+// the first index at or after a (after = true: the first after a) in the span's times, which are sorted
+function tFind(a, after = false) {
+  const t = TS.t;
+  let lo = 0, hi = t.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (after ? t[m] <= a : t[m] < a) lo = m + 1; else hi = m; }
+  return lo;
+}
+
+function timeSetup(q) {
+  document.body.classList.add("has-time");
+  $("timep").hidden = false;
+  tLayers();
+  tVessels();
+  const v0 = TP.vessels.find(v => v.value === q.get("tv")) ?? TP.vessels[0];
+  $("t-vessel").value = v0.value;
+  tSpans(v0, q.get("tspan"));
+  if (TP.cols.length > 1) {
+    TP.cols.forEach((c, i) => $("t-cols").insertAdjacentHTML("beforeend",
+      `<label><input type="checkbox" data-col="${i}" aria-label="${esc(tr(c.label))}"${i ? "" : " checked"}><span style="color:${T_COLS[i % T_COLS.length]}">${esc(tr(c.label))}</span></label>`));
+  }
+  $("t-vessel").addEventListener("change", () => { tSpans(tVes()); tLoad(); });
+  $("t-span").addEventListener("change", () => tLoad());
+  $("t-whole").addEventListener("click", () => tSetWindow(null));
+  $("t-cols").addEventListener("change", e => TU?.setSeries(+e.target.dataset.col + 1, { show: e.target.checked }));
+  $("t-lanes").style.height = `${TP.lanes.length * LANE_H}px`;
+  $("t-lanes").addEventListener("click", e => { const h = tLaneAt(e); if (h) tSetWindow(h.pad); });
+  $("t-lanes").addEventListener("mousemove", e => {
+    const h = tLaneAt(e);
+    $("t-lanes").title = h ? `${tr(h.lane.label)}: ${h.label ?? ""} ${tTime(h.t0)} to ${tTime(h.t1)}` : "";
+  });
+  new ResizeObserver(() => TU?.setSize({ width: $("t-chart").clientWidth, height: $("t-chart").clientHeight })).observe($("t-chart"));
+  // a click near a ping of the window (within 8 px: a ping is a small target) marks its time on the chart
+  map.on("click", e => {
+    if (!TU || !map.getLayer("rb-time-dot")) return;
+    const { x, y } = e.point, fs = map.queryRenderedFeatures([[x - 8, y - 8], [x + 8, y + 8]], { layers: ["rb-time-dot"] });
+    let i = null, best = Infinity;
+    for (const f of fs) {
+      const p = map.project(f.geometry.coordinates), d = (p.x - x) ** 2 + (p.y - y) ** 2;
+      if (d < best) { best = d; i = f.properties.i; }
+    }
+    if (i == null) return;
+    e.originalEvent.featureShown = true;
+    // the cursor on that very ping: at a coarse window several pings share a pixel, which the chart would snap among
+    const yv = TS.y[TP.cols[0].field][i];
+    tPinned = i;
+    TU.setCursor({ left: TU.valToPos(TS.t[i], "x"), top: yv == null ? 0 : TU.valToPos(yv, "y0") });
+  });
+  map.on("mouseenter", "rb-time-dot", () => { map.getCanvas().style.cursor = "pointer"; });
+  map.on("mouseleave", "rb-time-dot", () => { map.getCanvas().style.cursor = ""; });
+  const w = (q.get("tw") ?? "").split(",").map(Number);
+  tLoad(w.length === 2 && w.every(Number.isFinite) && w[0] < w[1] ? w : null);
+}
+// the vessels and spans to choose from, their counts in the page's language
+function tVessels() {
+  const v = $("t-vessel").value;
+  $("t-vessel").replaceChildren(...TP.vessels.map(x => new Option(`${x.value} (${x.n.toLocaleString(loc())})`, x.value)));
+  if (v) $("t-vessel").value = v;
+}
+function tSpans(v, want = null) {
+  const s = want ?? $("t-span").value;
+  $("t-span").replaceChildren(...v.spans.map(x => new Option(
+    x.value === "all" ? tr("tWhole", x.n.toLocaleString(loc())) : `${x.value} (${x.n.toLocaleString(loc())})`, x.value)));
+  $("t-span").value = v.spans.some(x => x.value === s) ? s : v.span;
+}
+function timeLang() { tVessels(); tSpans(tVes()); tInfo(); TU?.redraw(false, false); }
+
+// the window's track, its pings (coloured by the first column, a mark ringed) and the ping under the cursor, over every
+// other layer; the line drawn twice, dark under light, so it shows on any base map
+function tLayers() {
+  map.addSource("rb-time-line", { type: "geojson", data: EMPTY });
+  map.addSource("rb-time-pts", { type: "geojson", data: EMPTY });
+  map.addSource("rb-time-hover", { type: "geojson", data: EMPTY });
+  map.addLayer({ id: "rb-time-case", type: "line", source: "rb-time-line",
+                 paint: { "line-color": "#000", "line-width": 3.5, "line-opacity": 0.45 } });
+  map.addLayer({ id: "rb-time-line", type: "line", source: "rb-time-line",
+                 paint: { "line-color": "#fff", "line-width": 1.5, "line-opacity": 0.9 } });
+  map.addLayer({ id: "rb-time-dot", type: "circle", source: "rb-time-pts",
+                 paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 1.5, 12, 3.5],
+                          "circle-color": "#808080", "circle-stroke-color": "#fff",
+                          "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 9, 0, 11, 0.6] } });
+  map.addLayer({ id: "rb-time-mark", type: "circle", source: "rb-time-pts", filter: ["has", "mk"],
+                 paint: { "circle-radius": 7, "circle-opacity": 0, "circle-stroke-color": T_MARK, "circle-stroke-width": 2 } });
+  map.addLayer({ id: "rb-time-hover", type: "circle", source: "rb-time-hover",
+                 paint: { "circle-radius": 9, "circle-opacity": 0, "circle-stroke-color": "#000", "circle-stroke-width": 5 } });
+  map.addLayer({ id: "rb-time-hover-in", type: "circle", source: "rb-time-hover",
+                 paint: { "circle-radius": 9, "circle-opacity": 0, "circle-stroke-color": "#fff", "circle-stroke-width": 2.5 } });
+}
+
+// One vessel's span from the server, or from the bundle's file for it; a later choice wins over an earlier one
+async function tLoad(win = null) {
+  const v = tVes(), span = $("t-span").value, seq = ++tSeq;
+  $("t-info").textContent = tr("tLoading");
+  let d;
+  try {
+    d = BUNDLE ? await bundleLoad(`time/${TP.vessels.indexOf(v)}_${span}`)
+               : await fetch(`/time?v=${encodeURIComponent(v.value)}&span=${encodeURIComponent(span)}`)
+                   .then(async r => r.ok ? r.json() : Promise.reject(new Error(await r.text())));
+  } catch (err) {
+    if (seq === tSeq) $("t-info").textContent = tr("tFailed", err?.message ?? err);
+    return;
+  }
+  if (seq !== tSeq) return;
+  TS = d;
+  // each ping's mark: the label of the first mark column that holds it
+  TS.mk = new Array(d.t.length).fill(null);
+  for (const m of TP.marks) {
+    const k = d.marks?.[m.field];
+    if (k) k.i.forEach((i, j) => { TS.mk[i] ??= `${tr(m.label)}: ${k.v[j]}`; });
+  }
+  // the first column's colours, over its 1st to 99th percentile in the span
+  const y0 = d.y[TP.cols[0].field].filter(Number.isFinite).sort((a, b) => a - b);
+  TS.lo = y0[Math.floor(0.01 * (y0.length - 1))] ?? 0;
+  TS.hi = y0[Math.floor(0.99 * (y0.length - 1))] ?? 1;
+  if (!(TS.hi > TS.lo)) TS.hi = TS.lo + 1;
+  map.setPaintProperty("rb-time-dot", "circle-color", ["case", ["has", "v"],
+    ["interpolate", ["linear"], ["get", "v"], ...INFERNO9.flatMap((c, j) => [TS.lo + (TS.hi - TS.lo) * j / 8, c])], "#808080"]);
+  await tChart();
+  tSetWindow(win);
+}
+
+async function tChart() {
+  const uPlot = await loadUplot();
+  TU?.destroy();
+  TU = null;
+  const el = $("t-chart");
+  if (!TS.t.length) { $("t-info").textContent = tr("tNone"); return; }
+  // a silence of over an hour breaks the line, as the map's
+  const gaps = (u, sidx, i0, i1, nullGaps) => {
+    const t = u.data[0], g = [...nullGaps];
+    for (let i = i0; i < i1; i++) if (t[i + 1] - t[i] > T_GAP)
+      g.push([Math.round(u.valToPos(t[i], "x", true)) + 1, Math.round(u.valToPos(t[i + 1], "x", true))]);
+    return g;
+  };
+  const axis = { font: "12px system-ui", stroke: "#333", grid: { stroke: "#eceff2" }, ticks: { stroke: "#c8ccd0" } };
+  // the time axis on the data's own clock, ISO dates and 24-hour times: years, months, days, or times with the date
+  // where the day changes
+  const timeTicks = (u, splits, ax, space, incr) => splits.map((v, j) => {
+    const s = tTime(v, incr < 60), p = j ? tTime(splits[j - 1]) : "";
+    if (incr >= 365 * 86400) return s.slice(0, 4);
+    if (incr >= 28 * 86400) return s.slice(0, 7);
+    if (incr >= 86400) return j === 0 || p.slice(0, 4) !== s.slice(0, 4) ? `${s.slice(5, 10)}\n${s.slice(0, 4)}` : s.slice(5, 10);
+    return j === 0 || p.slice(0, 10) !== s.slice(0, 10) ? `${s.slice(11)}\n${s.slice(0, 10)}` : s.slice(11);
+  });
+  TU = new uPlot({
+    width: el.clientWidth, height: el.clientHeight,
+    tzDate: ts => uPlot.tzDate(new Date(ts * 1e3), "Etc/UTC"),
+    legend: { show: false },
+    cursor: { drag: { x: true, y: false }, points: { size: 8 }, dataIdx: (u, sidx, idx) => tPinned ?? idx },
+    scales: { x: { time: true } },
+    axes: [{ ...axis, values: timeTicks, size: 44, space: 70 },
+           { ...axis, scale: "y0", size: 64, stroke: T_COLS[0] },
+           ...(TP.cols.length > 1 ? [{ ...axis, scale: "y1", side: 1, size: 60, grid: { show: false }, stroke: T_COLS[1] }] : [])],
+    series: [{}, ...TP.cols.map((c, i) => ({
+      label: tr(c.label), scale: `y${i}`, stroke: T_COLS[i % T_COLS.length], width: 1.25, gaps, points: { show: false },
+      show: i === 0 || !!$("t-cols").querySelector(`[data-col="${i}"]`)?.checked
+    }))],
+    hooks: {
+      setScale: [(u, key) => { if (key === "x") tWindowFromChart(); }],
+      setCursor: [u => tHover(u.cursor.idx)],
+      draw: [u => { tDrawMarks(u); tDrawLanes(u); }]
+    }
+  }, [TS.t, ...TP.cols.map(c => TS.y[c.field])], el);
+  TU.over.addEventListener("mousemove", () => { tPinned = null; });
+}
+
+// The window: [from, to] in seconds, or null for the whole span. It is the chart's time axis, so a drag, a double click
+// and this all set it the same way
+function tSetWindow(w) {
+  if (!TU) return;
+  const t = TS.t;
+  TU.setScale("x", { min: w ? w[0] : t[0], max: w ? w[1] : t[t.length - 1] });
+}
+function tWindowFromChart() {
+  TW = [TU.scales.x.min, TU.scales.x.max];
+  cancelAnimationFrame(tFrame);
+  tFrame = requestAnimationFrame(tDrawWindow);
+}
+function tDrawWindow() {
+  if (!TS || !TW || !map.getSource("rb-time-line")) return;
+  const t = TS.t, i0 = tFind(TW[0]), i1 = tFind(TW[1], true), lines = [];
+  const n = i1 - i0, k = Math.max(1, Math.ceil(n / T_MAX)), v = TS.y[TP.cols[0].field], feats = [];
+  // the line thinned as the pings are (a long line is most of a window's time to draw), its ends at a silence kept
+  let cur = [], x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let i = i0; i < i1; i++) {
+    if (cur.length && t[i] - t[i - 1] > T_GAP) { if (cur.length > 1) lines.push(cur); cur = []; }
+    const x = TS.lon[i], y = TS.lat[i];
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    if (k === 1 || !cur.length || (i - i0) % k === 0 || i === i1 - 1 || t[i + 1] - t[i] > T_GAP) cur.push([x, y]);
+  }
+  if (cur.length > 1) lines.push(cur);
+  for (let i = i0; i < i1; i++) {
+    if ((i - i0) % k && !TS.mk[i]) continue;
+    const p = { i };
+    if (v[i] != null) p.v = v[i];
+    if (TS.mk[i]) p.mk = TS.mk[i];
+    feats.push({ type: "Feature", geometry: { type: "Point", coordinates: [TS.lon[i], TS.lat[i]] }, properties: p });
+  }
+  map.getSource("rb-time-line").setData({ type: "Feature", geometry: { type: "MultiLineString", coordinates: lines }, properties: {} });
+  map.getSource("rb-time-pts").setData({ type: "FeatureCollection", features: feats });
+  TS.n = n; TS.k = k;
+  tInfo();
+  if (n) map.fitBounds([[x0, y0], [x1, y1]], { padding: 40, maxZoom: 15, duration: 300 });
+  writeAddress();
+}
+// the window in words, or the ping under the cursor
+function tInfo(i = null) {
+  if (!TS || !TW || TS.n == null) return;
+  const lab = TP.time_label ? ` ${TP.time_label}` : "";
+  $("t-info").textContent = i == null
+    ? tr("tWindow", tTime(TW[0]), tTime(TW[1]), lab, TS.n.toLocaleString(loc())) + (TS.k > 1 ? ` · ${tr("tThinned", TS.k)}` : "")
+    : `${tTime(TS.t[i], true)}${lab} · ` + TP.cols.map(c => `${tr(c.label)} ${tNum(TS.y[c.field][i])}`).join(" · ") +
+      (TS.mk[i] ? ` · ${TS.mk[i]}` : "");
+}
+function tHover(i) {
+  const src = map.getSource("rb-time-hover");
+  if (!src || !TS) return;
+  if (i == null || i < 0 || i >= TS.t.length) { src.setData(EMPTY); tInfo(); return; }
+  src.setData({ type: "Feature", geometry: { type: "Point", coordinates: [TS.lon[i], TS.lat[i]] }, properties: {} });
+  tInfo(i);
+}
+// the marked pings as ticks along the chart's top
+function tDrawMarks(u) {
+  if (!TS || !TP.marks.length) return;
+  const c = u.ctx, { top } = u.bbox, h = 7 * devicePixelRatio, i0 = tFind(u.scales.x.min), i1 = tFind(u.scales.x.max, true);
+  c.save();
+  c.fillStyle = T_MARK;
+  let last = -9;
+  for (let i = i0; i < i1; i++) if (TS.mk[i]) {
+    const x = Math.round(u.valToPos(TS.t[i], "x", true));
+    if (x - last >= 2) { c.fillRect(x - devicePixelRatio, top, 2 * devicePixelRatio, h); last = x; }
+  }
+  c.restore();
+}
+// the lanes under the chart, on the chart's time axis: each interval a bar, its label inside where it fits
+function tDrawLanes(u) {
+  const cv = $("t-lanes"), L = TP.lanes;
+  if (!L.length || !TS) return;
+  const dpr = devicePixelRatio, w = cv.clientWidth, h = L.length * LANE_H;
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  const c = cv.getContext("2d");
+  c.scale(dpr, dpr);
+  c.font = "12px system-ui"; c.textBaseline = "middle";
+  const off = u.over.getBoundingClientRect().left - cv.getBoundingClientRect().left, pw = u.over.clientWidth;
+  const a = u.scales.x.min, b = u.scales.x.max;
+  L.forEach((lane, k) => {
+    const d = TS.lanes?.[lane.id], y = k * LANE_H;
+    c.fillStyle = "#5f6b76"; c.textAlign = "right";
+    c.fillText(tr(lane.label), off - 6, y + LANE_H / 2, off - 8);
+    if (!d) return;
+    // a value keeps its colour along the lane, in the order the values first come in the span
+    const col = new Map();
+    for (const v of d.label ?? []) if (v != null && !col.has(v)) col.set(v, LANE_PAL[col.size % LANE_PAL.length]);
+    for (let j = 0; j < d.t0.length; j++) {
+      if (d.t1[j] < a || d.t0[j] > b) continue;
+      const x0 = off + Math.max(0, u.valToPos(d.t0[j], "x")), x1 = off + Math.min(pw, u.valToPos(d.t1[j], "x"));
+      c.fillStyle = d.label?.[j] != null ? col.get(d.label[j]) : LANE_FILL[j % 2];
+      c.fillRect(x0, y + 3, Math.max(2, x1 - x0), LANE_H - 6);
+      if (x1 - x0 > 30 && d.label?.[j] != null) {
+        c.save(); c.beginPath(); c.rect(x0, y, x1 - x0, LANE_H); c.clip();
+        c.fillStyle = "#222"; c.textAlign = "left"; c.fillText(String(d.label[j]), x0 + 3, y + LANE_H / 2);
+        c.restore();
+      }
+    }
+  });
+}
+// the interval under the pointer in the lanes, with a window around it
+function tLaneAt(e) {
+  if (!TU || !TS) return null;
+  const r = $("t-lanes").getBoundingClientRect(), lane = TP.lanes[Math.floor((e.clientY - r.top) / LANE_H)];
+  const d = lane && TS.lanes?.[lane.id];
+  if (!d) return null;
+  const x = e.clientX - TU.over.getBoundingClientRect().left, t = TU.posToVal(x, "x"), tol = TU.posToVal(x + 3, "x") - t;
+  for (let j = 0; j < d.t0.length; j++) if (d.t0[j] - tol <= t && t <= d.t1[j] + tol) {
+    const pad = Math.max(60, (d.t1[j] - d.t0[j]) * 0.05);
+    return { lane, label: d.label?.[j], t0: d.t0[j], t1: d.t1[j], pad: [d.t0[j] - pad, d.t1[j] + pad] };
+  }
+  return null;
 }
 </script>
 </body>

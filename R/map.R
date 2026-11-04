@@ -12,8 +12,10 @@
 #   /tiles/<id>/{z}/{x}/{y}.png      a dem or contour layer's tile, an image of elevations (.webp for a WebP one)
 #   /data/<id>.geojson               a geojson layer's data
 #   /fit/<id>?bbox=w,s,e,n           a dem layer's floor and cap for the values in a box, from its colour's `fit`
+#   /time?v=<vessel>&span=<span>     the time panel's series of one vessel's span (rb_map_time()), as JSON; the vessel
+#                                    and the span are checked against the panel's before R sees them
 
-.rb_map_engine <- 2L # the page's ENGINE: changed together
+.rb_map_engine <- 3L # the page's ENGINE: changed together
 .rb_maps <- new.env(parent = emptyenv()) # the servers rb_map_serve() started, by port
 .rb_tiles <- new.env(parent = emptyenv())
 .rb_tiles$served <- list() # by port, the temporary tables (connection and name) of the map served there
@@ -437,10 +439,11 @@ rb_map_group <- function(id, title = id, layers, open = TRUE) {
 #' legend under it; base maps to choose from; the whole view in the page's address, so a link gives the same view;
 #' and on a phone the sidebar behind a menu button. [rb_map_serve()] serves it.
 #'
-#' Four whole maps on the example data are scripts in `system.file("examples", "map", package = "ramb")`: the Danish
+#' Five whole maps on the example data are scripts in `system.file("examples", "map", package = "ramb")`: the Danish
 #' pings by cell (`dansk_map.R`), the same with a cell size, a sample and the interpolation to choose in the page
-#' (`dansk_switches_map.R`), the Italian tracks' voyages by two rules (`cnr_map.R`), and iapesca's example vessel
-#' (`iapesca_map.R`, which needs iapesca).
+#' (`dansk_switches_map.R`), the Danish pings with a time panel under the map (`dansk_time_map.R`, [rb_map_time()]),
+#' the Italian tracks' voyages by two rules (`cnr_map.R`), and iapesca's example vessel (`iapesca_map.R`, which needs
+#' iapesca).
 #'
 #' @param ... [rb_map_group()]s.
 #' @param title The page's title: a key of `texts`, or the text itself.
@@ -987,6 +990,7 @@ rb_map_stop <- function(port = NULL) {
 #'   that zoom's tiles larger. A view's fit (a colour's, the contours' or a shading's `fit`) is made in the browser from
 #'   the layer's tiles in view, by the rules in `fit`, not by the layer's R function, which needs a server;
 #' * a vector layer from [rb_map_tiles_table()], the tiles that hold a feature, to the deepest zoom written;
+#' * a time panel ([rb_map_time()]), each vessel's spans, the whole and each month, a file each (`time/`);
 #' * a grid layer named in `grids`, its rows: summed by cell at a few cell sizes and written in blocks of cells
 #'   (`grids/`), from which the page makes each tile, its filters applied and its cells summed in the browser, with the
 #'   fields its server would send. Its cells hold one to two screen pixels (the filter `px` times that), from the
@@ -995,7 +999,7 @@ rb_map_stop <- function(port = NULL) {
 #' Another vector layer, or a grid layer not in `grids`, is left out, with a message: their tiles are made by a server.
 #'
 #' @param map An [rb_map()].
-#' @param dir The folder to write. If it already holds a bundle (`index.html`, `tiles/`, `data/` or `grids/`),
+#' @param dir The folder to write. If it already holds a bundle (`index.html`, `tiles/`, `data/`, `grids/` or `time/`),
 #'   `overwrite` replaces those and leaves the rest of the folder as it is.
 #' @param maxzoom The deepest zoom of the tiles written (dem, contour and vector layers), at most each layer's own;
 #'   `NULL` for each layer's own.
@@ -1063,7 +1067,7 @@ rb_map_bundle <- function(
   if (!is.list(grids) || (length(grids) && (is.null(names(grids)) || any(!nzchar(names(grids)))))) {
     stop("`grids` is a list of a grid layer's rows, by the layer's id.", call. = FALSE)
   }
-  parts <- file.path(dir, c("index.html", "tiles", "data", "grids"))
+  parts <- file.path(dir, c("index.html", "tiles", "data", "grids", "time"))
   if (any(file.exists(parts))) {
     if (!overwrite) {
       stop(sprintf("%s holds a bundle: `overwrite = TRUE` replaces it.", dir), call. = FALSE)
@@ -1160,6 +1164,27 @@ rb_map_bundle <- function(
     )
     for (i in on) {
       folder[[ids[i]]] <- ids[on[1]]
+    }
+  }
+
+  # the time panel's series (rb_map_time()): each vessel's spans, the whole and each month, a file each, named by the
+  # vessel's place in the panel's list
+  if (!is.null(map$time)) {
+    dir.create(file.path(dir, "time"), showWarnings = FALSE)
+    for (i in seq_along(map$time$config$vessels)) {
+      v <- map$time$config$vessels[[i]]
+      for (sp in v$spans) {
+        key <- sprintf("time/%d_%s", i - 1L, sp$value)
+        writeLines(
+          enc2utf8(sprintf(
+            'RB_BUNDLE("%s",%s);',
+            key,
+            .rb_map_json(map$time$series(v$value, sp$value))
+          )),
+          file.path(dir, paste0(key, ".js")),
+          useBytes = TRUE
+        )
+      }
     }
   }
 
@@ -1897,7 +1922,8 @@ rb_map_tiles_mbtiles <- function(file) {
 #'   the groups of the pings (`dplyr::group_by()`). Set by the call that starts the map.
 #' @param title,port The page's title, and where the map is served when printed: set by the call that starts it.
 #' @return An [rb_map()], with the layer added.
-#' @seealso [rb_map()] for a map of other layers, groups and languages.
+#' @seealso [rb_map_time()] for a panel of a vessel's pings over time under the map; [rb_map()] for a map of other
+#'   layers, groups and languages.
 #' @export
 #' @examples
 #' \donttest{
@@ -2310,6 +2336,480 @@ rb_map_track <- function(
   ))
 }
 
+#' A time panel under the map: one vessel's pings over time, linked to the map
+#'
+#' `rb_map_time()` adds a panel under a map from [rb_map_pings()] or [rb_map_track()], or starts a map with it, that
+#' shows one vessel's pings over time:
+#' * a column or several as lines (speed by default), the first shown and the others ticked on in the panel;
+#' * marks where a column says so (a flag), on the chart and on the map;
+#' * lanes of intervals under the chart (port calls, voyages, trips, records' windows), a click on one setting the
+#'   window to it.
+#'
+#' The panel and the map are linked. A drag across the chart sets the time window, and a double click goes back to
+#' the whole span. The map draws the window's track and pings, and fits to them. A hover on the chart marks that ping on
+#' the map, and a click on a ping of the window marks its time on the chart. The vessel, the span and the window go into
+#' the page's address.
+#'
+#' The page holds one vessel's span at a time: the whole series of a vessel with up to `span_max` pings, else one month
+#' (the latest first); its months can be chosen too. The window's track is drawn whole, its pings thinned to about
+#' 5,000 (every k-th, a marked one always), so the map stays quick.
+#'
+#' Times are shown as the data hold them, in no time zone, labelled by `time_label`.
+#'
+#' @inheritParams rb_map_pings
+#' @param col The numeric columns drawn over time, a name, a string or `c()` of them; the first shown.
+#' @param marks Columns that mark pings, as `col`: a logical column marks its `TRUE` pings, any other its values that
+#'   are not missing (such as a flag's label).
+#' @param lanes Intervals drawn as lanes under the chart: a named list (the names are the lanes' labels), each
+#'   * a column of the pings, as a string: its runs of one value (a trip, a voyage, a phase), missing values left out
+#'     and a run broken by a silence of over an hour;
+#'   * a table of intervals with the vessel column (`by`), and its start and end in `T_in` and `T_out` (port calls,
+#'     [rb_create_port_calls()]), `T1` and `T2` (voyages, [rb_create_voyages()]), `w_start` and `w_end` (records'
+#'     windows) or `start` and `end`;
+#'   * or `list(data = , start = , end = , label = )`, naming the columns, `label` a column that names each interval.
+#' @param span_max The most pings the page holds at once: a vessel with more is shown a month at a time.
+#' @param time_label The clock the times are on, shown beside them.
+#' @return An [rb_map()] with the time panel.
+#' @seealso [rb_map_pings()] and [rb_map_track()], the layers it pairs with; [rb_map_bundle()], which writes the
+#'   panel's series beside the page.
+#' @export
+#' @examples
+#' \donttest{
+#' d <- dplyr::filter(dplyr::collect(rb_read_example("dansk")), vessel_id %in% c("EX_1", "EX_12"))
+#' m <- d |>
+#'   rb_map_track(behaviour, time = "time_stamp", by = vessel_id) |>
+#'   rb_map_time(speed, lanes = list(behaviour = "behaviour"))
+#' format(m)
+#' # m  # printed at the console, the map opens with the panel under it
+#' }
+rb_map_time <- function(
+  x,
+  col = "speed",
+  marks = NULL,
+  lanes = NULL,
+  span_max = 150000,
+  time_label = "UTC",
+  data = NULL,
+  lon = NULL,
+  lat = NULL,
+  time = NULL,
+  by = NULL,
+  title = "Track",
+  port = 8790L
+) {
+  # as rb_map_pings(): the frames of a call that fails are released
+  .rb_scope()
+  s <- .rb_quick(
+    x,
+    data,
+    lon,
+    lat,
+    time,
+    rlang::enquo(by),
+    title,
+    port
+  )
+  ctx <- s$ctx_layer
+  if (!is.null(s$state$time)) {
+    stop("A map has one time panel.", call. = FALSE)
+  }
+  if (is.null(ctx$time)) {
+    stop(
+      "The time panel draws the pings over time: name their time column in `time`.",
+      call. = FALSE
+    )
+  }
+  # unnamed: the page's lists are arrays
+  col <- unname(.rb_track_cols(rlang::enquo(col), ctx$cols))
+  marks_q <- rlang::enquo(marks)
+  marks <- if (rlang::quo_is_null(marks_q)) {
+    character()
+  } else {
+    unname(.rb_track_cols(marks_q, ctx$cols))
+  }
+  .rb_quick_need(ctx, c(col, marks))
+  if (
+    !is.numeric(span_max) ||
+      length(span_max) != 1 ||
+      is.na(span_max) ||
+      span_max < 1
+  ) {
+    stop("`span_max` is a number of pings.", call. = FALSE)
+  }
+  if (
+    !is.character(time_label) || length(time_label) != 1 || is.na(time_label)
+  ) {
+    stop("`time_label` is a text.", call. = FALSE)
+  }
+  if (
+    !is.null(lanes) &&
+      (!is.list(lanes) || is.null(names(lanes)) || any(!nzchar(names(lanes))))
+  ) {
+    stop(
+      "`lanes` is a named list: a column's name, a table or a list(data = ) each.",
+      call. = FALSE
+    )
+  }
+  con <- ctx$con
+  q <- function(v) as.character(DBI::dbQuoteIdentifier(con, v))
+  types <- DBI::dbGetQuery(con, sprintf("DESCRIBE SELECT * FROM (%s)", ctx$src))
+  type_of <- function(cc) types$column_type[match(cc, types$column_name)]
+  is_num <- function(t) {
+    grepl("^(U?(TINY|SMALL|BIG|HUGE)?INT(EGER)?|FLOAT|DOUBLE|REAL|DECIMAL)", t)
+  }
+  is_time <- function(t) grepl("^(TIMESTAMP|DATE)", t)
+  not_num <- col[!is_num(type_of(col))]
+  if (length(not_num)) {
+    stop(
+      sprintf(
+        "`col` is numeric columns; %s is not.",
+        paste(not_num, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  if (!is_time(type_of(ctx$time))) {
+    stop(
+      sprintf("The time column, %s, is not a date-time.", ctx$time),
+      call. = FALSE
+    )
+  }
+  # a time as microseconds since 1970 on its own clock: a date at its midnight, a time with a zone as its instant
+  us <- function(v, t) {
+    if (startsWith(t, "DATE")) {
+      sprintf("epoch_us(CAST(%s AS TIMESTAMP))", v)
+    } else {
+      sprintf("epoch_us(%s)", v)
+    }
+  }
+  vessel <- if (is.null(ctx$by)) {
+    "'all'"
+  } else {
+    .rb_time_key(q(ctx$by), type_of(ctx$by))
+  }
+  mark_sql <- vapply(
+    seq_along(marks),
+    function(i) {
+      if (type_of(marks[i]) == "BOOLEAN") {
+        sprintf(
+          ", CASE WHEN %s THEN %s END AS rb_k%d",
+          q(marks[i]),
+          DBI::dbQuoteString(con, marks[i]),
+          i
+        )
+      } else {
+        sprintf(", CAST(%s AS VARCHAR) AS rb_k%d", q(marks[i]), i)
+      }
+    },
+    ""
+  )
+  nm <- .rb_name(con, "rb_time_")
+  create <- sprintf(
+    "CREATE TEMP TABLE %1$s AS
+     SELECT %2$s AS rb_v, %3$s / 1e6 AS rb_t, strftime(make_timestamp(%3$s), '%%Y-%%m') AS rb_m,
+            round(%4$s, 6) AS rb_lon, round(%5$s, 6) AS rb_lat %6$s %7$s
+     FROM (%8$s) WHERE %9$s IS NOT NULL AND %4$s IS NOT NULL AND %5$s IS NOT NULL
+     ORDER BY rb_v, rb_t",
+    nm,
+    vessel,
+    us(q(ctx$time), type_of(ctx$time)),
+    q(ctx$lon),
+    q(ctx$lat),
+    paste(
+      sprintf(
+        ", CAST(%s AS DOUBLE) AS rb_c%d",
+        vapply(col, q, ""),
+        seq_along(col)
+      ),
+      collapse = ""
+    ),
+    paste(mark_sql, collapse = ""),
+    ctx$src,
+    q(ctx$time)
+  )
+  # the lanes' intervals, each vessel's, in one table: the runs of a column, or a table's rows
+  lane_sql <- unlist(lapply(seq_along(lanes), function(k) {
+    .rb_time_lane(lanes[[k]], names(lanes)[k], k, ctx, vessel, us, type_of)
+  }))
+  nm_l <- if (length(lane_sql)) .rb_name(con, "rb_lanes_")
+  create_l <- if (length(lane_sql)) {
+    sprintf(
+      "CREATE TEMP TABLE %s AS %s",
+      nm_l,
+      paste(lane_sql, collapse = " UNION ALL ")
+    )
+  }
+  # a table dropped when its map was replaced on its port (rb_map_serve()) is made again
+  make <- function() {
+    DBI::dbExecute(con, create)
+    if (!is.null(create_l)) DBI::dbExecute(con, create_l)
+  }
+  make()
+  vs <- DBI::dbGetQuery(
+    con,
+    sprintf(
+      "SELECT rb_v AS v, count(*) AS n, min(rb_t) AS t0, max(rb_t) AS t1 FROM %s GROUP BY 1",
+      nm
+    )
+  )
+  if (!nrow(vs)) {
+    stop("No ping has a time and a position.", call. = FALSE)
+  }
+  # vessels in their order as numbers where every one is a number, else in natural order (EX_2 before EX_10)
+  num_v <- suppressWarnings(as.numeric(vs$v))
+  vs <- vs[if (anyNA(num_v)) order(.rb_natural_key(vs$v)) else order(num_v), ]
+  months <- DBI::dbGetQuery(
+    con,
+    sprintf(
+      "SELECT rb_v AS v, rb_m AS m, count(*) AS n FROM %s GROUP BY ALL ORDER BY 1, 2",
+      nm
+    )
+  )
+  fmt_n <- function(n) format(n, big.mark = ",", trim = TRUE)
+  vessels <- lapply(seq_len(nrow(vs)), function(j) {
+    mj <- months[months$v == vs$v[j], ]
+    whole <- vs$n[j] <= span_max
+    spans <- c(
+      if (whole) {
+        list(list(
+          value = "all",
+          label = sprintf("whole (%s)", fmt_n(vs$n[j])),
+          n = vs$n[j]
+        ))
+      },
+      lapply(seq_len(nrow(mj)), function(i) {
+        list(
+          value = mj$m[i],
+          label = sprintf("%s (%s)", mj$m[i], fmt_n(mj$n[i])),
+          n = mj$n[i]
+        )
+      })
+    )
+    list(
+      value = vs$v[j],
+      label = sprintf("%s (%s)", vs$v[j], fmt_n(vs$n[j])),
+      n = vs$n[j],
+      t0 = vs$t0[j],
+      t1 = vs$t1[j],
+      span = if (whole) "all" else mj$m[nrow(mj)],
+      spans = spans
+    )
+  })
+  series <- function(v, span) {
+    if (!DBI::dbExistsTable(con, nm)) {
+      make()
+    }
+    where <- sprintf(
+      "rb_v = %s%s",
+      DBI::dbQuoteString(con, v),
+      if (identical(span, "all")) {
+        ""
+      } else {
+        sprintf(" AND rb_m = %s", DBI::dbQuoteString(con, span))
+      }
+    )
+    r <- DBI::dbGetQuery(
+      con,
+      sprintf(
+        "SELECT rb_t, rb_lon, rb_lat%s%s FROM %s WHERE %s ORDER BY rb_t",
+        paste(sprintf(", rb_c%d", seq_along(col)), collapse = ""),
+        paste(sprintf(", rb_k%d", seq_along(marks)), collapse = ""),
+        nm,
+        where
+      )
+    )
+    # I() keeps a span of one ping an array in JSON
+    out <- list(
+      t = I(r$rb_t),
+      lon = I(r$rb_lon),
+      lat = I(r$rb_lat),
+      y = stats::setNames(
+        lapply(seq_along(col), function(i) {
+          I(signif(r[[paste0("rb_c", i)]], 6))
+        }),
+        col
+      ),
+      marks = stats::setNames(
+        lapply(seq_along(marks), function(i) {
+          k <- r[[paste0("rb_k", i)]]
+          w <- which(!is.na(k))
+          list(i = I(w - 1L), v = I(k[w]))
+        }),
+        marks
+      )
+    )
+    if (length(marks) == 0) {
+      out$marks <- stats::setNames(list(), character())
+    }
+    out$lanes <- stats::setNames(list(), character())
+    if (!is.null(nm_l) && nrow(r)) {
+      l <- DBI::dbGetQuery(
+        con,
+        sprintf(
+          "SELECT rb_lane, rb_t0, rb_t1, rb_label FROM %s WHERE rb_v = %s AND rb_t1 >= %s AND rb_t0 <= %s ORDER BY rb_lane, rb_t0",
+          nm_l,
+          DBI::dbQuoteString(con, v),
+          format(min(r$rb_t), digits = 15),
+          format(max(r$rb_t), digits = 15)
+        )
+      )
+      out$lanes <- stats::setNames(
+        lapply(seq_along(lanes), function(k) {
+          lk <- l[l$rb_lane == k, ]
+          list(t0 = I(lk$rb_t0), t1 = I(lk$rb_t1), label = I(lk$rb_label))
+        }),
+        as.character(seq_along(lanes))
+      )
+    }
+    out
+  }
+  s$state$time <- list(
+    config = list(
+      by = ctx$by,
+      time_label = time_label,
+      span_max = span_max,
+      cols = lapply(col, function(cc) list(field = cc, label = cc)),
+      marks = lapply(marks, function(cc) list(field = cc, label = cc)),
+      lanes = lapply(seq_along(lanes), function(k) {
+        list(id = as.character(k), label = names(lanes)[k])
+      }),
+      vessels = vessels
+    ),
+    series = series,
+    tables = c(
+      list(list(con = con, name = nm)),
+      if (!is.null(nm_l)) list(list(con = con, name = nm_l))
+    )
+  )
+  .rb_hold(.rb_quick_map(s))
+}
+
+# A text whose runs of digits are padded with zeros, so it sorts in natural order: EX_2 before EX_10
+.rb_natural_key <- function(x) {
+  m <- gregexpr("[0-9]+", x)
+  regmatches(x, m) <- lapply(regmatches(x, m), function(d) formatC(d, width = 20, flag = "0"))
+  x
+}
+
+# A vessel's key as text, the same from the pings and from a lane's table: a whole number written without decimals,
+# whether it is stored as an integer or a double
+.rb_time_key <- function(v, type) {
+  if (grepl("^(FLOAT|DOUBLE|REAL|DECIMAL)", type)) {
+    sprintf(
+      "CASE WHEN %1$s = trunc(%1$s) THEN CAST(CAST(%1$s AS HUGEINT) AS VARCHAR) ELSE CAST(%1$s AS VARCHAR) END",
+      v
+    )
+  } else {
+    sprintf("CAST(%s AS VARCHAR)", v)
+  }
+}
+
+# One lane's intervals as SQL: rb_v, rb_lane (its number), rb_t0 and rb_t1 (seconds on the pings' clock), rb_label
+.rb_time_lane <- function(lane, name, k, ctx, vessel, us, type_of) {
+  con <- ctx$con
+  q <- function(v) as.character(DBI::dbQuoteIdentifier(con, v))
+  if (is.character(lane)) {
+    if (length(lane) != 1 || !lane %in% ctx$cols) {
+      stop(
+        sprintf(
+          "Lane %s: no column %s in the pings.",
+          name,
+          paste(lane, collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
+    # the runs of one value, each vessel's in time order, broken by a silence of over an hour as the page's line is
+    return(sprintf(
+      "(WITH s AS (SELECT %1$s AS rb_v, %2$s / 1e6 AS t, CAST(%3$s AS VARCHAR) AS val FROM (%4$s) WHERE %5$s IS NOT NULL),
+             w AS (SELECT *, CASE WHEN val IS DISTINCT FROM lag(val) OVER o OR t - lag(t) OVER o > 3600 THEN 1 ELSE 0 END AS chg
+                   FROM s WINDOW o AS (PARTITION BY rb_v ORDER BY t)),
+             g AS (SELECT *, sum(chg) OVER (PARTITION BY rb_v ORDER BY t ROWS UNBOUNDED PRECEDING) AS run FROM w)
+        SELECT rb_v, %6$d AS rb_lane, min(t) AS rb_t0, max(t) AS rb_t1, any_value(val) AS rb_label
+        FROM g WHERE val IS NOT NULL GROUP BY rb_v, run)",
+      vessel,
+      us(q(ctx$time), type_of(ctx$time)),
+      q(lane),
+      ctx$src,
+      q(ctx$time),
+      k
+    ))
+  }
+  spec <- if (is.data.frame(lane) || inherits(lane, "tbl_lazy")) {
+    list(data = lane)
+  } else {
+    lane
+  }
+  if (!is.list(spec) || is.null(spec$data)) {
+    stop(
+      sprintf(
+        "Lane %s: a column's name, a table, or list(data = , start = , end = ).",
+        name
+      ),
+      call. = FALSE
+    )
+  }
+  x <- dplyr::ungroup(.rb_as_lazy(spec$data, con))
+  cols <- colnames(x)
+  pairs <- list(
+    c("T_in", "T_out"),
+    c("T1", "T2"),
+    c("w_start", "w_end"),
+    c("start", "end")
+  )
+  se <- if (!is.null(spec$start) && !is.null(spec$end)) {
+    c(spec$start, spec$end)
+  } else {
+    hit <- Filter(function(p) all(p %in% cols), pairs)
+    if (!length(hit)) {
+      stop(
+        sprintf(
+          "Lane %s: no start and end; name them (`start`, `end`) or use T_in and T_out, T1 and T2, w_start and w_end, or start and end.",
+          name
+        ),
+        call. = FALSE
+      )
+    }
+    hit[[1]]
+  }
+  need <- c(se, ctx$by, spec$label)
+  if (length(setdiff(need, cols))) {
+    stop(
+      sprintf(
+        "Lane %s: no column %s in its table.",
+        name,
+        paste(setdiff(need, cols), collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  src <- .rb_sql(x)
+  types <- DBI::dbGetQuery(con, sprintf("DESCRIBE SELECT * FROM (%s)", src))
+  ty <- function(cc) types$column_type[match(cc, types$column_name)]
+  if (!all(grepl("^(TIMESTAMP|DATE)", ty(se)))) {
+    stop(
+      sprintf("Lane %s: %s and %s are date-times.", name, se[1], se[2]),
+      call. = FALSE
+    )
+  }
+  sprintf(
+    "(SELECT %s AS rb_v, %d AS rb_lane, %s / 1e6 AS rb_t0, %s / 1e6 AS rb_t1, %s AS rb_label
+      FROM (%s) WHERE %s IS NOT NULL AND %s IS NOT NULL)",
+    if (is.null(ctx$by)) "'all'" else .rb_time_key(q(ctx$by), ty(ctx$by)),
+    k,
+    us(q(se[1]), ty(se[1])),
+    us(q(se[2]), ty(se[2])),
+    if (is.null(spec$label)) {
+      "CAST(NULL AS VARCHAR)"
+    } else {
+      sprintf("CAST(%s AS VARCHAR)", q(spec$label))
+    },
+    src,
+    q(se[1]),
+    q(se[2])
+  )
+}
+
 #' Show a map
 #'
 #' At an interactive console a map is served when printed ([rb_map_serve()], on the port its first layer function set,
@@ -2337,9 +2837,23 @@ format.rb_map <- function(x, ...) {
     function(l) sprintf("%s (%s)", l$id, l$kind),
     ""
   )
+  tp <- x$config$time
   c(
     sprintf("<rb_map> %s", .rb_or(x$config$title, "")),
-    sprintf("  layers: %s", paste(layers, collapse = ", "))
+    sprintf("  layers: %s", paste(layers, collapse = ", ")),
+    if (!is.null(tp)) {
+      sprintf(
+        "  time panel: %s over time, %d vessel%s%s",
+        paste(vapply(tp$cols, `[[`, "", "field"), collapse = ", "),
+        length(tp$vessels),
+        if (length(tp$vessels) == 1) "" else "s",
+        if (length(tp$lanes)) {
+          sprintf("; lanes: %s", paste(vapply(tp$lanes, `[[`, "", "label"), collapse = ", "))
+        } else {
+          ""
+        }
+      )
+    }
   )
 }
 
@@ -2712,14 +3226,16 @@ format.rb_map <- function(x, ...) {
 }
 
 # The map with the layer added over the others: the first view covers every layer's pings, on a dark base map
-.rb_quick_map <- function(s, layer, table) {
+.rb_quick_map <- function(s, layer = NULL, table = NULL) {
   state <- s$state
-  state$layer_fields[[layer$config$id]] <- intersect(
-    .rb_or(state[["choose_fields"]], character()),
-    s$ctx_layer$cols
-  )
-  state$layers <- c(state$layers, list(layer))
-  state$tables <- c(state$tables, list(table))
+  if (!is.null(layer)) {
+    state$layer_fields[[layer$config$id]] <- intersect(
+      .rb_or(state[["choose_fields"]], character()),
+      s$ctx_layer$cols
+    )
+    state$layers <- c(state$layers, list(layer))
+    state$tables <- c(state$tables, list(table))
+  }
   state$boxes <- c(state$boxes, list(s$ctx_layer$box))
   lon0 <- min(vapply(state$boxes, `[[`, 1, "lon0"))
   lon1 <- max(vapply(state$boxes, `[[`, 1, "lon1"))
@@ -2748,8 +3264,13 @@ format.rb_map <- function(x, ...) {
     },
     basemaps = bases[c(which(ids == "dark"), which(ids != "dark"))]
   )
+  # the time panel (rb_map_time()): its config for the page, its series for the server and its tables
+  if (!is.null(state$time)) {
+    m$config$time <- state$time$config
+    m$time <- state$time
+  }
   attr(m, "quick") <- state
-  attr(m, "tables") <- state$tables
+  attr(m, "tables") <- c(state$tables, state$time$tables)
   attr(m, "port") <- state$port
   m
 }
@@ -2901,6 +3422,14 @@ format.rb_map <- function(x, ...) {
     if (path == "/config.json") {
       return(reply(200L, config, "application/json; charset=utf-8"))
     }
+    if (path == "/time") {
+      return(.rb_map_time_reply(
+        map$time,
+        .rb_map_query(req$QUERY_STRING),
+        reply,
+        json
+      ))
+    }
     if (path == "/meta") {
       return(reply(
         200L,
@@ -3020,6 +3549,38 @@ format.rb_map <- function(x, ...) {
     }
     .rb_map_tile_reply(function() l$tiles(z, x, y, p), reply)
   })
+}
+
+# The time panel's series of one vessel's span, its vessel and span checked against the panel's first
+.rb_map_time_reply <- function(tp, qs, reply, json) {
+  if (is.null(tp)) {
+    return(reply(404L, "this map has no time panel"))
+  }
+  vs <- tp$config$vessels
+  i <- match(.rb_or(qs$v, NA_character_), vapply(vs, `[[`, "", "value"))
+  if (is.na(i)) {
+    return(reply(400L, "v is one of the panel's vessels"))
+  }
+  spans <- vapply(vs[[i]]$spans, `[[`, "", "value")
+  if (!.rb_or(qs$span, "") %in% spans) {
+    return(reply(
+      400L,
+      sprintf("span is one of %s", paste(spans, collapse = ", "))
+    ))
+  }
+  body <- tryCatch(
+    json(tp$series(vs[[i]]$value, qs$span)),
+    error = function(e) e
+  )
+  if (inherits(body, "error")) {
+    return(reply(500L, sub("\n.*", "", conditionMessage(body))))
+  }
+  reply(
+    200L,
+    body,
+    "application/json; charset=utf-8",
+    list(`Cache-Control` = "no-store")
+  )
 }
 
 # A tile, or the first line of why its function failed: the page shows the reason, where the map would stay blank

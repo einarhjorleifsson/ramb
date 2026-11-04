@@ -121,5 +121,6 @@ if (interactive()) {
 }
 }
 \seealso{
-\code{\link[=rb_map]{rb_map()}} for a map of other layers, groups and languages.
+\code{\link[=rb_map_time]{rb_map_time()}} for a panel of a vessel's pings over time under the map; \code{\link[=rb_map]{rb_map()}} for a map of other
+layers, groups and languages.
 }

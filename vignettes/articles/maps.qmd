@@ -57,6 +57,84 @@ them.
 A map printed replaces the one before it. The rest of this article builds
 maps layer by layer, for when the quick look is not enough.
 
+## Pings over time: a panel under the map
+
+[rb_map_time()](../reference/rb_map_time.html) adds a panel under the map
+that shows one vessel's pings over time: a column or several as lines
+(speed by default), marks where a column says so, and lanes of intervals.
+The panel and the map are linked:
+
+- drag across the chart to choose a time, and the map shows that window's
+  track and pings, and zooms to them; a double click, or *Whole span*,
+  shows the whole span again;
+- hover over the chart to see the ping on the map, and click a ping on the
+  map to find its time on the chart;
+- click an interval in a lane to set the window to it.
+
+Here the Danish pings are flagged by
+[rb_flag_ping_impossible()](../reference/rb_flag_ping_impossible.html),
+and the panel draws their speed and course, marks the flagged pings and
+has lanes for the labelled behaviour and gear:
+
+```{r}
+library(ramb)
+
+pings <- dplyr::collect(rb_read_example("dansk"))
+pings <- data.frame(
+  vid = pings$vessel_id,
+  time = pings$time_stamp,
+  lon = pings$lon,
+  lat = pings$lat,
+  speed = pings$speed,
+  course = pings$course,
+  gear = pings$gear,
+  behaviour = pings$behaviour
+)
+pings <- rb_flag_ping_impossible(pings, method = "clean")
+
+m <- pings |>
+  rb_map_track(behaviour, title = "Danish pings over time") |>
+  rb_map_time(
+    c(speed, course),
+    marks = ping_flag,
+    lanes = list(behaviour = "behaviour", gear = "gear")
+  )
+m
+```
+
+Printed at the console, the map opens in the Viewer pane (here, knitted,
+it prints what it holds). Choose a vessel above the chart. Its speed is
+drawn in blue on the left axis; tick *course* to add it, on its own scale
+on the right. A flagged ping is a red tick along the chart's top and a
+red ring on the map. The lanes under the chart are the runs of
+`behaviour` and `gear`, each value in its own colour, broken where the
+vessel falls silent for over an hour.
+
+Some things to know:
+
+- **The page holds one vessel's pings at a time:** the whole series of a
+  vessel with up to 150,000 pings (`span_max`), else a month, the latest
+  first. Its months can be chosen under *Span*.
+- **The map stays quick.** The window's track is drawn whole, and its
+  pings are thinned to about 5,000 (every second, third, ... ping; a
+  marked one always kept). The panel says when they are.
+- **Times are shown as stored,** in no time zone. `time_label` names the
+  clock beside them, UTC by default.
+- **Lanes can be tables of intervals:** port calls from
+  [rb_create_port_calls()](../reference/rb_create_port_calls.html),
+  voyages from [rb_create_voyages()](../reference/rb_create_voyages.html),
+  records' windows, or any table with the vessel column and a `start` and
+  an `end`:
+
+  ```{r}
+  #| eval: false
+  rb_map_time(pings, lanes = list(`port calls` = port_calls, voyages = voyages))
+  ```
+- **The vessel, the span and the window go into the address,** so a link
+  opens the same view, and [rb_map_bundle()](../reference/rb_map_bundle.html)
+  writes the panel's pings beside the page, so it works with no R and no
+  server.
+
 ## A first map
 
 A map is layers, in groups. Here is one layer, the harbours as polygons:
@@ -412,11 +490,13 @@ vapply(rb_map_basemaps(), `[[`, "", "id")
 
 ## More examples
 
-Four whole maps on the example data come with ramb as scripts:
+Five whole maps on the example data come with ramb as scripts:
 
 - the pings by cell (`dansk_map.R`);
 - the same with a cell size, a sample and an interpolation to choose in
   the page (`dansk_switches_map.R`);
+- the pings with a time panel under the map (`dansk_time_map.R`, the
+  example above);
 - the Italian tracks' voyages by two rules (`cnr_map.R`);
 - the vessel in iapesca's example data (`iapesca_map.R`, which needs the
   iapesca package).

@@ -62,10 +62,11 @@ legend under it; base maps to choose from; the whole view in the page's address,
 and on a phone the sidebar behind a menu button. \code{\link[=rb_map_serve]{rb_map_serve()}} serves it.
 }
 \details{
-Four whole maps on the example data are scripts in \code{system.file("examples", "map", package = "ramb")}: the Danish
+Five whole maps on the example data are scripts in \code{system.file("examples", "map", package = "ramb")}: the Danish
 pings by cell (\code{dansk_map.R}), the same with a cell size, a sample and the interpolation to choose in the page
-(\code{dansk_switches_map.R}), the Italian tracks' voyages by two rules (\code{cnr_map.R}), and iapesca's example vessel
-(\code{iapesca_map.R}, which needs iapesca).
+(\code{dansk_switches_map.R}), the Danish pings with a time panel under the map (\code{dansk_time_map.R}, \code{\link[=rb_map_time]{rb_map_time()}}),
+the Italian tracks' voyages by two rules (\code{cnr_map.R}), and iapesca's example vessel (\code{iapesca_map.R}, which needs
+iapesca).
 }
 \examples{
 harbours <- rb_map_layer(

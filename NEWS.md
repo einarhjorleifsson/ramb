@@ -1,3 +1,28 @@
+# ramb 2026.11.04.4
+
+- `rb_map_time()` (new): a time panel under the map, one vessel's pings over time linked to the map, after the vessel
+  overview of fishycode (plan 064, fishycode plan 047's step 3). A column or several as lines on their own scales,
+  marks where a column says so (a flag), and lanes of intervals: runs of a ping column, or a table of port calls,
+  voyages, records' windows or any start and end. A drag across the chart sets the time window, a double click the whole
+  span; the map draws the window's track and pings and fits to them; a hover marks the ping on the map, a click near a
+  ping of the window marks its time on the chart, and a click on a lane's interval sets the window to it. The vessel,
+  the span and the window go into the page's address. It pipes with `rb_map_pings()` and `rb_map_track()` either way
+  round, or starts a map of its own; one panel a map.
+- The page holds one vessel's span at a time: the whole series of a vessel with up to `span_max` pings (150,000), else
+  a month, the latest first. Its window is drawn as new data each time, its pings and line thinned to about 5,000 (a
+  marked ping always kept): on a vessel of 103,680 pings a window is drawn in 48-65 ms, where a filter on a source of
+  150,000 pings took 0.3 s. Times are shown as stored, in no zone, labelled by `time_label`.
+- The server's route `/time?v=&span=` gives a span's series as JSON, the vessel and span checked against the panel's
+  first; `rb_map_bundle()` writes each vessel's spans as script files (`time/`), so the panel works with no server.
+- The page's engine is version 3 (it asks the server for `/time`); uPlot 1.6.30 is loaded from jsdelivr only for a map
+  with a time panel. An example on `dansk`: `system.file("examples", "map", "dansk_time_map.R", package = "ramb")`.
+- A map's printed summary names its time panel (its columns, vessels and lanes). Vessels whose keys are not all
+  numbers are listed in natural order (EX_2 before EX_10).
+- The article "Maps in RStudio" has a section on the time panel, on `dansk`.
+- Built 2026-11-04 by Claude (AI), checked in a browser on `dansk`, not yet checked by a person. The tests pass (291
+  blocks in 23 files, 3 skipped as on CRAN); R CMD check: no error, the known `Boolean.h` warning, three notes that
+  were there before.
+
 # ramb 2026.11.04.3
 
 - `rb_map_bundle(grids = )`: a grid layer in a bundle, its filters working with no server. Its rows (a data frame or a

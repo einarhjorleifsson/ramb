@@ -135,6 +135,21 @@ test_that("the map viewer's builders leave the session as they found them", {
     ignore = "duckdb"
   )
   expect_session_kept(
+    rb_map_time(
+      d,
+      speed,
+      time = "time_stamp",
+      by = vessel_id,
+      lanes = list(b = "behaviour")
+    ),
+    "rb_map_time",
+    ignore = "duckdb"
+  )
+  expect_session_kept(
+    try(rb_map_time(d, nope, time = "time_stamp"), silent = TRUE),
+    "rb_map_time on error"
+  )
+  expect_session_kept(
     try(rb_map_pings(d, nope), silent = TRUE),
     "rb_map_pings on error"
   )
