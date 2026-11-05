@@ -1887,7 +1887,8 @@ rb_map_tiles_mbtiles <- function(file) {
 #' `c(speed, behaviour)`, are offered under "Colour by" in the page, the first shown. A point's radius is in metres,
 #' so it grows as the map zooms in, from 1 pixel to `radius_max` pixels.
 #'
-#' Track: each vessel's pings in time order, broken where they are more than `gap_h` hours apart. With a column, such
+#' Track: each vessel's pings joined in time order, one line however long the vessel falls silent; with `max_gap_s`,
+#' broken where two pings are more than that many seconds apart (`max_gap_s = 3600` at an hour). With a column, such
 #' as `fishing_flow`, it breaks where the value changes too, each run coloured by its value (as the points are) and
 #' ending at the next run's first fix, so the line stays joined. A second call adds a second track, by another column,
 #' each one turned on and off in the page: `pings |> rb_map_track(fishing_flow) |> rb_map_track(provider)`.
@@ -1912,7 +1913,10 @@ rb_map_tiles_mbtiles <- function(file) {
 #' @param radius,radius_max The point radius in metres, and its largest size in pixels.
 #' @param palette A palette of [grDevices::hcl.colors()] for a numeric column, light at its high end on the dark base
 #'   map.
-#' @param gap_h A silence of more than `gap_h` hours between a vessel's pings breaks its line; `Inf` for none.
+#' @param max_gap_s A silence between two of a vessel's pings longer than this many seconds breaks its line, as
+#'   `3600` for an hour; `Inf`, the default, for none, so no gap is hidden.
+#' @param gap_h Now `max_gap_s`, in seconds: the old name warns once a session and will be removed in the next
+#'   release.
 #' @param data Pings for this layer, in place of the map's.
 #' @param lon,lat,time The position and time columns: by default the map's, else `"lon"`, `"lat"` and `"time"`.
 #'   The track needs the time; a point's popup shows it first.
@@ -2118,7 +2122,7 @@ rb_map_pings <- function(
 rb_map_track <- function(
   x,
   col = NULL,
-  gap_h = 1,
+  max_gap_s = Inf,
   discrete = NULL,
   palette = "Inferno",
   data = NULL,
@@ -2128,10 +2132,16 @@ rb_map_track <- function(
   by = NULL,
   choose = NULL,
   title = "Track",
-  port = 8790L
+  port = 8790L,
+  gap_h = NULL
 ) {
   # as rb_map_pings(): the frames of a call that fails are released
   .rb_scope()
+  if (!is.null(gap_h)) {
+    .rb_renamed_arg("rb_map_track", "gap_h", "max_gap_s", "in seconds")
+    max_gap_s <- if (is.numeric(gap_h)) gap_h * 3600 else gap_h
+  }
+  .rb_check_gap(max_gap_s)
   s <- .rb_quick(
     x,
     data,
@@ -2212,12 +2222,8 @@ rb_map_track <- function(
   } else {
     paste("PARTITION BY", paste(q(keys), collapse = ", "))
   }
-  gap <- if (is.finite(gap_h)) {
-    format(gap_h * 3600, scientific = FALSE)
-  } else {
-    "'infinity'::DOUBLE"
-  }
-  # a line per vessel and stretch: a silence of more than gap_h hours starts a new one, and so does a change of any
+  gap <- .rb_gap_sql(max_gap_s)
+  # a line per vessel and stretch: a silence of more than max_gap_s starts a new one, and so does a change of any
   # column's value, so each run carries one value of each; a run ends at the next run's first fix, so the line stays
   # joined across a change
   .rb_extension(con, "spatial")
@@ -2277,15 +2283,23 @@ rb_map_track <- function(
       s$state,
       if (k == 1) paste("Track by", col) else "Track"
     ),
-    info = sprintf(
-      "%s pings joined in time order, broken where they are more than %s hours apart%s.",
-      if (is.null(by)) "The" else sprintf("Each %s's", by),
-      format(gap_h),
-      if (k == 0) {
-        ""
-      } else {
-        sprintf(", and coloured by %s", col)
-      }
+    info = paste0(
+      if (is.null(by)) "The pings" else sprintf("The pings of each %s", by),
+      " joined in time order",
+      if (is.finite(max_gap_s)) {
+        sprintf(
+          ", broken where two are more than %s apart",
+          .rb_duration_text(max_gap_s)
+        )
+      },
+      if (k > 0) {
+        sprintf(
+          "%s coloured by %s",
+          if (is.finite(max_gap_s)) ", and" else " and",
+          col
+        )
+      },
+      "."
     ),
     tiles = tiles,
     style = list(list(
@@ -2329,6 +2343,8 @@ rb_map_track <- function(
       )
     )
   )
+  # the first track's gap, which a time panel added after it takes by default
+  s$state$max_gap_s <- .rb_or(s$state$max_gap_s, max_gap_s)
   .rb_hold(.rb_quick_map(
     s,
     layer,
@@ -2362,11 +2378,14 @@ rb_map_track <- function(
 #'   are not missing (such as a flag's label).
 #' @param lanes Intervals drawn as lanes under the chart: a named list (the names are the lanes' labels), each
 #'   * a column of the pings, as a string: its runs of one value (a trip, a voyage, a phase), missing values left out
-#'     and a run broken by a silence of over an hour;
+#'     and a run broken by a silence longer than `max_gap_s`;
 #'   * a table of intervals with the vessel column (`by`), and its start and end in `T_in` and `T_out` (port calls,
 #'     [rb_create_port_calls()]), `T1` and `T2` (voyages, [rb_create_voyages()]), `w_start` and `w_end` (records'
 #'     windows) or `start` and `end`;
 #'   * or `list(data = , start = , end = , label = )`, naming the columns, `label` a column that names each interval.
+#' @param max_gap_s A silence between two pings longer than this many seconds breaks the panel's line, on the chart
+#'   and on the map, and a lane's run of one value. By default the track's ([rb_map_track()]'s `max_gap_s`) when the
+#'   map has a track already, else `Inf`: nothing broken, so no gap is hidden.
 #' @param span_max The most pings the page holds at once: a vessel with more is shown a month at a time.
 #' @param time_label The clock the times are on, shown beside them.
 #' @return An [rb_map()] with the time panel.
@@ -2387,6 +2406,7 @@ rb_map_time <- function(
   col = "speed",
   marks = NULL,
   lanes = NULL,
+  max_gap_s = NULL,
   span_max = 150000,
   time_label = "UTC",
   data = NULL,
@@ -2413,6 +2433,8 @@ rb_map_time <- function(
   if (!is.null(s$state$time)) {
     stop("A map has one time panel.", call. = FALSE)
   }
+  max_gap_s <- .rb_or(max_gap_s, .rb_or(s$state$max_gap_s, Inf))
+  .rb_check_gap(max_gap_s)
   if (is.null(ctx$time)) {
     stop(
       "The time panel draws the pings over time: name their time column in `time`.",
@@ -2529,7 +2551,16 @@ rb_map_time <- function(
   )
   # the lanes' intervals, each vessel's, in one table: the runs of a column, or a table's rows
   lane_sql <- unlist(lapply(seq_along(lanes), function(k) {
-    .rb_time_lane(lanes[[k]], names(lanes)[k], k, ctx, vessel, us, type_of)
+    .rb_time_lane(
+      lanes[[k]],
+      names(lanes)[k],
+      k,
+      ctx,
+      vessel,
+      us,
+      type_of,
+      max_gap_s
+    )
   }))
   nm_l <- if (length(lane_sql)) .rb_name(con, "rb_lanes_")
   create_l <- if (length(lane_sql)) {
@@ -2668,6 +2699,8 @@ rb_map_time <- function(
       by = ctx$by,
       time_label = time_label,
       span_max = span_max,
+      # none for Inf, which JSON cannot hold: the page breaks the line nowhere
+      max_gap_s = if (is.finite(max_gap_s)) max_gap_s,
       cols = lapply(col, function(cc) list(field = cc, label = cc)),
       marks = lapply(marks, function(cc) list(field = cc, label = cc)),
       lanes = lapply(seq_along(lanes), function(k) {
@@ -2682,6 +2715,47 @@ rb_map_time <- function(
     )
   )
   .rb_hold(.rb_quick_map(s))
+}
+
+# The gap that breaks a line, in seconds: a positive number, Inf for none
+.rb_check_gap <- function(max_gap_s) {
+  if (
+    !is.numeric(max_gap_s) ||
+      length(max_gap_s) != 1 ||
+      is.na(max_gap_s) ||
+      max_gap_s <= 0
+  ) {
+    stop(
+      "`max_gap_s` is a number of seconds, as 3600 for an hour, or Inf for no break.",
+      call. = FALSE
+    )
+  }
+  invisible(max_gap_s)
+}
+
+# The gap as an SQL number of seconds; Inf as DuckDB's infinity, which no silence exceeds
+.rb_gap_sql <- function(max_gap_s) {
+  if (is.finite(max_gap_s)) {
+    format(max_gap_s, scientific = FALSE)
+  } else {
+    "'infinity'::DOUBLE"
+  }
+}
+
+# A number of seconds in words for a page's text: whole hours, minutes or seconds where it is one, else hours
+.rb_duration_text <- function(s) {
+  unit <- function(n, word) {
+    sprintf("%s %s%s", format(n), word, if (n == 1) "" else "s")
+  }
+  if (s %% 3600 == 0) {
+    unit(s / 3600, "hour")
+  } else if (s >= 3600) {
+    unit(signif(s / 3600, 3), "hour")
+  } else if (s %% 60 == 0) {
+    unit(s / 60, "minute")
+  } else {
+    unit(signif(s, 3), "second")
+  }
 }
 
 # A text whose runs of digits are padded with zeros, so it sorts in natural order: EX_2 before EX_10
@@ -2705,7 +2779,7 @@ rb_map_time <- function(
 }
 
 # One lane's intervals as SQL: rb_v, rb_lane (its number), rb_t0 and rb_t1 (seconds on the pings' clock), rb_label
-.rb_time_lane <- function(lane, name, k, ctx, vessel, us, type_of) {
+.rb_time_lane <- function(lane, name, k, ctx, vessel, us, type_of, max_gap_s) {
   con <- ctx$con
   q <- function(v) as.character(DBI::dbQuoteIdentifier(con, v))
   if (is.character(lane)) {
@@ -2719,10 +2793,11 @@ rb_map_time <- function(
         call. = FALSE
       )
     }
-    # the runs of one value, each vessel's in time order, broken by a silence of over an hour as the page's line is
+    # the runs of one value, each vessel's in time order, broken by a silence longer than max_gap_s as the page's
+    # line is
     return(sprintf(
       "(WITH s AS (SELECT %1$s AS rb_v, %2$s / 1e6 AS t, CAST(%3$s AS VARCHAR) AS val FROM (%4$s) WHERE %5$s IS NOT NULL),
-             w AS (SELECT *, CASE WHEN val IS DISTINCT FROM lag(val) OVER o OR t - lag(t) OVER o > 3600 THEN 1 ELSE 0 END AS chg
+             w AS (SELECT *, CASE WHEN val IS DISTINCT FROM lag(val) OVER o OR t - lag(t) OVER o > %7$s THEN 1 ELSE 0 END AS chg
                    FROM s WINDOW o AS (PARTITION BY rb_v ORDER BY t)),
              g AS (SELECT *, sum(chg) OVER (PARTITION BY rb_v ORDER BY t ROWS UNBOUNDED PRECEDING) AS run FROM w)
         SELECT rb_v, %6$d AS rb_lane, min(t) AS rb_t0, max(t) AS rb_t1, any_value(val) AS rb_label
@@ -2732,7 +2807,8 @@ rb_map_time <- function(
       q(lane),
       ctx$src,
       q(ctx$time),
-      k
+      k,
+      .rb_gap_sql(max_gap_s)
     ))
   }
   spec <- if (is.data.frame(lane) || inherits(lane, "tbl_lazy")) {

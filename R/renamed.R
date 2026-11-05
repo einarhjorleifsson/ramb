@@ -24,6 +24,25 @@
   invisible(NULL)
 }
 
+# A renamed argument of a function that keeps its name, warned once a session as a renamed function is
+.rb_renamed_arg <- function(fun, old, new, also = NULL) {
+  key <- paste0(fun, "(", old, ")")
+  if (!isTRUE(.rb_warned[[key]])) {
+    assign(key, TRUE, envir = .rb_warned)
+    warning(
+      sprintf(
+        "`%s(%s = )` is now `%s = `%s. The old name still works but will be removed in the next release.",
+        fun,
+        old,
+        new,
+        if (is.null(also)) "" else paste0(", ", also)
+      ),
+      call. = FALSE
+    )
+  }
+  invisible(NULL)
+}
+
 # For tests: forget which old names have warned this session.
 .rb_reset_renamed <- function() rm(list = ls(.rb_warned), envir = .rb_warned)
 

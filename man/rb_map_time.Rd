@@ -9,6 +9,7 @@ rb_map_time(
   col = "speed",
   marks = NULL,
   lanes = NULL,
+  max_gap_s = NULL,
   span_max = 150000,
   time_label = "UTC",
   data = NULL,
@@ -32,12 +33,16 @@ are not missing (such as a flag's label).}
 \item{lanes}{Intervals drawn as lanes under the chart: a named list (the names are the lanes' labels), each
 \itemize{
 \item a column of the pings, as a string: its runs of one value (a trip, a voyage, a phase), missing values left out
-and a run broken by a silence of over an hour;
+and a run broken by a silence longer than \code{max_gap_s};
 \item a table of intervals with the vessel column (\code{by}), and its start and end in \code{T_in} and \code{T_out} (port calls,
 \code{\link[=rb_create_port_calls]{rb_create_port_calls()}}), \code{T1} and \code{T2} (voyages, \code{\link[=rb_create_voyages]{rb_create_voyages()}}), \code{w_start} and \code{w_end} (records'
 windows) or \code{start} and \code{end};
 \item or \code{list(data = , start = , end = , label = )}, naming the columns, \code{label} a column that names each interval.
 }}
+
+\item{max_gap_s}{A silence between two pings longer than this many seconds breaks the panel's line, on the chart
+and on the map, and a lane's run of one value. By default the track's (\code{\link[=rb_map_track]{rb_map_track()}}'s \code{max_gap_s}) when the
+map has a track already, else \code{Inf}: nothing broken, so no gap is hidden.}
 
 \item{span_max}{The most pings the page holds at once: a vessel with more is shown a month at a time.}
 

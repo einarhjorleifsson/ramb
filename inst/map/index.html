@@ -1397,7 +1397,8 @@ if (G) {
 // hover marks the ping on the map, a click on a ping of the window marks its time on the chart. The map's window is
 // drawn as new data each time: a filter on a big source re-tiles it (0.3 s on 150,000 pings, fishycode plan 064 step
 // 1) where new data of a day take 17 ms, so the window's pings are thinned to T_MAX, a marked one always kept.
-const T_MAX = 5000, T_GAP = 3600, LANE_H = 20;   // pings drawn at most; a silence that breaks the line (s); a lane's height
+// pings drawn at most; a silence that breaks the line (s; rb_map_time(max_gap_s = ), none by default); a lane's height
+const T_MAX = 5000, T_GAP = TP?.max_gap_s ?? Infinity, LANE_H = 20;
 const T_COLS = ["#2c5d87", "#d95f02", "#1b9e77", "#7570b3", "#e7298a", "#66a61e"];   // the page's blue, then Dark2
 const T_MARK = "#e31a1c", LANE_FILL = ["#d9dde1", "#c4c9ce"];
 const LANE_PAL = ["#b3cde3", "#ccebc5", "#fed9a6", "#decbe4", "#fbb4ae", "#ffffcc", "#e5d8bd", "#fddaec"];   // Pastel1
@@ -1546,7 +1547,7 @@ async function tChart() {
   TU = null;
   const el = $("t-chart");
   if (!TS.t.length) { $("t-info").textContent = tr("tNone"); return; }
-  // a silence of over an hour breaks the line, as the map's
+  // a silence longer than T_GAP breaks the line, as the map's and the lanes' runs
   const gaps = (u, sidx, i0, i1, nullGaps) => {
     const t = u.data[0], g = [...nullGaps];
     for (let i = i0; i < i1; i++) if (t[i + 1] - t[i] > T_GAP)

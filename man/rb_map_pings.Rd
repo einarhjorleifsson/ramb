@@ -26,7 +26,7 @@ rb_map_pings(
 rb_map_track(
   x,
   col = NULL,
-  gap_h = 1,
+  max_gap_s = Inf,
   discrete = NULL,
   palette = "Inferno",
   data = NULL,
@@ -36,7 +36,8 @@ rb_map_track(
   by = NULL,
   choose = NULL,
   title = "Track",
-  port = 8790L
+  port = 8790L,
+  gap_h = NULL
 )
 }
 \arguments{
@@ -70,7 +71,11 @@ the groups of the pings (\code{dplyr::group_by()}). Set by the call that starts 
 
 \item{title, port}{The page's title, and where the map is served when printed: set by the call that starts it.}
 
-\item{gap_h}{A silence of more than \code{gap_h} hours between a vessel's pings breaks its line; \code{Inf} for none.}
+\item{max_gap_s}{A silence between two of a vessel's pings longer than this many seconds breaks its line, as
+\code{3600} for an hour; \code{Inf}, the default, for none, so no gap is hidden.}
+
+\item{gap_h}{Now \code{max_gap_s}, in seconds: the old name warns once a session and will be removed in the next
+release.}
 }
 \value{
 An \code{\link[=rb_map]{rb_map()}}, with the layer added.
@@ -91,7 +96,8 @@ column, or with \code{discrete = TRUE}, takes a colour per value (the 12 most fr
 \code{c(speed, behaviour)}, are offered under "Colour by" in the page, the first shown. A point's radius is in metres,
 so it grows as the map zooms in, from 1 pixel to \code{radius_max} pixels.
 
-Track: each vessel's pings in time order, broken where they are more than \code{gap_h} hours apart. With a column, such
+Track: each vessel's pings joined in time order, one line however long the vessel falls silent; with \code{max_gap_s},
+broken where two pings are more than that many seconds apart (\code{max_gap_s = 3600} at an hour). With a column, such
 as \code{fishing_flow}, it breaks where the value changes too, each run coloured by its value (as the points are) and
 ending at the next run's first fix, so the line stays joined. A second call adds a second track, by another column,
 each one turned on and off in the page: \code{pings |> rb_map_track(fishing_flow) |> rb_map_track(provider)}.

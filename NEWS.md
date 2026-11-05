@@ -1,3 +1,16 @@
+# ramb 2026.11.05.1
+
+- `rb_map_track(max_gap_s = Inf)` replaces `gap_h = 1` (the maintainer, 2026-11-05): a silence between two pings
+  breaks the line only where it is longer than `max_gap_s` seconds, and by default nowhere, so no gap is hidden and
+  a long silence shows as a long straight line. `max_gap_s = 3600` gives the old line. `gap_h` still works, in hours,
+  warns once a session and will be removed in the next release. A duration a user gives is in seconds, its name
+  ending `_s`, as `min_dt_s` and `window_s` are (the others follow, fishycode TODO 189).
+- The track's text in the page says what was done, in words: "The pings of each vid joined in time order, broken
+  where two are more than 1 hour apart, and coloured by behaviour." (it said "1 hours", and "Inf hours" for none).
+- One gap for the time panel too: `rb_map_time(max_gap_s = )` breaks the panel's line on the chart and on the map,
+  and a lane's run of one value, where a hard-coded hour did before. By default it is the track's when the map has
+  one, else `Inf`: with no break, the chart joins a silence with a straight line, and a lane's run spans it.
+
 # ramb 2026.11.05
 
 - The time panel's controls are in the sidebar (the maintainer, 2026-11-05: every control in the left box, none between

@@ -616,26 +616,65 @@ test_that("pings coloured by several columns, chosen in the page", {
 test_that("a track: a line per vessel broken at silences, or coloured by runs of a column, joined", {
   skip_if_no_spatial()
   d <- rb_read_example("dansk")
-  one <- rb_map_track(d, time = "time_stamp", by = vessel_id, gap_h = Inf)
+  # by default one line a vessel, however long it falls silent; with max_gap_s, broken at the silences
+  one <- rb_map_track(d, time = "time_stamp", by = vessel_id)
   expect_equal(attr(one$layers$path$tiles, "count"), 14L)
-  plain <- rb_map_track(d, time = "time_stamp", by = vessel_id)
+  expect_equal(
+    one$config$layers[[1]]$info,
+    "The pings of each vessel_id joined in time order."
+  )
+  plain <- rb_map_track(d, time = "time_stamp", by = vessel_id, max_gap_s = 3600)
   expect_gt(attr(plain$layers$path$tiles, "count"), 14L)
+  expect_match(plain$config$layers[[1]]$info, "more than 1 hour apart.", fixed = TRUE)
+  # a run ends where the next begins, except at a silence: as many unjoined ends as the plain line has stretches
+  ends <- function(m) {
+    DBI::dbGetQuery(
+      .rb_connection(),
+      sprintf(
+        "WITH r AS (SELECT ST_AsText(ST_StartPoint(g3857)) AS s, ST_AsText(ST_EndPoint(g3857)) AS e FROM %s)
+         SELECT count(*) FILTER (WHERE e NOT IN (SELECT s FROM r)) AS n FROM r",
+        attr(m$layers$path$tiles, "table")
+      )
+    )$n
+  }
   m <- rb_map_track(d, behaviour, time = "time_stamp", by = vessel_id)
   p <- m$config$layers[[1]]
   expect_equal(p$label, "Track by behaviour")
   expect_setequal(vapply(p$legend, `[[`, "", "label"), c("Fishing", "Other"))
-  # a run ends where the next begins, except at a silence: as many unjoined ends as the plain line has stretches
-  ends <- DBI::dbGetQuery(
-    .rb_connection(),
-    sprintf(
-      "WITH r AS (SELECT ST_AsText(ST_StartPoint(g3857)) AS s, ST_AsText(ST_EndPoint(g3857)) AS e FROM %s)
-       SELECT count(*) FILTER (WHERE e NOT IN (SELECT s FROM r)) AS n FROM r",
-      attr(m$layers$path$tiles, "table")
-    )
-  )$n
-  expect_equal(ends, attr(plain$layers$path$tiles, "count"))
+  expect_equal(p$info, "The pings of each vessel_id joined in time order and coloured by behaviour.")
+  expect_equal(ends(m), 14L)
+  m1 <- rb_map_track(d, behaviour, time = "time_stamp", by = vessel_id, max_gap_s = 3600)
+  expect_equal(ends(m1), attr(plain$layers$path$tiles, "count"))
+  expect_match(m1$config$layers[[1]]$info, "1 hour apart, and coloured by behaviour.", fixed = TRUE)
+  # the old argument, in hours, warns once and gives the same line
+  .rb_reset_renamed()
+  expect_warning(
+    old <- rb_map_track(d, time = "time_stamp", by = vessel_id, gap_h = 1),
+    "is now `max_gap_s = `"
+  )
+  expect_equal(
+    attr(old$layers$path$tiles, "count"),
+    attr(plain$layers$path$tiles, "count")
+  )
+  expect_error(
+    rb_map_track(d, time = "time_stamp", max_gap_s = 0),
+    "number of seconds"
+  )
+  expect_error(
+    rb_map_track(d, time = "time_stamp", max_gap_s = "1 hour"),
+    "number of seconds"
+  )
   expect_error(rb_map_track(d, by = vessel_id), "time order")
   expect_error(rb_map_track(d, nope, time = "time_stamp"), "No column nope")
+})
+
+test_that("a gap in words: whole hours, minutes or seconds, else hours", {
+  expect_equal(.rb_duration_text(3600), "1 hour")
+  expect_equal(.rb_duration_text(7200), "2 hours")
+  expect_equal(.rb_duration_text(5400), "1.5 hours")
+  expect_equal(.rb_duration_text(1800), "30 minutes")
+  expect_equal(.rb_duration_text(60), "1 minute")
+  expect_equal(.rb_duration_text(90), "90 seconds")
 })
 
 test_that("layers compose: each adds to the map piped in, from its pings and settings", {
@@ -1292,6 +1331,25 @@ test_that("a time panel: each vessel and its spans in the config, a span's serie
     all(l$t0 <= l$t1) && min(l$t0) >= min(s$t) && max(l$t1) <= max(s$t)
   )
   expect_setequal(unique(l$label), unique(e1$behaviour))
+  # no gap breaks the panel's line or a lane's run by default; max_gap_s does, the panel's own or the track's
+  expect_null(tp$max_gap_s)
+  m2 <- rb_map_time(d, lanes = list(behaviour = "behaviour"), max_gap_s = 3600)
+  expect_equal(m2$config$time$max_gap_s, 3600)
+  l2 <- jsonlite::fromJSON(get(.rb_map_app(m2), "/time", "v=EX_1&span=all")$body)$lanes[["1"]]
+  expect_gt(length(l2$t0), length(l$t0))
+  t1 <- as.numeric(e1$time)
+  inside <- function(a, b) max(c(0, diff(t1[t1 >= a & t1 <= b])))
+  expect_true(all(mapply(inside, l2$t0, l2$t1) <= 3600))
+  expect_gt(max(mapply(inside, l$t0, l$t1)), 3600)
+  expect_equal(
+    (d |> rb_map_track(max_gap_s = 1800) |> rb_map_time())$config$time$max_gap_s,
+    1800
+  )
+  expect_equal(
+    (d |> rb_map_track(max_gap_s = 1800) |> rb_map_time(max_gap_s = 60))$config$time$max_gap_s,
+    60
+  )
+  expect_error(rb_map_time(d, max_gap_s = -1), "number of seconds")
   # a month's span, and the refusals
   r <- get(app, "/time", "v=EX_12&span=2014-12")
   expect_equal(r$status, 200L)
