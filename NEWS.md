@@ -1,3 +1,14 @@
+# ramb 2026.11.05
+
+- The time panel's controls are in the sidebar (the maintainer, 2026-11-05: every control in the left box, none between
+  the map and the chart): a group "Time" above the layers holds the vessel, the span, the columns to draw and *Whole
+  span*. Over the chart stays only the readout (the window, or the ping under the cursor), in the chart's top margin;
+  the panel's strip of controls is gone, and the chart has its height. The group is there from the page's start, so
+  the sidebar does not move when the map has loaded; on a phone it is behind the menu with the layers.
+- Built 2026-11-05 by Claude (AI) and checked in a browser on `dansk` (two columns with marks, and one column from the
+  lazy table): a vessel, a month's span, a drag, a double click, *Whole span*, a hover, a click on a ping, a click on
+  a lane, a second column, a reload from the address, a change of base map, and the page at a phone's width.
+
 # ramb 2026.11.04.4
 
 - `rb_map_time()` (new): a time panel under the map, one vessel's pings over time linked to the map, after the vessel

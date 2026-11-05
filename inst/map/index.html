@@ -35,6 +35,7 @@
   .layer.off .when-on { display: none; }
   .sub { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; margin: 10px 0 2px; }
   .row { display: flex; align-items: center; gap: 6px; margin: 5px 0; }
+  .row[hidden] { display: none; }
   .choose { padding: 4px 12px 6px; border-bottom: 1px solid var(--line); }
   .choose .row button { padding: 1px 7px; }
   .choose .chips { display: flex; flex-wrap: wrap; gap: 1px 10px; margin: -2px 0 4px 80px; }
@@ -68,12 +69,12 @@
   #timep { position: absolute; left: var(--side); right: 0; bottom: 0; height: var(--timeh); z-index: 2; background: #fff;
            border-top: 1px solid var(--line); display: flex; flex-direction: column; }
   #timep[hidden] { display: none; }
-  #timep .thead { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; padding: 5px 10px;
-                  border-bottom: 1px solid var(--line); }
-  #timep .thead label { color: var(--muted); display: inline-flex; align-items: center; gap: 5px; }
-  #timep .thead select { font: inherit; max-width: 18em; }
-  #t-cols { display: inline-flex; gap: 10px; }
-  #t-info { flex: 1; min-width: 14em; color: #222; font-variant-numeric: tabular-nums; }
+  /* its controls are in the sidebar's group "Time"; over the chart only the readout, in the chart's top padding */
+  #t-cols { flex: 1; display: flex; flex-wrap: wrap; gap: 2px 12px; }
+  #t-cols label { width: auto; display: inline-flex; align-items: center; gap: 4px; }
+  #t-info { position: absolute; top: 3px; left: 10px; right: 10px; z-index: 1; pointer-events: none; color: #222;
+            font-size: 12px; line-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            font-variant-numeric: tabular-nums; }
   #t-chart { flex: 1; min-height: 0; overflow: hidden; }
   #t-lanes { display: block; width: 100%; flex: none; cursor: pointer; }
   @media (max-width: 700px) {
@@ -90,13 +91,7 @@
 <body>
 <div id="map"></div>
 <section id="timep" hidden>
-  <div class="thead">
-    <label><span data-t="tVessel"></span><select id="t-vessel"></select></label>
-    <label><span data-t="tSpan"></span><select id="t-span"></select></label>
-    <span id="t-cols"></span>
-    <button id="t-whole" data-t="tWholeBtn" data-tt="tWholeTip"></button>
-    <span id="t-info"></span>
-  </div>
+  <div id="t-info"></div>
   <div id="t-chart" data-tt="tDrag"></div>
   <canvas id="t-lanes" height="0"></canvas>
 </section>
@@ -107,6 +102,16 @@
     <span class="langs"></span>
     <button id="close" data-tt="close">✕</button></header>
   <div id="groups">
+    <!-- the time panel's controls (rb_map_time()), shown when the map has one -->
+    <details class="group" id="g-time" open hidden>
+      <summary data-t="gTime"></summary>
+      <div class="body">
+        <div class="row"><label for="t-vessel" data-t="tVessel"></label><select id="t-vessel"></select></div>
+        <div class="row"><label for="t-span" data-t="tSpan"></label><select id="t-span"></select></div>
+        <div class="row" id="t-cols-row" hidden><label data-t="tCols"></label><span id="t-cols"></span></div>
+        <div class="row"><button id="t-whole" data-t="tWholeBtn" data-tt="tWholeTip"></button></div>
+      </div>
+    </details>
     <details class="group" id="g-base">
       <summary data-t="gBase"></summary>
       <div class="body" id="bases"></div>
@@ -160,7 +165,7 @@ const ENGINE_TEXTS = {
   chooseAll: "all", chooseAllTip: "Show every value", chooseBack: "The previous one", chooseNext: "The next one",
   legendTip: "The colour scale on a log axis, and below it the cells in view: values below the floor and above the cap in the end bars",
   yes: "yes", no: "no",
-  tVessel: "Vessel", tSpan: "Span", tWholeBtn: "Whole span", tWholeTip: "Show the whole span; a double click on the chart does the same",
+  gTime: "Time", tVessel: "Vessel", tSpan: "Span", tCols: "Columns", tWholeBtn: "Whole span", tWholeTip: "Show the whole span; a double click on the chart does the same",
   tWhole: "whole ({1})", tLoading: "loading the vessel's pings…", tFailed: "the pings did not come: {1}",
   tWindow: "{1} to {2}{3} · {4} pings", tThinned: "1 in {1} drawn on the map", tNone: "no pings in this span",
   tDrag: "Drag across the chart to choose a time; double click for the whole span"
@@ -787,6 +792,8 @@ function setChosen(i, vals) {
   if (!f.multi) { el.value = vals?.[0] ?? ""; return; }
   for (const x of el.querySelectorAll("input")) x.checked = vals === null || vals.includes(x.value);
 }
+// the time panel's group from the start, so the sidebar does not move when the map has loaded and the panel is set up
+if (TP) $("g-time").hidden = false;
 for (const k of CONFIG.about ?? []) $("about").insertAdjacentHTML("beforeend", `<p data-t="${k}"></p>`);
 if (!(CONFIG.about ?? []).length) $("g-about").hidden = true;
 $("side").querySelector("h1").dataset.t = CONFIG.title;
@@ -1429,6 +1436,7 @@ function timeSetup(q) {
   $("t-vessel").value = v0.value;
   tSpans(v0, q.get("tspan"));
   if (TP.cols.length > 1) {
+    $("t-cols-row").hidden = false;
     TP.cols.forEach((c, i) => $("t-cols").insertAdjacentHTML("beforeend",
       `<label><input type="checkbox" data-col="${i}" aria-label="${esc(tr(c.label))}"${i ? "" : " checked"}><span style="color:${T_COLS[i % T_COLS.length]}">${esc(tr(c.label))}</span></label>`));
   }
@@ -1559,6 +1567,7 @@ async function tChart() {
     width: el.clientWidth, height: el.clientHeight,
     tzDate: ts => uPlot.tzDate(new Date(ts * 1e3), "Etc/UTC"),
     legend: { show: false },
+    padding: [24, null, null, null],   // room for the readout (#t-info) over the plot
     cursor: { drag: { x: true, y: false }, points: { size: 8 }, dataIdx: (u, sidx, idx) => tPinned ?? idx },
     scales: { x: { time: true } },
     axes: [{ ...axis, values: timeTicks, size: 44, space: 70 },
