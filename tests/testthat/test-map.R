@@ -1305,6 +1305,12 @@ test_that("a time panel: each vessel and its spans in the config, a span's serie
   tp <- m$config$time
   expect_equal(vapply(tp$vessels, `[[`, "", "value"), c("EX_1", "EX_12"))
   expect_equal(vapply(tp$cols, `[[`, "", "field"), c("speed", "course"))
+  # a mark's label: its column's, or the name it is given
+  expect_equal(tp$marks, list(list(field = "flag", label = "flag")))
+  d$fast <- d$speed > 8
+  named <- rb_map_time(d, marks = c(slow = flag, quick = "fast"))$config$time$marks
+  expect_equal(named, list(list(field = "flag", label = "slow"), list(field = "fast", label = "quick")))
+  expect_equal(rb_map_time(d, marks = c(flag, quick = fast))$config$time$marks[[1]]$label, "flag")
   expect_equal(tp$lanes[[1]]$label, "behaviour")
   # a vessel with more than span_max pings is offered by month only, its latest month first
   ex12 <- tp$vessels[[2]]

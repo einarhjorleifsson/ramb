@@ -72,6 +72,9 @@
   /* its controls are in the sidebar's group "Time"; over the chart only the readout, in the chart's top padding */
   #t-cols { flex: 1; display: flex; flex-wrap: wrap; gap: 2px 12px; }
   #t-cols label { width: auto; display: inline-flex; align-items: center; gap: 4px; }
+  #t-marks { flex: 1; display: flex; flex-wrap: wrap; gap: 2px 12px; }
+  .t-mark { display: inline-flex; align-items: center; gap: 5px; }
+  .t-mark i { display: inline-block; width: 4px; height: 12px; }
   #t-info { position: absolute; top: 3px; left: 10px; right: 10px; z-index: 1; pointer-events: none; color: #222;
             font-size: 12px; line-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
             font-variant-numeric: tabular-nums; }
@@ -109,6 +112,7 @@
         <div class="row"><label for="t-vessel" data-t="tVessel"></label><select id="t-vessel"></select></div>
         <div class="row" id="t-span-row"><label for="t-span" data-t="tSpan"></label><select id="t-span"></select></div>
         <div class="row" id="t-cols-row" hidden><label data-t="tCols"></label><span id="t-cols"></span></div>
+        <div class="row" id="t-marks-row" hidden><label data-t="tMarks"></label><span id="t-marks"></span></div>
         <div class="row"><button id="t-whole" data-t="tWholeBtn" data-tt="tWholeTip"></button></div>
       </div>
     </details>
@@ -165,7 +169,7 @@ const ENGINE_TEXTS = {
   chooseAll: "all", chooseAllTip: "Show every value", chooseBack: "The previous one", chooseNext: "The next one",
   legendTip: "The colour scale on a log axis, and below it the cells in view: values below the floor and above the cap in the end bars",
   yes: "yes", no: "no",
-  gTime: "Time", tVessel: "Vessel", tSpan: "Span", tCols: "Columns", tWholeBtn: "Whole span", tWholeTip: "Show the whole span; a double click on the chart does the same",
+  gTime: "Time", tVessel: "Vessel", tSpan: "Span", tCols: "Columns", tMarks: "Marks", tWholeBtn: "Whole span", tWholeTip: "Show the whole span; a double click on the chart does the same",
   tWhole: "whole ({1})", tLoading: "loading the vessel's pings…", tFailed: "the pings did not come: {1}",
   tWindow: "{1} to {2}{3} · {4} pings", tThinned: "1 in {1} drawn on the map", tNone: "no pings in this span",
   tDrag: "Drag across the chart to choose a time; double click for the whole span"
@@ -1416,7 +1420,11 @@ if (G) {
 // pings drawn at most; a silence that breaks the line (s; rb_map_time(max_gap_s = ), none by default); a lane's height
 const T_MAX = 5000, T_GAP = TP?.max_gap_s ?? Infinity, LANE_H = 20;
 const T_COLS = ["#2c5d87", "#d95f02", "#1b9e77", "#7570b3", "#e7298a", "#66a61e"];   // the page's blue, then Dark2
-const T_MARK = "#e31a1c", LANE_FILL = ["#d9dde1", "#c4c9ce"];
+// a mark column's colour, the first red as before; then colours apart from the lines' and from each other on the dark
+// base map and the white chart
+const T_MARKS = ["#e31a1c", "#ff7f00", "#c51b8a", "#33a02c", "#1f78b4", "#a6761d"];
+const T_MARK_ROW = 8, LANE_FILL = ["#d9dde1", "#c4c9ce"];   // a mark row's height (px)
+const markColour = c => T_MARKS[c % T_MARKS.length];
 const LANE_PAL = ["#b3cde3", "#ccebc5", "#fed9a6", "#decbe4", "#fbb4ae", "#ffffcc", "#e5d8bd", "#fddaec"];   // Pastel1
 const INFERNO9 = ["#040404", "#2D1243", "#611163", "#961474", "#C53270", "#EB5C4C", "#F69422", "#F8C952", "#FFFE9E"];
 const EMPTY = { type: "FeatureCollection", features: [] };
@@ -1457,7 +1465,13 @@ function timeSetup(q) {
     TP.cols.forEach((c, i) => $("t-cols").insertAdjacentHTML("beforeend",
       `<label><input type="checkbox" data-col="${i}" aria-label="${esc(tr(c.label))}"${i ? "" : " checked"}><span style="color:${T_COLS[i % T_COLS.length]}">${esc(tr(c.label))}</span></label>`));
   }
-  $("t-vessel").addEventListener("change", () => { tSpans(tVes()); tLoad(); });
+  // each mark column's colour, as its ticks and rings are drawn
+  if (TP.marks.length) {
+    $("t-marks-row").hidden = false;
+    TP.marks.forEach((m, c) => $("t-marks").insertAdjacentHTML("beforeend",
+      `<span class="t-mark"><i style="background:${markColour(c)}"></i>${esc(tr(m.label))}</span>`));
+  }
+  $("t-vessel").addEventListener("change", () => { tSpans(tVes(), null, true); tLoad(); });
   $("t-span").addEventListener("change", () => tLoad());
   $("t-whole").addEventListener("click", () => tSetWindow(null));
   $("t-cols").addEventListener("change", e => TU?.setSeries(+e.target.dataset.col + 1, { show: e.target.checked }));
@@ -1495,8 +1509,11 @@ function tVessels() {
   $("t-vessel").replaceChildren(...TP.vessels.map(x => new Option(`${x.value} (${x.n.toLocaleString(loc())})`, x.value)));
   if (v) $("t-vessel").value = v;
 }
-function tSpans(v, want = null) {
-  const s = want ?? $("t-span").value;
+// the span chosen is kept: from the address (want), else the one shown; for another vessel, only the whole series or a
+// month, which mean the same for every vessel (a vessel's own spans, s1, s2, ..., are its own)
+function tSpans(v, want = null, otherVessel = false) {
+  let s = want ?? $("t-span").value;
+  if (want == null && otherVessel && /^s\d+$/.test(s)) s = null;
   $("t-span").replaceChildren(...v.spans.map(x => new Option(
     x.value === "all" ? tr("tWhole", x.n.toLocaleString(loc())) : `${x.name ?? x.value} (${x.n.toLocaleString(loc())})`, x.value)));
   $("t-span").value = v.spans.some(x => x.value === s) ? s : v.span;
@@ -1517,8 +1534,10 @@ function tLayers() {
                  paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 1.5, 12, 3.5],
                           "circle-color": "#808080", "circle-stroke-color": "#fff",
                           "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 9, 0, 11, 0.6] } });
+  // a marked ping's ring, in the colour of the first mark column that holds it
   map.addLayer({ id: "rb-time-mark", type: "circle", source: "rb-time-pts", filter: ["has", "mk"],
-                 paint: { "circle-radius": 7, "circle-opacity": 0, "circle-stroke-color": T_MARK, "circle-stroke-width": 2 } });
+                 paint: { "circle-radius": 7, "circle-opacity": 0, "circle-stroke-width": 2,
+                          "circle-stroke-color": ["match", ["get", "mkc"], ...T_MARKS.flatMap((col, c) => [c, col]), T_MARKS[0]] } });
   map.addLayer({ id: "rb-time-hover", type: "circle", source: "rb-time-hover",
                  paint: { "circle-radius": 9, "circle-opacity": 0, "circle-stroke-color": "#000", "circle-stroke-width": 5 } });
   map.addLayer({ id: "rb-time-hover-in", type: "circle", source: "rb-time-hover",
@@ -1540,12 +1559,21 @@ async function tLoad(win = null) {
   }
   if (seq !== tSeq) return;
   TS = d;
-  // each ping's mark: the label of the first mark column that holds it
+  // each ping's marks: the text of every mark column that holds it (a logical column's by its label alone), and the
+  // first such column, whose colour rings it on the map; each column's pings, for its row of ticks
   TS.mk = new Array(d.t.length).fill(null);
-  for (const m of TP.marks) {
+  TS.mkc = new Array(d.t.length).fill(null);
+  TS.mkRows = TP.marks.map(() => []);
+  TP.marks.forEach((m, c) => {
     const k = d.marks?.[m.field];
-    if (k) k.i.forEach((i, j) => { TS.mk[i] ??= `${tr(m.label)}: ${k.v[j]}`; });
-  }
+    if (!k) return;
+    TS.mkRows[c] = k.i;
+    k.i.forEach((i, j) => {
+      const txt = k.v[j] === m.field ? tr(m.label) : `${tr(m.label)}: ${k.v[j]}`;
+      TS.mk[i] = TS.mk[i] ? `${TS.mk[i]} · ${txt}` : txt;
+      TS.mkc[i] ??= c;
+    });
+  });
   // the first column's colours, over its 1st to 99th percentile in the span
   const y0 = d.y[TP.cols[0].field].filter(Number.isFinite).sort((a, b) => a - b);
   TS.lo = y0[Math.floor(0.01 * (y0.length - 1))] ?? 0;
@@ -1586,7 +1614,8 @@ async function tChart() {
     width: el.clientWidth, height: el.clientHeight,
     tzDate: ts => uPlot.tzDate(new Date(ts * 1e3), "Etc/UTC"),
     legend: { show: false },
-    padding: [24, null, null, null],   // room for the readout (#t-info) over the plot
+    // room for the readout (#t-info) over the plot, and under it a row of ticks for each mark column
+    padding: [24 + (TP.marks.length > 1 ? TP.marks.length * T_MARK_ROW : 0), null, null, null],
     cursor: { drag: { x: true, y: false }, points: { size: 8 }, dataIdx: (u, sidx, idx) => tPinned ?? idx },
     scales: { x: { time: true } },
     axes: [{ ...axis, values: timeTicks, size: 44, space: 70 },
@@ -1634,7 +1663,7 @@ function tDrawWindow() {
     if ((i - i0) % k && !TS.mk[i]) continue;
     const p = { i };
     if (v[i] != null) p.v = v[i];
-    if (TS.mk[i]) p.mk = TS.mk[i];
+    if (TS.mk[i]) { p.mk = TS.mk[i]; p.mkc = TS.mkc[i]; }
     feats.push({ type: "Feature", geometry: { type: "Point", coordinates: [TS.lon[i], TS.lat[i]] }, properties: p });
   }
   map.getSource("rb-time-line").setData({ type: "Feature", geometry: { type: "MultiLineString", coordinates: lines }, properties: {} });
@@ -1660,17 +1689,23 @@ function tHover(i) {
   src.setData({ type: "Feature", geometry: { type: "Point", coordinates: [TS.lon[i], TS.lat[i]] }, properties: {} });
   tInfo(i);
 }
-// the marked pings as ticks along the chart's top
+// the marked pings as ticks along the chart's top: one mark column as before, at the plot's top; several, each its own
+// row in its own colour, in the margin above the plot, the first on top
 function tDrawMarks(u) {
   if (!TS || !TP.marks.length) return;
-  const c = u.ctx, { top } = u.bbox, h = 7 * devicePixelRatio, i0 = tFind(u.scales.x.min), i1 = tFind(u.scales.x.max, true);
+  const dpr = devicePixelRatio, c = u.ctx, { top } = u.bbox, i0 = tFind(u.scales.x.min), i1 = tFind(u.scales.x.max, true);
+  const many = TP.marks.length > 1, h = (many ? T_MARK_ROW - 2 : 7) * dpr;
   c.save();
-  c.fillStyle = T_MARK;
-  let last = -9;
-  for (let i = i0; i < i1; i++) if (TS.mk[i]) {
-    const x = Math.round(u.valToPos(TS.t[i], "x", true));
-    if (x - last >= 2) { c.fillRect(x - devicePixelRatio, top, 2 * devicePixelRatio, h); last = x; }
-  }
+  TS.mkRows.forEach((rows, k) => {
+    const y = many ? top - (TP.marks.length - k) * T_MARK_ROW * dpr : top;
+    c.fillStyle = markColour(k);
+    let last = -9;
+    for (const i of rows) {
+      if (i < i0 || i >= i1) continue;
+      const x = Math.round(u.valToPos(TS.t[i], "x", true));
+      if (x - last >= 2) { c.fillRect(x - dpr, y, 2 * dpr, h); last = x; }
+    }
+  });
   c.restore();
 }
 // the lanes under the chart, on the chart's time axis: each interval a bar, its label inside where it fits

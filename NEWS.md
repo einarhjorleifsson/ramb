@@ -1,3 +1,16 @@
+# ramb 2026.11.05.4
+
+- The time panel's marks by column (fishycode plan 065 step 2): each mark column a colour of its own, its row of ticks
+  in the margin above the chart (one column as before, at the chart's top) and its ring on the map, named in the
+  sidebar's *Time* group (*Marks*); `marks = c(truth = "wrong", clean = "flag")` names them. The readout lists every
+  mark a ping carries, a logical column's by its name alone. Reviewing `dansk_truth`, the truth's position, time and
+  speed errors read apart at a glance.
+- A vessel's own spans (s1, s2, ...) are not carried to another vessel when the vessel is changed; the whole series and
+  a month are, and a span in the address is kept as before.
+- Built by Claude (AI) and checked in a browser on `dansk_truth` (three mark columns: rows, colours, rings, legend,
+  readout, a vessel and a span changed, the address, a change of base map, a phone's width) and on `dansk` with one
+  mark column (as before).
+
 # ramb 2026.11.05.3
 
 - `dansk_truth` (new example, fishycode plan 065 step 1): four of `dansk_planted`'s vessels at 1 min and 6 min, faults and

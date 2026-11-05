@@ -2393,7 +2393,8 @@ rb_map_track <- function(
 #' @inheritParams rb_map_pings
 #' @param col The numeric columns drawn over time, a name, a string or `c()` of them; the first shown.
 #' @param marks Columns that mark pings, as `col`: a logical column marks its `TRUE` pings, any other its values that
-#'   are not missing (such as a flag's label).
+#'   are not missing (such as a flag's label). Each column is a row of ticks along the chart's top and a ring on the
+#'   map in a colour of its own, named in the sidebar; `c(truth = "wrong", clean = "flag")` names them.
 #' @param lanes Intervals drawn as lanes under the chart: a named list (the names are the lanes' labels), each
 #'   * a column of the pings, as a string: its runs of one value (a trip, a voyage, a phase), missing values left out
 #'     and a run broken by a silence longer than `max_gap_s`;
@@ -2475,8 +2476,16 @@ rb_map_time <- function(
   marks <- if (rlang::quo_is_null(marks_q)) {
     character()
   } else {
-    unname(.rb_track_cols(marks_q, ctx$cols))
+    .rb_track_cols(marks_q, ctx$cols)
   }
+  # a mark's label: the name it is given, c(truth = "wrong"), else its column's
+  mark_names <- names(marks)
+  if (is.null(mark_names)) {
+    mark_names <- rep("", length(marks))
+  }
+  mark_labels <- ifelse(is.na(mark_names) | mark_names == "", marks, mark_names)
+  marks <- unname(marks)
+  mark_labels <- unname(mark_labels)
   .rb_quick_need(ctx, c(col, marks))
   if (
     !is.numeric(span_max) ||
@@ -2851,7 +2860,7 @@ rb_map_time <- function(
       # none for Inf, which JSON cannot hold: the page breaks the line nowhere
       max_gap_s = if (is.finite(max_gap_s)) max_gap_s,
       cols = lapply(col, function(cc) list(field = cc, label = cc)),
-      marks = lapply(marks, function(cc) list(field = cc, label = cc)),
+      marks = lapply(seq_along(marks), function(k) list(field = marks[k], label = mark_labels[k])),
       lanes = lapply(seq_along(lanes), function(k) {
         list(id = as.character(k), label = names(lanes)[k])
       }),

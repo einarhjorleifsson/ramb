@@ -29,7 +29,8 @@ map made by either function.}
 \item{col}{The numeric columns drawn over time, a name, a string or \code{c()} of them; the first shown.}
 
 \item{marks}{Columns that mark pings, as \code{col}: a logical column marks its \code{TRUE} pings, any other its values that
-are not missing (such as a flag's label).}
+are not missing (such as a flag's label). Each column is a row of ticks along the chart's top and a ring on the
+map in a colour of its own, named in the sidebar; \code{c(truth = "wrong", clean = "flag")} names them.}
 
 \item{lanes}{Intervals drawn as lanes under the chart: a named list (the names are the lanes' labels), each
 \itemize{
