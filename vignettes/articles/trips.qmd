@@ -63,6 +63,38 @@ the speed-distance-angle screen (the algorithm of
 A third flagger, [rb_flag_ping_duplicate()](../reference/rb_flag_ping_duplicate.html), marks the lower-priority
 feed's copy when several feeds report the same fix.
 
+### Each vessel's own limits
+
+`kn_max` is a guess (25 knots everywhere, in every rule we have read). [rb_create_ping_limits()](../reference/rb_create_ping_limits.html) measures, for each
+vessel, the speed it reaches (the highest it records twice in a row, else what its track sustains), how far its
+times may be off (the clock's grain, and the error measured against its recorded speed on short steps), and the
+noise of the positions, each with the basis it came from:
+
+```{r}
+lim <- rb_create_ping_limits(d, speed = speed)
+lim |> select(vid, ceiling_kn, ceiling_basis, grain_s, time_error_s, time_error_basis, noise_m)
+```
+
+`method = "local"` then judges each vessel by its own ceiling, with the time error and the noise in the margin, and
+names the limit that decided each flag (`ping_flag_basis` `"ceiling"`); a fast vessel is no longer flagged for being
+fast. [rb_flag_ping_time()](../reference/rb_flag_ping_time.html), run before it, labels a ping whose written time is
+off rather than its position: a time written late lengthens the step in and shortens the step out by as much, and a
+speed rule would otherwise blame the next ping:
+
+```{r}
+own <-
+  d |>
+  select(-ping_flag, -ping_flag_basis) |>
+  rb_flag_ping_time(lim) |>
+  rb_flag_ping_impossible(method = "local", speed = speed, limits = lim)
+own |> count(ping_flag, ping_flag_basis)
+```
+
+On the planted set `dansk_truth`, every report with its truth, neither is best everywhere: the time flag catches a
+fifth of the wrong times, which no speed rule labels as times, and the own limits keep fast vessels; with a recorded
+speed, `"local"` at its fixed limits catches more wrong positions at a ping a minute and fewer at one in six. [rb_add_ping_outcome()](../reference/rb_add_ping_outcome.html) scores any rule on such a
+set, every ping in one outcome.
+
 Finally, tag each ping with the port polygon it lies in
 ([rb_flag_ping_port()](../reference/rb_flag_ping_port.html)). `port_id` is a value in port, `NA` at sea —
 this is the column trips are cut on. The flagged pings are set aside
