@@ -14,6 +14,13 @@
 //      a gap (code 2): the runs of bad pings.
 // Each flag's basis: 1 where the ping's local speed came from recorded speeds, 2 where the fixed limit judged it.
 //
+// Each vessel's own limits (fishycode plan 065, rb_create_ping_limits()): whack_local_v_cpp() takes, per ping, the
+// fixed limit kn_v (m/s, the vessel's ceiling), the margin m0_v (m, twice the position noise) and the time error te_v
+// (s, the larger of the clock's grain and its measured error), and a leg is impossible when longer than
+//   m0 + (factor x v + margin_ms) x (max(dt, min_dt) + te)   or, v unknown,   m0 + kn x (max(dt, min_dt) + te),
+// each the larger of the leg's two ends'. whack_local_cpp() is the same with kn_max, margin_m and no time error on
+// every ping, as before. A flag the ceiling judged has basis 3.
+//
 // The optional noise floor between feeds is the other engines' (whack_forward.cpp): a leg between pings of two known
 // feeds no longer than noise_m counts as no distance. A ping with no position or time is not judged and is no ping's
 // neighbour. The prototype in R gives the same flags on ramb's planted faults (fishycode's plan 062 step 4 study).
@@ -45,27 +52,34 @@ inline double median_of(std::vector<double>& v) {
 }
 
 struct Rule {
-  double kn_max_ms, min_dt, gap_s, factor, margin_ms, margin_m, noise_m;
+  double min_dt, gap_s, factor, margin_ms, noise_m;
   int K;
   bool floor_on;
-  // the longest a leg of time step dt may be, at local speed v (NaN: unknown, the fixed limit)
-  double limit(double dt, double v) const {
-    double t = std::max(dt, min_dt);
-    return std::isnan(v) ? margin_m + kn_max_ms * t : margin_m + (factor * v + margin_ms) * t;
+  // the longest a leg of time step dt may be, at local speed v (NaN: unknown, the fixed limit kn), with the margin m0
+  // and the time error te of its ends
+  double limit(double dt, double v, double kn, double m0, double te) const {
+    double t = std::max(dt, min_dt) + te;
+    return std::isnan(v) ? m0 + kn * t : m0 + (factor * v + margin_ms) * t;
   }
 };
 
 }  // namespace
 
 // [[Rcpp::export]]
-List whack_local_cpp(NumericVector lon, NumericVector lat, NumericVector time, IntegerVector vessel,
-                     NumericVector sog_ms, IntegerVector feed, double kn_max_ms, double min_dt, double gap_s,
-                     int K, double factor, double margin_ms, double margin_m, double noise_m) {
+List whack_local_v_cpp(NumericVector lon, NumericVector lat, NumericVector time, IntegerVector vessel,
+                       NumericVector sog_ms, IntegerVector feed, NumericVector kn_v, NumericVector m0_v,
+                       NumericVector te_v, LogicalVector own, double min_dt, double gap_s, int K, double factor,
+                       double margin_ms, double noise_m) {
   const int n = lon.size();
   IntegerVector code(n, 0), basis(n, 0);
   NumericVector judged(n, NA_REAL);  // the local speed (m/s) a flagged ping was judged by, NA where the fixed limit
-  Rule R{kn_max_ms, min_dt, gap_s, factor, margin_ms, margin_m, noise_m, K,
-         noise_m > 0 && feed.size() == n};
+  Rule R{min_dt, gap_s, factor, margin_ms, noise_m, K, noise_m > 0 && feed.size() == n};
+  // a leg's limits: the larger of its two ends'
+  auto lim = [&](int i, int j, double dt, double v) {
+    return R.limit(dt, v, std::max(kn_v[i], kn_v[j]), std::max(m0_v[i], m0_v[j]), std::max(te_v[i], te_v[j]));
+  };
+  // a flag's basis: 1 a recorded speed judged it, 3 the vessel's own ceiling, 2 the fixed limit
+  auto basis_of = [&](int i, double v) { return !std::isnan(v) ? 1 : (own[i] ? 3 : 2); };
   // the distance of a leg, within the noise floor between feeds none
   auto dist = [&](int i, int j) {
     double d = hav(lon[i], lat[i], lon[j], lat[j]);
@@ -118,7 +132,7 @@ List whack_local_cpp(NumericVector lon, NumericVector lat, NumericVector time, I
       std::vector<char> bad(m, 0);  // bad[q]: leg q -> q + 1 (the last has none)
       for (int q = 0; q < m - 1; q++) {
         dt[q] = time[keep[q + 1]] - time[keep[q]];
-        bad[q] = dist(keep[q], keep[q + 1]) > R.limit(dt[q], both(v[q], v[q + 1]));
+        bad[q] = dist(keep[q], keep[q + 1]) > lim(keep[q], keep[q + 1], dt[q], both(v[q], v[q + 1]));
       }
       auto gapin = [&](int q) { return q == 0 || dt[q - 1] > R.gap_s; };
       auto gapout = [&](int q) { return q == m - 1 || dt[q] > R.gap_s; };
@@ -126,7 +140,7 @@ List whack_local_cpp(NumericVector lon, NumericVector lat, NumericVector time, I
       for (int q = 1; q < m - 1; q++) {
         if (gapin(q) || gapout(q) || !bad[q - 1] || !bad[q]) continue;
         double t2 = time[keep[q + 1]] - time[keep[q - 1]];
-        hit[q] = dist(keep[q - 1], keep[q + 1]) <= R.limit(t2, v[q]);
+        hit[q] = dist(keep[q - 1], keep[q + 1]) <= lim(keep[q - 1], keep[q + 1], t2, v[q]);
       }
       for (int q = 0; q < m; q++) {
         // a first ping: its leg out impossible, the next possible (and not the track's last leg)
@@ -139,7 +153,7 @@ List whack_local_cpp(NumericVector lon, NumericVector lat, NumericVector time, I
       for (int q = 0; q < m; q++) {
         if (hit[q]) {
           code[keep[q]] = 1;
-          basis[keep[q]] = std::isnan(v[q]) ? 2 : 1;
+          basis[keep[q]] = basis_of(keep[q], v[q]);
           if (!std::isnan(v[q])) judged[keep[q]] = v[q];
           any = true;
         } else {
@@ -156,11 +170,11 @@ List whack_local_cpp(NumericVector lon, NumericVector lat, NumericVector time, I
       for (int q = 1; q < (int)keep.size(); q++) {
         double dt = time[keep[q]] - time[keep[j]];
         double vv = std::isnan(v[q]) ? v[j] : (std::isnan(v[j]) ? v[q] : std::max(v[q], v[j]));
-        if (dt > R.gap_s || dist(keep[j], keep[q]) <= R.limit(dt, vv)) {
+        if (dt > R.gap_s || dist(keep[j], keep[q]) <= lim(keep[j], keep[q], dt, vv)) {
           j = q;
         } else {
           code[keep[q]] = 2;
-          basis[keep[q]] = std::isnan(vv) ? 2 : 1;
+          basis[keep[q]] = basis_of(keep[q], vv);
           if (!std::isnan(vv)) judged[keep[q]] = vv;
         }
       }
@@ -168,4 +182,14 @@ List whack_local_cpp(NumericVector lon, NumericVector lat, NumericVector time, I
     a = b;
   }
   return List::create(_["code"] = code, _["basis"] = basis, _["v"] = judged);
+}
+
+// [[Rcpp::export]]
+List whack_local_cpp(NumericVector lon, NumericVector lat, NumericVector time, IntegerVector vessel,
+                     NumericVector sog_ms, IntegerVector feed, double kn_max_ms, double min_dt, double gap_s,
+                     int K, double factor, double margin_ms, double margin_m, double noise_m) {
+  const int n = lon.size();
+  return whack_local_v_cpp(lon, lat, time, vessel, sog_ms, feed, NumericVector(n, kn_max_ms), NumericVector(n, margin_m),
+                           NumericVector(n, 0.0), LogicalVector(n, false), min_dt, gap_s, K, factor, margin_ms,
+                           noise_m);
 }

@@ -14,6 +14,7 @@ rb_flag_ping_impossible(
   feed = NULL,
   noise_nm = 0.3,
   speed = NULL,
+  limits = NULL,
   evidence = FALSE,
   vid = vid,
   time = time,
@@ -64,6 +65,17 @@ floor. A ping with no feed (\code{NA}) never takes part in it. Not for \code{"fw
 or more counts as none, AIS's "not available"). Default \code{NULL}: none, and every leg is judged at the fixed
 limit.}
 
+\item{limits}{For \code{"local"}: each vessel's own limits, the table of \code{\link[=rb_create_ping_limits]{rb_create_ping_limits()}} for these pings (by
+vessel, or by vessel and stream: its keys must be columns of \code{x}). A leg is impossible when longer than twice the
+noise plus the speed times its time step (at least \code{min_dt_s}) and the time error (the larger of the stream's grain
+and its measured error), the speed the recorded one near, by \code{factor} and \code{margin_kn}, or else the vessel's
+ceiling (basis \code{"ceiling"}); of a leg's two ends, the larger limits. A vessel the table lacks is judged as without
+it. Default \code{NULL}: the fixed \code{kn_max}, \code{margin_m} and no time error, as before. On \code{dansk_truth} (fishycode plan
+065 step 4), without a recorded speed it caught 53 \% of the wrong positions at 1 min and 52 \% at 6 min (\code{"clean"}
+at 25 kn: 56 and 45 \%), flagging 17 good pings in 10,000 of its own at 1 min (\code{"clean"}: 45) and 79 at 6 min (29),
+where a vessel's recorded ceiling misses its fastest stretches; with the recorded speed, against \code{"local"}
+without limits: 65 and 64 \% (70 and 59 \%), 15 and 112 own flags in 10,000 (20 and 92).}
+
 \item{evidence}{\code{TRUE} adds the evidence columns, see Details. Default \code{FALSE}.}
 
 \item{vid, time, lon, lat}{The columns, if named otherwise.}
@@ -72,7 +84,8 @@ limit.}
 }
 \value{
 \code{x} with \code{ping_flag} and \code{ping_flag_basis} added or updated: the same type, the same rows; with \code{evidence = TRUE}, the evidence columns too. The basis of a flag this call makes is \code{"recorded"} where the vessel's recorded
-speed set the limit (\code{"local"}), and \code{"track"} where the fixed limit did.
+speed set the limit (\code{"local"}), \code{"ceiling"} where the vessel's own ceiling did (\code{limits}), and \code{"track"} where the
+fixed limit did.
 }
 \description{
 Step 0 of the fishing-activity flow. A position or jump that implies an impossible speed is flagged
@@ -133,10 +146,12 @@ locations". Marine Mammal Science, 24(2), 315–325.
 }
 \seealso{
 Other flag pings:
+\code{\link[=rb_add_ping_outcome]{rb_add_ping_outcome()}},
 \code{\link[=rb_add_ping_speed]{rb_add_ping_speed()}},
 \code{\link[=rb_create_ping_limits]{rb_create_ping_limits()}},
 \code{\link[=rb_flag_ping_duplicate]{rb_flag_ping_duplicate()}},
 \code{\link[=rb_flag_ping_invalid]{rb_flag_ping_invalid()}},
-\code{\link[=rb_flag_ping_port]{rb_flag_ping_port()}}
+\code{\link[=rb_flag_ping_port]{rb_flag_ping_port()}},
+\code{\link[=rb_flag_ping_time]{rb_flag_ping_time()}}
 }
 \concept{flag pings}

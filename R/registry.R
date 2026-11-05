@@ -158,6 +158,25 @@
     c("ping_flag", "ping_flag_basis"),
     after = "rb_flag_ping_invalid"
   ),
+  # scoring a flagger on a planted set (fishycode plan 065): each ping's outcome under a rule
+  .rb_step(
+    "rb_add_ping_outcome",
+    "ping",
+    "tool",
+    "x",
+    character(0),
+    character(0)
+  ),
+  # step 0: a time written off, its position kept (fishycode plan 065), before the impossible positions
+  .rb_step(
+    "rb_flag_ping_time",
+    "ping",
+    "step",
+    "x",
+    c("vid", "time", "lon", "lat", "speed"),
+    c("ping_flag", "ping_flag_basis", "ping_time_error_s"),
+    after = "rb_flag_ping_duplicate"
+  ),
   .rb_step(
     "rb_flag_ping_impossible",
     "ping",

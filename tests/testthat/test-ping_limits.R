@@ -148,3 +148,37 @@ test_that("the arguments are checked", {
   expect_error(rb_create_ping_limits(d, min_recorded = NA), "min_recorded")
   expect_error(rb_create_ping_limits(d[, c("vid", "time", "lon")]), "lat")
 })
+
+test_that("rb_flag_ping_impossible(limits = ): each vessel judged by its own ceiling, the basis said", {
+  fast <- steam(1L, kn = 30, step = 60, n = 200)
+  slow <- steam(2L, kn = 8, step = 60, n = 200)
+  slow$lat[100] <- 64.02 # 2.2 km off: 70 kn in and out
+  d <- rbind(fast, slow)
+  lim <- rb_create_ping_limits(d, speed = speed)
+  expect_equal(lim$ceiling_kn, c(30, 8))
+  # the fixed 25 kn flags the fast vessel's every leg it judges; its own ceiling keeps them
+  fixed <- rb_flag_ping_impossible(d, method = "local")
+  expect_gt(sum(!is.na(fixed$ping_flag[fixed$vid == 1])), 100)
+  own <- rb_flag_ping_impossible(d, method = "local", limits = lim)
+  expect_equal(which(!is.na(own$ping_flag)), 300)
+  expect_equal(own$ping_flag_basis[300], "ceiling")
+  # with the recorded speed near, it judges as before, the margin the vessel's
+  rec <- rb_flag_ping_impossible(d, method = "local", speed = speed, limits = lim)
+  expect_equal(which(!is.na(rec$ping_flag)), 300)
+  expect_equal(rec$ping_flag_basis[300], "recorded")
+  # a vessel the limits lack is judged by the fixed limit
+  part <- rb_flag_ping_impossible(d, method = "local", limits = lim[lim$vid == 2, ])
+  expect_identical(part$ping_flag[part$vid == 1], fixed$ping_flag[fixed$vid == 1])
+  # the evidence reads the same limits
+  ev <- rb_flag_ping_impossible(d, method = "local", limits = lim, evidence = TRUE)
+  expect_equal(ev$ping_flag_side[300], "both")
+})
+
+test_that("limits are for the local rule, by keys the pings carry", {
+  d <- steam()
+  d$stream <- "a"
+  lim <- rb_create_ping_limits(d, stream = stream, speed = speed)
+  expect_error(rb_flag_ping_impossible(d, method = "clean", limits = lim), "local")
+  expect_error(rb_flag_ping_impossible(d[names(d) != "stream"], method = "local", limits = lim), "stream")
+  expect_error(rb_flag_ping_impossible(d, method = "local", limits = lim[, c("vid", "ceiling_kn")]), "grain_s")
+})

@@ -60,10 +60,12 @@ rb_add_ping_speed(d)
 }
 \seealso{
 Other flag pings:
+\code{\link[=rb_add_ping_outcome]{rb_add_ping_outcome()}},
 \code{\link[=rb_create_ping_limits]{rb_create_ping_limits()}},
 \code{\link[=rb_flag_ping_duplicate]{rb_flag_ping_duplicate()}},
 \code{\link[=rb_flag_ping_impossible]{rb_flag_ping_impossible()}},
 \code{\link[=rb_flag_ping_invalid]{rb_flag_ping_invalid()}},
-\code{\link[=rb_flag_ping_port]{rb_flag_ping_port()}}
+\code{\link[=rb_flag_ping_port]{rb_flag_ping_port()}},
+\code{\link[=rb_flag_ping_time]{rb_flag_ping_time()}}
 }
 \concept{flag pings}

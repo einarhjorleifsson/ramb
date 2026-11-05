@@ -21,6 +21,10 @@ whack_forward_cpp <- function(lon, lat, time, ms_max, max_gap_sec, min_dt, feed 
     .Call(`_ramb_whack_forward_cpp`, lon, lat, time, ms_max, max_gap_sec, min_dt, feed, noise_m)
 }
 
+whack_local_v_cpp <- function(lon, lat, time, vessel, sog_ms, feed, kn_v, m0_v, te_v, own, min_dt, gap_s, K, factor, margin_ms, noise_m) {
+    .Call(`_ramb_whack_local_v_cpp`, lon, lat, time, vessel, sog_ms, feed, kn_v, m0_v, te_v, own, min_dt, gap_s, K, factor, margin_ms, noise_m)
+}
+
 whack_local_cpp <- function(lon, lat, time, vessel, sog_ms, feed, kn_max_ms, min_dt, gap_s, K, factor, margin_ms, margin_m, noise_m) {
     .Call(`_ramb_whack_local_cpp`, lon, lat, time, vessel, sog_ms, feed, kn_max_ms, min_dt, gap_s, K, factor, margin_ms, margin_m, noise_m)
 }

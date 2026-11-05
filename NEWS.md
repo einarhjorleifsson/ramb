@@ -1,3 +1,28 @@
+# ramb 2026.11.05.7
+
+- `rb_flag_ping_impossible(method = "local", limits = )` (fishycode plan 065 step 4): each vessel judged by its own
+  limits from `rb_create_ping_limits()`, by vessel or by vessel and stream. A leg is impossible when longer than twice
+  the noise plus the speed times its time step and the stream's time error, the speed the recorded one near (as
+  before) or else the vessel's ceiling, basis `"ceiling"`. Without `limits` the flags are as before, bit for bit
+  (checked on `dansk_planted` and `dansk_truth` against 2026.11.05.1); with them, and no recorded speed, they equal the
+  study's rule (`$FISHYDATA/archive/2026-11-05-speed-ceiling/`) on both. The engine takes each ping's limits
+  (`whack_local_v_cpp()`); `whack_local_cpp()` stays, for the study's scripts.
+- `rb_flag_ping_time()` (new): a ping whose written time is off, its position kept. With a steady recorded speed, a
+  time written late lengthens the step in and shortens the step out by as much; the ping is labelled `"time"`, its
+  error estimated (`ping_time_error_s`), the worst first, and set aside as an anchor, so the speed rule after it blames
+  no position (the case study's 08:23 ping, fishycode TODO 190). The allowance is the clock's grain, the noise and
+  the speed's spread, not the clock's jitter: those are the times flagged.
+- `rb_add_ping_outcome()` (new): each ping's outcome under a rule against a truth such as `dansk_truth`'s `expect`
+  (caught, caught as another kind, missed, kept, flagged, flagged beside a fault), the second run without the wrong
+  pings telling a rule's own flags from its collateral (fishycode plan 062 step 3's scoring), for the tests, the
+  scores and the time panel's lanes alike.
+- Scored on `dansk_truth`, every ping in one outcome, by clock, rate and fault (plan 065 step 4): the time flag catches
+  22 % of the wrong times at 1 min and 15 % at 6 min (no rule before caught one as a time), 4 of 15 late stamps in the
+  chain and 1,572 of the 4,425 pings jittered over 10 s, its estimate within a median 2 s; the vessels' own limits
+  are no clear gain over `"local"` with a recorded speed (fewer wrong positions caught at 1 min, more at 6 min, more
+  good pings flagged there), and, without one, against the fixed 25 kn they catch as many at 1 min and more at 6 min
+  with fewer good pings flagged at 1 min and more at 6 min. Built by Claude (AI).
+
 # ramb 2026.11.05.6
 
 - `rb_create_ping_limits()` (new, fishycode plan 065 step 3): each vessel's own limits for a speed rule, measured on its

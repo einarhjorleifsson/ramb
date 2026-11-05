@@ -672,13 +672,24 @@ rb_flag_ping_duplicate <- function(
 #' @param speed For `"local"`: the column of the recorded speed over ground, knots (`NA` where none; below 0 or 102.3
 #'   or more counts as none, AIS's "not available"). Default `NULL`: none, and every leg is judged at the fixed
 #'   limit.
+#' @param limits For `"local"`: each vessel's own limits, the table of [rb_create_ping_limits()] for these pings (by
+#'   vessel, or by vessel and stream: its keys must be columns of `x`). A leg is impossible when longer than twice the
+#'   noise plus the speed times its time step (at least `min_dt_s`) and the time error (the larger of the stream's grain
+#'   and its measured error), the speed the recorded one near, by `factor` and `margin_kn`, or else the vessel's
+#'   ceiling (basis `"ceiling"`); of a leg's two ends, the larger limits. A vessel the table lacks is judged as without
+#'   it. Default `NULL`: the fixed `kn_max`, `margin_m` and no time error, as before. On `dansk_truth` (fishycode plan
+#'   065 step 4), without a recorded speed it caught 53 % of the wrong positions at 1 min and 52 % at 6 min (`"clean"`
+#'   at 25 kn: 56 and 45 %), flagging 17 good pings in 10,000 of its own at 1 min (`"clean"`: 45) and 79 at 6 min (29),
+#'   where a vessel's recorded ceiling misses its fastest stretches; with the recorded speed, against `"local"`
+#'   without limits: 65 and 64 % (70 and 59 %), 15 and 112 own flags in 10,000 (20 and 92).
 #' @param evidence `TRUE` adds the evidence columns, see Details. Default `FALSE`.
 #' @param vid,time,lon,lat The columns, if named otherwise.
 #' @param batch_pings For a lazy table: pings per batch.
 #'
 #' @return `x` with `ping_flag` and `ping_flag_basis` added or updated: the same type, the same rows; with `evidence =
 #'   TRUE`, the evidence columns too. The basis of a flag this call makes is `"recorded"` where the vessel's recorded
-#'   speed set the limit (`"local"`), and `"track"` where the fixed limit did.
+#'   speed set the limit (`"local"`), `"ceiling"` where the vessel's own ceiling did (`limits`), and `"track"` where the
+#'   fixed limit did.
 #'
 #' @references For `"sda"`: Freitas, C., Lydersen, C., Fedak, M.A. and Kovacs,
 #'   K.M. (2008). "A simple new algorithm to filter marine mammal Argos
@@ -713,6 +724,7 @@ rb_flag_ping_impossible <- function(
   feed = NULL,
   noise_nm = 0.3,
   speed = NULL,
+  limits = NULL,
   evidence = FALSE,
   vid = vid,
   time = time,
@@ -765,6 +777,14 @@ rb_flag_ping_impossible <- function(
       call. = FALSE
     )
   }
+  if (!is.null(limits) && method != "local") {
+    stop(
+      "`limits` (each vessel's own, from rb_create_ping_limits()) is used by the method \"local\", not \"",
+      method,
+      "\".",
+      call. = FALSE
+    )
+  }
   if (has_feed) {
     if (
       !is.numeric(noise_nm) ||
@@ -788,6 +808,7 @@ rb_flag_ping_impossible <- function(
   if (has_speed) {
     map <- c(map, speed = rlang::as_name(speed_quo))
   }
+  lim <- if (!is.null(limits)) .rb_limits_in(limits, map, colnames(x))
   x <- .rb_flag_init(.rb_std_in(x, map))
   dots <- list(...)
   local <- method == "local"
@@ -814,6 +835,13 @@ rb_flag_ping_impossible <- function(
       drop = FALSE
     ])
     s$.rb_i <- i
+    # each ping's own limits, NA where its vessel (and stream) has none
+    pl <- if (local) .rb_limits_rows(d, lim)
+    if (local) {
+      s$.rb_kn <- pl$kn[i]
+      s$.rb_m0 <- pl$m0[i]
+      s$.rb_te <- pl$te[i]
+    }
     if (has_feed) {
       s$.rb_feed <- s$feed
     }
@@ -928,7 +956,8 @@ rb_flag_ping_impossible <- function(
         max_gap_h = max_gap_h,
         noise_m = noise_m,
         has_feed = has_feed,
-        local = if (local) .rb_local_limits(dots)
+        local = if (local) .rb_local_limits(dots),
+        rows = pl
       )
     }
     d
@@ -937,13 +966,14 @@ rb_flag_ping_impossible <- function(
     .rb_label_lazy(
       x,
       fun,
-      cols = c(
+      cols = unique(c(
         "time",
         "lon",
         "lat",
         if (has_feed) "feed",
-        if (has_speed) "speed"
-      ),
+        if (has_speed) "speed",
+        setdiff(lim$keys, "vid")
+      )),
       order_by = c("time", "lon", "lat", if (has_feed) "feed"),
       batch_pings = batch_pings,
       what = "rb_flag_ping_impossible()",
@@ -953,6 +983,75 @@ rb_flag_ping_impossible <- function(
     fun(x)
   }
   .rb_std_out(x, map)
+}
+
+# `limits =` of rb_flag_ping_impossible(): the table of rb_create_ping_limits(), its keys (the vessel, and a stream
+# where it has one) under the grammar's names, and each row's limits as the engine takes them: the ceiling kn (m/s), the
+# margin m0 (twice the noise, m) and the time error te (the larger of the grain and the measured error, s), NA where
+# the table has none (the engine's fixed values then). A key must be a column of the pings; a key twice is an error.
+.rb_limits_in <- function(limits, map, x_cols, call = rlang::caller_env()) {
+  if (inherits(limits, "tbl_lazy")) {
+    limits <- dplyr::collect(limits)
+  }
+  if (!is.data.frame(limits)) {
+    rlang::abort("`limits` must be the table of rb_create_ping_limits().", call = call)
+  }
+  limits <- as.data.frame(limits)
+  values <- .rb_registry()$adds[[match("rb_create_ping_limits", .rb_registry()$fn)]]
+  need <- c(map[["vid"]], "ceiling_kn", "grain_s", "time_error_s", "noise_m")
+  miss <- setdiff(need, names(limits))
+  if (length(miss)) {
+    rlang::abort(
+      c(
+        sprintf("`limits` lacks %s.", paste0("`", miss, "`", collapse = ", ")),
+        i = "Give the table of rb_create_ping_limits(), made from these pings with the same `vid`."
+      ),
+      call = call
+    )
+  }
+  keys <- c(map[["vid"]], setdiff(names(limits), c(values, map[["vid"]])))
+  absent <- setdiff(keys, x_cols)
+  if (length(absent)) {
+    rlang::abort(
+      c(
+        sprintf("`limits` is by %s, which the pings lack.", paste0("`", absent, "`", collapse = ", ")),
+        i = "Its columns other than the limits are its keys: the vessel, and the stream where one was given."
+      ),
+      call = call
+    )
+  }
+  key <- .rb_key(limits[keys])
+  if (anyDuplicated(key)) {
+    rlang::abort(
+      sprintf("`limits` has %d rows twice by %s.", sum(duplicated(key)), paste0("`", keys, "`", collapse = ", ")),
+      call = call
+    )
+  }
+  # the keys under the grammar's names, as the pings carry them inside the function
+  inner <- ifelse(keys %in% map, names(map)[match(keys, map)], keys)
+  te <- pmax(limits$grain_s, limits$time_error_s, na.rm = TRUE)
+  list(
+    keys = inner,
+    key = key,
+    kn = limits$ceiling_kn * 0.514444,
+    m0 = 2 * limits$noise_m,
+    te = ifelse(is.na(te), 0, te),
+    grain = limits$grain_s,
+    noise = limits$noise_m
+  )
+}
+# Each row's limits from .rb_limits_in(), NA where none (or no `limits`).
+.rb_limits_rows <- function(d, lim) {
+  n <- nrow(d)
+  if (is.null(lim)) {
+    na <- rep(NA_real_, n)
+    return(list(kn = na, m0 = na, te = na, grain = na, noise = na))
+  }
+  m <- match(.rb_key(d[lim$keys]), lim$key)
+  list(kn = lim$kn[m], m0 = lim$m0[m], te = lim$te[m], grain = lim$grain[m], noise = lim$noise[m])
+}
+.rb_key <- function(df) {
+  do.call(paste, c(lapply(df, function(z) as.character(z)), sep = "\r"))
 }
 
 # The constants of the "local" rule, as .rb_whack_local() takes them, with those the caller passed in `...`.
@@ -1005,7 +1104,8 @@ rb_flag_ping_impossible <- function(
   max_gap_h,
   noise_m,
   has_feed,
-  local = NULL
+  local = NULL,
+  rows = NULL
 ) {
   d <- .rb_evidence_init(d, has_feed, !is.null(local))
   if (!any(new)) {
@@ -1027,6 +1127,15 @@ rb_flag_ping_impossible <- function(
   nk[nk > n | v[pmin(nk, n)] != v] <- NA_integer_
   r <- which(new[o])
   ms_max <- kn_max * 0.514444
+  # "local": each row's own limits (rb_create_ping_limits()), the fixed ones where it has none
+  if (!is.null(local)) {
+    kn_s <- if (is.null(rows)) rep(NA_real_, n) else rows$kn[o]
+    m0_s <- if (is.null(rows)) rep(NA_real_, n) else rows$m0[o]
+    te_s <- if (is.null(rows)) rep(NA_real_, n) else rows$te[o]
+    kn_s[is.na(kn_s)] <- ms_max
+    m0_s[is.na(m0_s)] <- local$margin_m
+    te_s[is.na(te_s)] <- 0
+  }
   leg <- function(j) {
     # the leg from each flagged row r to its neighbour j (a row of the sorted track, NA: none)
     ok <- !is.na(j)
@@ -1049,14 +1158,16 @@ rb_flag_ping_impossible <- function(
     too_far <- if (is.null(local)) {
       dist / pmax(dt, min_dt_s) > ms_max
     } else {
-      # "local": the limit at the speed the ping was judged by, the fixed one where none
+      # "local": the limit at the speed the ping was judged by, the vessel's ceiling or the fixed one where none; the
+      # larger of the leg's two ends' limits, as the engine takes them
       v <- d$ping_flag_speed_kn[o[r]] * 0.514444
+      e <- function(z) ifelse(is.na(j), z[r], pmax(z[r], z[pmax(j, 1L)]))
       lim <- ifelse(
         is.na(v),
-        ms_max,
+        e(kn_s),
         local$factor * v + local$margin_kn * 0.514444
       )
-      dist > local$margin_m + lim * pmax(dt, min_dt_s)
+      dist > e(m0_s) + lim * (pmax(dt, min_dt_s) + e(te_s))
     }
     bad <- ok &
       !is.na(dist) &

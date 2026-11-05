@@ -585,6 +585,13 @@ etiquette_cases <- local({
     reference = "a",
     min_pairs = 10
   )
+  clock_limits <- rb_create_ping_limits(
+    clocks[names(clocks) != ".rid"],
+    stream = stream,
+    speed = speed,
+    min_recorded = 10,
+    min_moving = 10
+  )
 
   list(
     # Step 0: the streams' clocks ------------------------------------------------------------------------------------
@@ -695,6 +702,41 @@ etiquette_cases <- local({
       lazy = TRUE,
       sf = TRUE,
       note = "one feed: a stretch sent again a day later (repeats, labelled) and a report sent twice 1 s apart."
+    ),
+    list(
+      fn = "rb_flag_ping_time",
+      main = "x",
+      args = function() list(x = fresh(clocks), limits = clock_limits, stream = quote(stream)),
+      shape = "same",
+      lazy = TRUE,
+      sf = TRUE,
+      note = "two streams of two vessels, the limits a data frame."
+    ),
+    list(
+      fn = "rb_flag_ping_impossible",
+      main = "x",
+      args = function() {
+        list(x = fresh(clocks), method = "local", speed = quote(speed), limits = clock_limits)
+      },
+      shape = "same",
+      lazy = TRUE,
+      sf = TRUE,
+      label = " with limits",
+      note = "each vessel and stream its own limits, from rb_create_ping_limits()."
+    ),
+    list(
+      fn = "rb_add_ping_outcome",
+      main = "x",
+      args = function() {
+        x <- fresh(clocks)
+        x$expect <- rep(c("keep", "flag position", "keep", "flag time"), length.out = nrow(x))
+        x$ping_flag <- rep(c(NA, "forward", "time", NA, "local_spike"), length.out = nrow(x))
+        list(x = x, label = quote(ping_flag), truth = quote(expect))
+      },
+      shape = "same",
+      lazy = TRUE,
+      sf = TRUE,
+      note = ""
     ),
     list(
       fn = "rb_flag_ping_impossible",

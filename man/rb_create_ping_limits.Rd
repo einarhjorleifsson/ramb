@@ -93,10 +93,12 @@ lim[, c("vid", "stream", "ceiling_kn", "ceiling_basis", "grain_s", "time_error_s
 }
 \seealso{
 Other flag pings:
+\code{\link[=rb_add_ping_outcome]{rb_add_ping_outcome()}},
 \code{\link[=rb_add_ping_speed]{rb_add_ping_speed()}},
 \code{\link[=rb_flag_ping_duplicate]{rb_flag_ping_duplicate()}},
 \code{\link[=rb_flag_ping_impossible]{rb_flag_ping_impossible()}},
 \code{\link[=rb_flag_ping_invalid]{rb_flag_ping_invalid()}},
-\code{\link[=rb_flag_ping_port]{rb_flag_ping_port()}}
+\code{\link[=rb_flag_ping_port]{rb_flag_ping_port()}},
+\code{\link[=rb_flag_ping_time]{rb_flag_ping_time()}}
 }
 \concept{flag pings}

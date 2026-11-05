@@ -422,24 +422,35 @@
     rep(NA_real_, nrow(x))
   }
   sog[!is.na(sog) & (sog < 0 | sog >= 102.3)] <- NA_real_
-  r <- whack_local_cpp(
+  # each ping's own limits (rb_flag_ping_impossible(limits = )), the fixed ones where it has none
+  own_col <- function(nm) if (nm %in% names(x)) as.numeric(x[[nm]]) else rep(NA_real_, nrow(x))
+  kn <- own_col(".rb_kn")
+  own <- !is.na(kn)
+  kn[!own] <- kn_max * 0.514444
+  m0 <- own_col(".rb_m0")
+  m0[is.na(m0)] <- margin_m
+  te <- own_col(".rb_te")
+  te[is.na(te)] <- 0
+  r <- whack_local_v_cpp(
     as.numeric(x$lon),
     as.numeric(x$lat),
     as.numeric(x$time),
     match(x$vid, unique(x$vid)),
     sog * 0.514444,
     .rb_feed_codes(x),
-    kn_max * 0.514444,
+    kn,
+    m0,
+    te,
+    own,
     min_dt_s,
     max_gap_h * 3600,
     as.integer(k),
     factor,
     margin_kn * 0.514444,
-    margin_m,
     noise_m
   )
   x$whack_local <- c(NA_character_, "local_spike", "local_forward")[r$code + 1L]
-  x$whack_basis <- c(NA_character_, "recorded", "track")[r$basis + 1L]
+  x$whack_basis <- c(NA_character_, "recorded", "track", "ceiling")[r$basis + 1L]
   x$whack_v <- r$v / 0.514444
   if (length(grp_vars) > 0) {
     x <- dplyr::group_by(x, dplyr::across(dplyr::all_of(grp_vars)))
