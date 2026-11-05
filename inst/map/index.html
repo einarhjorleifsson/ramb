@@ -75,6 +75,7 @@
   #t-marks { flex: 1; display: flex; flex-wrap: wrap; gap: 2px 12px; }
   .t-mark { display: inline-flex; align-items: center; gap: 5px; }
   .t-mark i { display: inline-block; width: 4px; height: 12px; }
+  .t-step { padding: 1px 7px; }
   #t-info { position: absolute; top: 3px; left: 10px; right: 10px; z-index: 1; pointer-events: none; color: #222;
             font-size: 12px; line-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
             font-variant-numeric: tabular-nums; }
@@ -110,7 +111,9 @@
       <summary data-t="gTime"></summary>
       <div class="body">
         <div class="row"><label for="t-vessel" data-t="tVessel"></label><select id="t-vessel"></select></div>
-        <div class="row" id="t-span-row"><label for="t-span" data-t="tSpan"></label><select id="t-span"></select></div>
+        <div class="row" id="t-span-row"><label for="t-span" data-t="tSpan"></label>
+          <button id="t-span-prev" class="t-step" data-tt="chooseBack">‹</button><select id="t-span"></select>
+          <button id="t-span-next" class="t-step" data-tt="chooseNext">›</button></div>
         <div class="row" id="t-cols-row" hidden><label data-t="tCols"></label><span id="t-cols"></span></div>
         <div class="row" id="t-marks-row" hidden><label data-t="tMarks"></label><span id="t-marks"></span></div>
         <div class="row"><button id="t-whole" data-t="tWholeBtn" data-tt="tWholeTip"></button></div>
@@ -1472,7 +1475,14 @@ function timeSetup(q) {
       `<span class="t-mark"><i style="background:${markColour(c)}"></i>${esc(tr(m.label))}</span>`));
   }
   $("t-vessel").addEventListener("change", () => { tSpans(tVes(), null, true); tLoad(); });
-  $("t-span").addEventListener("change", () => tLoad());
+  $("t-span").addEventListener("change", () => { tSpanSteps(); tLoad(); });
+  // ‹ › step through the spans, a fault or a trip at a time
+  for (const [id, by] of [["t-span-prev", -1], ["t-span-next", 1]]) $(id).addEventListener("click", () => {
+    const s = $("t-span"), k = s.selectedIndex + by;
+    if (k < 0 || k >= s.options.length) return;
+    s.selectedIndex = k;
+    s.dispatchEvent(new Event("change"));
+  });
   $("t-whole").addEventListener("click", () => tSetWindow(null));
   $("t-cols").addEventListener("change", e => TU?.setSeries(+e.target.dataset.col + 1, { show: e.target.checked }));
   $("t-lanes").style.height = `${TP.lanes.length * LANE_H}px`;
@@ -1517,6 +1527,13 @@ function tSpans(v, want = null, otherVessel = false) {
   $("t-span").replaceChildren(...v.spans.map(x => new Option(
     x.value === "all" ? tr("tWhole", x.n.toLocaleString(loc())) : `${x.name ?? x.value} (${x.n.toLocaleString(loc())})`, x.value)));
   $("t-span").value = v.spans.some(x => x.value === s) ? s : v.span;
+  tSpanSteps();
+}
+// the step buttons, off at either end of the list
+function tSpanSteps() {
+  const s = $("t-span");
+  $("t-span-prev").disabled = s.selectedIndex <= 0;
+  $("t-span-next").disabled = s.selectedIndex >= s.options.length - 1;
 }
 function timeLang() { tVessels(); tSpans(tVes()); tInfo(); TU?.redraw(false, false); }
 

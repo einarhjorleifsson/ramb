@@ -1,3 +1,10 @@
+# ramb 2026.11.05.5
+
+- ‹ › beside the time panel's span list (fishycode plan 065 step 2): a fault, a trip or a month at a time, each step into
+  the address and the map following it; off at either end of the list. Checked in a browser, served and as a bundle
+  (two tracks of `dansk_truth`: the marks, the steps and the map's filter from the bundle's own files), and at a
+  phone's width; built by Claude (AI).
+
 # ramb 2026.11.05.4
 
 - The time panel's marks by column (fishycode plan 065 step 2): each mark column a colour of its own, its row of ticks
