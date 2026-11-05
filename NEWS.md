@@ -1,3 +1,23 @@
+# ramb 2026.11.05.10
+
+- `rb_flag_ping_impossible(local_speed = c("larger_side", "both_sides"))` (fishycode plan 068, its asks answered by the
+  maintainer): for `"local"`, a ping's local speed is now the larger of the median recorded speed of the `k` pings
+  before and that of the `k` after, the ping's own counted on each side. Before it was the median of the `k` on each
+  side, its own left out, still there as `"both_sides"`, bit for bit. A vessel leaving a berth, or making a short hop
+  between two, was judged at the speed of the pings at rest around it; its good steps failed the allowance and the
+  forward scan blamed the pings after. **A change of default** for `"local"`. Chosen in fishycode's study
+  `$FISHYDATA/archive/2026-11-05-local-allowance/` (with the vote, each vessel's own limits and the recorded speed):
+  on `dansk_truth` the wrong positions caught within a point (65.5 against 65.9 % at 1 min, 66.7 against 67.7 % at
+  6 min), the good pings flagged on their own fewer (9.8 against 12.2 in 10,000 at 1 min, 50 against 104 at 6 min);
+  on EM4SSF's case study 75 left of the 411 good pings the old way flagged beyond a fixed 26 kn (judged by hand);
+  on Iceland's 40 hand-judged cases 33 right of 36 against 30; on five more datasets, of the 26 judged episodes where
+  the two part, the new way borne out in 20, the old in 1. Of two variants tried, 3 pings a side lost catch; the margin
+  (5 kn) and factor (1.5) were measured not to be the lever. `whack_local_v_cpp(sided = )` new.
+- `rb_flag_ping_impossible()`: `...` now comes after `method`, so the arguments after it must be named in full. A
+  constant of a method passed in `...` was taken for `kn_max` when its name began it: `k = 3` set `kn_max` to 3 kn and
+  never reached `"local"`. No call in ramb or fishycode passed `kn_max`, `min_dt_s` or `max_gap_h` by position.
+- `local_speed` with another method stops with a message.
+
 # ramb 2026.11.05.9
 
 - `rb_flag_ping_impossible(anchor = "vote")` (fishycode plan 066, TODO 191): the forward scan of `"clean"` (its second

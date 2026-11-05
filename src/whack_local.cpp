@@ -3,7 +3,10 @@
 // `local_sog` of its study's scripts/local_speed.R; built in step 4).
 //
 // The local speed of a ping is the median of the recorded speeds of the K pings on each side (its own left out, and
-// the pings without one). A leg is impossible when it is longer than margin_m + (factor x v + margin_ms) x its time
+// the pings without one), or with sided = 1 (rb_flag_ping_impossible(local_speed = "larger_side"), fishycode plan 068)
+// the larger of the median of the K before and the median of the K after, the ping's own counted on each side: a
+// vessel leaving a berth is judged at the speed of the pings that move, not outvoted by those at rest, and a single
+// glitch is still one value of K + 1 on its side. A leg is impossible when it is longer than margin_m + (factor x v + margin_ms) x its time
 // step (at least min_dt), v the local speed; where no ping near has a recorded speed, v is unknown and the limit is
 // the fixed one, margin_m + kn_max x the time step. Per vessel (the input sorted by vessel, time, lon, lat):
 //   1. a ping whose two legs are both impossible while the leg that skips it is not is flagged (code 1): a real turn
@@ -71,7 +74,8 @@ struct Rule {
 List whack_local_v_cpp(NumericVector lon, NumericVector lat, NumericVector time, IntegerVector vessel,
                        NumericVector sog_ms, IntegerVector feed, NumericVector kn_v, NumericVector m0_v,
                        NumericVector te_v, LogicalVector own, double min_dt, double gap_s, int K, double factor,
-                       double margin_ms, double noise_m, int anchor = 0, int vote_n = 5, double detour_m = 50) {
+                       double margin_ms, double noise_m, int anchor = 0, int vote_n = 5, double detour_m = 50,
+                       int sided = 0) {
   const int n = lon.size();
   IntegerVector code(n, 0), basis(n, 0);
   NumericVector judged(n, NA_REAL);  // the local speed (m/s) a flagged ping was judged by, NA where the fixed limit
@@ -93,8 +97,24 @@ List whack_local_v_cpp(NumericVector lon, NumericVector lat, NumericVector time,
     const int m = k.size();
     std::vector<double> v(m), w;
     w.reserve(2 * R.K);
+    std::vector<double> wa;
     for (int q = 0; q < m; q++) {
       w.clear();
+      if (sided) {
+        // w the K before, wa the K after, the ping's own on both sides
+        wa.clear();
+        for (int o = -R.K; o <= R.K; o++) {
+          int r = q + o;
+          if (r < 0 || r >= m) continue;
+          double s = sog_ms[k[r]];
+          if (std::isnan(s)) continue;
+          if (o <= 0) w.push_back(s);
+          if (o >= 0) wa.push_back(s);
+        }
+        double b = median_of(w), a = median_of(wa);
+        v[q] = std::isnan(b) ? a : (std::isnan(a) ? b : std::max(a, b));
+        continue;
+      }
       for (int o = -R.K; o <= R.K; o++) {
         int r = q + o;
         if (o == 0 || r < 0 || r >= m) continue;

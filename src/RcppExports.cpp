@@ -117,8 +117,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // whack_local_v_cpp
-List whack_local_v_cpp(NumericVector lon, NumericVector lat, NumericVector time, IntegerVector vessel, NumericVector sog_ms, IntegerVector feed, NumericVector kn_v, NumericVector m0_v, NumericVector te_v, LogicalVector own, double min_dt, double gap_s, int K, double factor, double margin_ms, double noise_m, int anchor, int vote_n, double detour_m);
-RcppExport SEXP _ramb_whack_local_v_cpp(SEXP lonSEXP, SEXP latSEXP, SEXP timeSEXP, SEXP vesselSEXP, SEXP sog_msSEXP, SEXP feedSEXP, SEXP kn_vSEXP, SEXP m0_vSEXP, SEXP te_vSEXP, SEXP ownSEXP, SEXP min_dtSEXP, SEXP gap_sSEXP, SEXP KSEXP, SEXP factorSEXP, SEXP margin_msSEXP, SEXP noise_mSEXP, SEXP anchorSEXP, SEXP vote_nSEXP, SEXP detour_mSEXP) {
+List whack_local_v_cpp(NumericVector lon, NumericVector lat, NumericVector time, IntegerVector vessel, NumericVector sog_ms, IntegerVector feed, NumericVector kn_v, NumericVector m0_v, NumericVector te_v, LogicalVector own, double min_dt, double gap_s, int K, double factor, double margin_ms, double noise_m, int anchor, int vote_n, double detour_m, int sided);
+RcppExport SEXP _ramb_whack_local_v_cpp(SEXP lonSEXP, SEXP latSEXP, SEXP timeSEXP, SEXP vesselSEXP, SEXP sog_msSEXP, SEXP feedSEXP, SEXP kn_vSEXP, SEXP m0_vSEXP, SEXP te_vSEXP, SEXP ownSEXP, SEXP min_dtSEXP, SEXP gap_sSEXP, SEXP KSEXP, SEXP factorSEXP, SEXP margin_msSEXP, SEXP noise_mSEXP, SEXP anchorSEXP, SEXP vote_nSEXP, SEXP detour_mSEXP, SEXP sidedSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -141,7 +141,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type anchor(anchorSEXP);
     Rcpp::traits::input_parameter< int >::type vote_n(vote_nSEXP);
     Rcpp::traits::input_parameter< double >::type detour_m(detour_mSEXP);
-    rcpp_result_gen = Rcpp::wrap(whack_local_v_cpp(lon, lat, time, vessel, sog_ms, feed, kn_v, m0_v, te_v, own, min_dt, gap_s, K, factor, margin_ms, noise_m, anchor, vote_n, detour_m));
+    Rcpp::traits::input_parameter< int >::type sided(sidedSEXP);
+    rcpp_result_gen = Rcpp::wrap(whack_local_v_cpp(lon, lat, time, vessel, sog_ms, feed, kn_v, m0_v, te_v, own, min_dt, gap_s, K, factor, margin_ms, noise_m, anchor, vote_n, detour_m, sided));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -199,7 +200,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_ramb_cnr_join_cpp", (DL_FUNC) &_ramb_cnr_join_cpp, 9},
     {"_ramb_whack_forward_cpp", (DL_FUNC) &_ramb_whack_forward_cpp, 8},
     {"_ramb_whack_forward_vote_cpp", (DL_FUNC) &_ramb_whack_forward_vote_cpp, 10},
-    {"_ramb_whack_local_v_cpp", (DL_FUNC) &_ramb_whack_local_v_cpp, 19},
+    {"_ramb_whack_local_v_cpp", (DL_FUNC) &_ramb_whack_local_v_cpp, 20},
     {"_ramb_whack_local_cpp", (DL_FUNC) &_ramb_whack_local_cpp, 14},
     {"_ramb_whack_sda_cpp", (DL_FUNC) &_ramb_whack_sda_cpp, 12},
     {NULL, NULL, 0}

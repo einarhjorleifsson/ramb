@@ -7,15 +7,16 @@
 rb_flag_ping_impossible(
   x,
   method = c("clean", "forward", "local", "sda", "fwdbwd", "sequential"),
+  ...,
   kn_max = 25,
   min_dt_s = 10,
   max_gap_h = 4,
-  ...,
   feed = NULL,
   noise_nm = 0.3,
   speed = NULL,
   limits = NULL,
   anchor = c("kept", "vote"),
+  local_speed = c("larger_side", "both_sides"),
   evidence = FALSE,
   vid = vid,
   time = time,
@@ -36,9 +37,9 @@ and interleaved streams.
 \item \code{"forward"}: the forward scan alone ("forward"): each ping is judged against the last
 \emph{retained} ping, so consecutive clusters are caught.
 \item \code{"local"}: each leg judged against the vessel's own speed, from its recorded speed over ground (\code{speed}), with
-no heading. The local speed of a ping is the median recorded speed of the \code{k} pings on each side (5), its own
-left out; a leg is impossible when longer than \code{margin_m} (50 m) plus \code{factor} (1.5) times the local speed plus
-\code{margin_kn} (5 knots), times its time step. Where no ping near has a recorded speed, the limit is \code{margin_m}
+no heading. The local speed of a ping is the larger of the median recorded speed of the \code{k} pings before (5)
+and that of the \code{k} after, its own counted on each side (\code{local_speed}); a leg is impossible when longer than
+\code{margin_m} (50 m) plus \code{factor} (1.5) times the local speed plus \code{margin_kn} (5 knots), times its time step. Where no ping near has a recorded speed, the limit is \code{margin_m}
 plus \code{kn_max} times the time step (basis \code{"track"}). Two stages: a ping whose two legs are both impossible
 while the leg that skips it is not ("local_spike"; the first and last ping of a track or of a stretch after a
 gap: their one leg), repeated on the pings left; then a forward scan with the same limit ("local_forward").
@@ -48,14 +49,15 @@ The constants are set by hand, passed in \code{...} (\code{k}, \code{factor}, \c
 equals \code{"forward"} at 30 times its time.
 }}
 
+\item{...}{Passed to the method (\code{k}, \code{factor}, \code{margin_kn} and \code{margin_m} for \code{"local"}; \code{ang}, \code{distlim} for
+\code{"clean"}'s first stage); with \code{anchor = "vote"}, its constants \code{vote_n} (5 pings) and \code{detour_m} (50 m). The
+arguments after \code{...} must be named in full, so that a constant here (\code{k}) is never taken for \code{kn_max}.}
+
 \item{kn_max}{Speed threshold, knots: the fixed limit (for \code{"local"}, where no recorded speed is near).}
 
 \item{min_dt_s}{A time step shorter than this counts as this many seconds.}
 
 \item{max_gap_h}{For \code{"clean"} and \code{"forward"}: after a gap longer than this the scan restarts.}
-
-\item{...}{Passed to the method (\code{k}, \code{factor}, \code{margin_kn} and \code{margin_m} for \code{"local"}; \code{ang}, \code{distlim} for
-\code{"clean"}'s first stage); with \code{anchor = "vote"}, its constants \code{vote_n} (5 pings) and \code{detour_m} (50 m).}
 
 \item{feed}{The column naming the feed of each ping, for the noise floor \code{noise_nm}. Default \code{NULL}: no
 floor. A ping with no feed (\code{NA}) never takes part in it. Not for \code{"fwdbwd"} and \code{"sequential"}.}
@@ -75,12 +77,25 @@ it. Default \code{NULL}: the fixed \code{kn_max}, \code{margin_m} and no time er
 065 step 4), without a recorded speed it caught 53 \% of the wrong positions at 1 min and 52 \% at 6 min (\code{"clean"}
 at 25 kn: 56 and 45 \%), flagging 17 good pings in 10,000 of its own at 1 min (\code{"clean"}: 45) and 79 at 6 min (29),
 where a vessel's recorded ceiling misses its fastest stretches; with the recorded speed, against \code{"local"}
-without limits: 65 and 64 \% (70 and 59 \%), 15 and 110 own flags in 10,000 (20 and 92).}
+without limits: 65 and 64 \% (70 and 59 \%), 15 and 110 own flags in 10,000 (20 and 92). (These with the local
+speed taken over both sides, \code{local_speed = "both_sides"}, as before fishycode plan 068.)}
 
 \item{anchor}{The forward scan's anchor at a jump: \code{"kept"} (default), today's scan, the next ping blamed;
 \code{"vote"}, the pings after the jump decide which end is wrong (see Details). For \code{"clean"} (its second stage),
 \code{"forward"} and \code{"local"} (its second stage). A ping with no position or time is then not judged and is no
 anchor (\code{"forward"}'s default scan adopts it as one).}
+
+\item{local_speed}{For \code{"local"}, how a ping's local speed is taken from the recorded speeds around it:
+\code{"larger_side"} (default), the larger of the median of the \code{k} before and the median of the \code{k} after, the ping's
+own counted on each side, so a vessel leaving a berth or slowing to one is judged at the speed of the pings that
+move, not outvoted by those at rest, and a single glitch is still one value of \code{k + 1} on its side;
+\code{"both_sides"}, the median of the \code{k} on each side, its own left out, as before (fishycode plan 068). Chosen in
+fishycode's study \verb{$FISHYDATA/archive/2026-11-05-local-allowance/} (with the vote, the own limits and the recorded
+speed): on \code{dansk_truth} the wrong positions caught within a point (65.5 against 65.9 \% at 1 min, 66.7 against
+67.7 \% at 6 min) and fewer good pings flagged on their own (9.8 against 12.2 in 10,000 at 1 min, 50 against 104 at
+6 min); on EM4SSF's case study 75 of the 411 good pings \code{"both_sides"} flags beyond a fixed 26 kn, by hand; on
+Iceland's 40 hand-judged cases 33 right of 36 against 30; on five more datasets, of 26 judged episodes where the
+two part, \code{"larger_side"} borne out in 20 and \code{"both_sides"} in 1.}
 
 \item{evidence}{\code{TRUE} adds the evidence columns, see Details. Default \code{FALSE}.}
 

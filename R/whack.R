@@ -420,7 +420,9 @@
 
 # .rb_whack_local -------------------------------------------------------------
 # Each leg judged against the vessel's own speed (compiled, src/whack_local.cpp): rb_flag_ping_impossible(method =
-# "local"). The local speed of a ping is the median of the recorded speeds over ground of the `k` pings on each side;
+# "local"). The local speed of a ping is the larger of the median of the recorded speeds over ground of the `k` pings
+# before and the median of the `k` after, its own counted on each side (local_speed = "larger_side", the default since
+# fishycode plan 068), or the median of the `k` on each side, its own left out ("both_sides", before);
 # a leg is impossible when longer than margin_m + (factor x local speed + margin_kn) x its time step, and where no
 # ping near has a recorded speed, longer than margin_m + kn_max x its time step. Stage 1, "local_spike": both legs
 # impossible and the leg that skips the ping possible (the first and last ping of a track or stretch: their one leg),
@@ -449,7 +451,8 @@
   margin_m = 50,
   anchor = "kept",
   vote_n = 5,
-  detour_m = 50
+  detour_m = 50,
+  local_speed = "larger_side"
 ) {
   grp_vars <- dplyr::group_vars(x)
   x <- dplyr::arrange(dplyr::ungroup(x), vid, time, lon, lat)
@@ -487,7 +490,8 @@
     noise_m,
     as.integer(anchor == "vote"),
     as.integer(vote_n),
-    detour_m
+    detour_m,
+    as.integer(local_speed == "larger_side")
   )
   x$whack_local <- c(NA_character_, "local_spike", "local_forward", "local_anchor")[r$code + 1L]
   x$whack_basis <- c(NA_character_, "recorded", "track", "ceiling")[r$basis + 1L]
