@@ -67,6 +67,49 @@ test_that("the planted faults: one track per vessel and rate, every fault at eve
   expect_equal(d$.rid, seq_len(nrow(d)))
 })
 
+test_that("the truth set: every clock and fault where planted, each report's two truths agreeing with its fault", {
+  d <- dplyr::collect(rb_read_example("dansk_truth"))
+  hav <- function(lon1, lat1, lon2, lat2) {
+    r <- pi / 180
+    a <- sin((lat2 - lat1) * r / 2)^2 + cos(lat1 * r) * cos(lat2 * r) * sin((lon2 - lon1) * r / 2)^2
+    2 * 6371008.8 * asin(sqrt(pmin(1, a)))
+  }
+  clocks <- c("fix", "minute_trunc", "minute_round", "jitter", "receipt", "hourly", "fills", "derived")
+  expect_setequal(unique(d$clock), clocks)
+  expect_equal(d$vid, sprintf("%s_%ss_%s", d$vessel, d$rate_s, d$clock))
+  expect_equal(d$.rid, seq_len(nrow(d)))
+  # the new faults on their clocks
+  expect_true(all(c("relocation", "late_stamp", "speed_glitch") %in% d$fault[d$clock == "fix"]))
+  expect_true("late_stamp" %in% d$fault[d$clock == "minute_round"])
+  expect_true("misplaced_fill" %in% d$fault[d$clock == "fills"])
+  expect_true("rx_copy" %in% d$fault[d$clock == "receipt"])
+  # the clocks write what they say: minutes, the jitter within half a step, the receipt's lag 1-90 s
+  expect_true(all(as.numeric(d$time[d$clock %in% c("minute_trunc", "minute_round", "fills")]) %% 60 == 0))
+  j <- d$fault %in% "jitter"
+  expect_true(all(abs(d$time_error_s[j]) <= d$rate_s[j] / 2))
+  expect_true(all(dplyr::between(d$stream_lag_s[d$stream == "rx"], 1, 90)))
+  expect_true(all(d$speed_basis[d$clock == "derived"] == "derived"))
+  # each row's truths: a moved position is not where the vessel was; a time fault keeps its position
+  off <- hav(d$lon, d$lat, d$true_lon, d$true_lat)
+  expect_equal(d$wrong_position, off > 1)
+  expect_true(all(d$wrong_position[d$fault %in% c("spike", "run", "detour", "lon_eq_lat", "first_after_gap",
+                                                  "relocation", "misplaced_fill")]))
+  expect_false(any(d$wrong_position[d$fault %in% c("late_stamp", "jitter", "speed_glitch", "rx_copy")]))
+  expect_true(all(d$wrong_time[d$fault %in% c("late_stamp", "jitter", "clock_offset", "summer_time", "shifted_copy")]))
+  expect_equal(d$wrong_speed, d$fault %in% "speed_glitch")
+  expect_equal(d$time_error_s, as.numeric(d$time) - as.numeric(d$true_time))
+  # an untouched report is as it was, give or take its clock's grain and its stream's lag
+  u <- is.na(d$fault) & !d$fill
+  expect_false(any(d$wrong_position[u] | d$wrong_time[u]))
+  expect_true(all(abs(d$time_error_s[u] - d$stream_lag_s[u]) <= d$true_grain_s[u]))
+  # what an ideal flagger does follows from the truths
+  expect_equal(
+    d$expect,
+    ifelse(d$fault %in% c("near_copy", "clock_offset", "summer_time", "rx_copy"), "copy",
+           ifelse(d$wrong_position, "flag position", ifelse(d$wrong_time, "flag time", "keep")))
+  )
+})
+
 test_that("the data dictionary, the files and the references agree", {
   dir <- system.file("extdata", package = "ramb")
   dd_file <- file.path(dir, "data-dict.yaml")

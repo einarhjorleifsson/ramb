@@ -386,6 +386,214 @@ tables:
         description: For a copy, how far its time is from the time of the ping it copies.
         range: [-256294, 229224]
 
+  - name: dansk_truth
+    label: Danish vessel tracks written through the clocks and streams of real data, with the truth of every report
+    description: >
+      Each row is a report of four of dansk_planted's vessels, at 1 min and 6 min, faults and all, written through one
+      of eight clocks or streams (the fix's own time, cut or rounded to the minute, jittered, stamped on receipt, an
+      hourly stream beside, resampled with fills, a derived speed), with new faults of position, time and speed; every
+      row holds the report as written and as it truly was, and what an ideal flagger does with it, for scoring a
+      flagger on both kinds of error.
+    details: |
+      **Cite:** [@ices2022wkssfgeo; @wkssfgeo_github; @ramb]
+
+      **Licence:** MIT, Copyright (c) 2021 ICES Expert Groups, as dansk, from which it is made.
+
+      **Changes:** dansk_planted's vessels EX_6, EX_10, EX_12 and EX_14 at 1 min and 6 min, each track copied once per
+      clock (`clock`): the fix's own time; every time cut, or rounded, to its minute (a ping dropped where two land on one
+      minute); a third of the times written up to half a step off; two streams, the fix's time and the time received
+      (1-90 s late, drifting), a report in both a copy; an hourly stream beside the track, its clock 0-120 s ahead; the
+      track at the minute with stretches of 3-10 fixes lost and filled along straight lines; the speed derived from the
+      positions. Planted besides: five pings before a silence moved 2-10 km together (relocation), a ping written late
+      (late_stamp), a speed report of 60 kn (speed_glitch), and a filled stretch drawn to a misplaced fix
+      (misplaced_fill) (`data-raw/truth.R`, a fixed seed). A track is one `vid`: the vessel, the rate and the clock.
+    source:
+      parquet: dansk_truth.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/truth.R
+    columns:
+      - name: .rid
+        type: number(id)
+        constraints: [primary_key]
+        description: Row number, in the order of clock, rate, vessel and time.
+        examples: [17513, 50453, 79035, 90442, 112566]
+      - name: vid
+        type: string
+        description: The track, the vessel at one rate through one clock.
+        examples: [EX_10_60s_derived, EX_12_60s_minute_round, EX_14_360s_minute_round, EX_14_60s_hourly, EX_6_60s_fix]
+      - name: vessel
+        type: string
+        description: The vessel, dansk's `vessel_id`.
+        examples: [EX_10, EX_12, EX_14, EX_6]
+      - name: rate_s
+        type: number(quantity)
+        units: seconds
+        description: The rate the track is thinned to in dansk_planted, the least time between two of its pings.
+        examples: [60, 360]
+      - name: clock
+        type: enum
+        description: How the track's reports are written.
+        values:
+          fix: the fix's own time, whole seconds, as dansk_planted
+          minute_trunc: every time cut to its minute
+          minute_round: every time rounded to its minute, a ping dropped where two land on one minute
+          jitter: a third of the times written up to half a step off
+          receipt: two streams, the fix's time and the time received, 1-90 s late and drifting
+          hourly: the track, and an hourly stream beside it whose clock runs 0-120 s ahead
+          fills: at the minute, stretches of fixes lost and filled along straight lines
+          derived: the fix's time, the speed derived from the positions as delivered
+      - name: stream
+        type: enum
+        description: The stream that carried the report.
+        values:
+          a: the vessel's own feed
+          b: a second feed (dansk_planted's clock_offset, summer_time and tie)
+          fix: on the receipt and hourly clocks, the stream with the fix's own time
+          rx: on the receipt clock, the stream stamped when received
+          vms: on the hourly clock, the hourly stream
+      - name: feed
+        type: enum
+        description: The feed, as dansk_planted's, with the receipt and hourly clocks' own.
+        values:
+          a: the vessel's own feed
+          b: a second feed
+          rx: the stream stamped when received
+          vms: the hourly stream
+      - name: time
+        type: datetime
+        time_zone: naive
+        description: Time of the report, as written by its clock.
+        range: [2012-12-03T04:53:00, 2015-09-13T20:58:10]
+      - name: lon
+        type: number(quantity)
+        units: degrees east
+        description: Longitude, as written.
+        range: [7.079252, 58.105325]
+      - name: lat
+        type: number(quantity)
+        units: degrees north
+        description: Latitude, as written.
+        range: [55.7359, 58.25819]
+      - name: speed
+        type: number(quantity)
+        units: knots
+        description: Speed over ground, recorded as dansk gives it, or derived from the positions (`speed_basis`).
+        range: [0, 94863.44]
+      - name: speed_basis
+        type: enum
+        description: Where the speed comes from.
+        values:
+          recorded: the device's, as dansk gives it
+          derived: computed from the step before, within the stream
+      - name: course
+        type: number(quantity)
+        units: degrees
+        description: Course over ground, recorded, as dansk gives it.
+        range: [0, 359.99]
+      - name: gear
+        type: enum
+        description: The gear, as dansk gives it at the ping nearest in time.
+        values:
+          GN: gillnet, not specified
+          GTR: trammel net
+          OTB: bottom otter trawl
+      - name: fishing
+        type: boolean
+        description: The expert's label at the ping nearest in time.
+      - name: fill
+        type: boolean
+        description: TRUE for a report the fills clock made, along a straight line between two fixes.
+      - name: fault
+        type: enum
+        description: What was done to the report; missing where nothing was.
+        values:
+          spike: dansk_planted's, one position moved 0.2-100 km
+          run: dansk_planted's, 3-8 positions in a row moved together
+          detour: dansk_planted's, one position moved aside, both its legs under 25 kn
+          lon_eq_lat: dansk_planted's, the latitude written into the longitude
+          shifted_copy: dansk_planted's, positions of 12-72 h away stamped here
+          clock_offset: dansk_planted's, a second feed's copies, 10-90 s late
+          summer_time: dansk_planted's, a second feed's copies, an hour late
+          near_copy: dansk_planted's, a report again a second later, 1-5 m away (a copy)
+          tie: dansk_planted's, a second feed at the same second, 0.2-2 km away
+          first_after_gap: dansk_planted's, the first ping of a track or after over 4 h, moved 0.2-100 km
+          fast: dansk_planted's, a stretch truly run at 30-40 kn (good)
+          relocation: five pings before a silence of 30 min or more moved 2-10 km together
+          late_stamp: one report written late, half a step on the fix clock and a minute on the minute clock
+          jitter: a report written up to half a step off (the jitter clock)
+          rx_copy: on the receipt clock, a report the fix stream carries too
+          speed_glitch: one report's speed written 60 kn, its position untouched
+          misplaced_fill: a misplaced fix, and the fills drawn to it
+      - name: fault_id
+        type: number(id)
+        description: The planted fault, within its track.
+        examples: [11, 18, 28, 42, 43]
+      - name: wrong
+        type: boolean
+        description: As dansk_planted's, the reports step 0 should take out; TRUE too for a relocation and a misplaced fill.
+      - name: wrong_position
+        type: boolean
+        description: TRUE where the position is not where the vessel was at the report's true time (over 1 m).
+      - name: wrong_time
+        type: boolean
+        description: TRUE where the report's own time is written wrong (a copy's, a late stamp, a jitter); a clock's grain
+          and a stream's lag are not.
+      - name: wrong_speed
+        type: boolean
+        description: TRUE where the speed is written wrong (speed_glitch).
+      - name: expect
+        type: enum
+        description: What an ideal flagger does with the report.
+        values:
+          keep: keep it
+          flag position: flag its position
+          flag time: keep its position, flag its time
+          copy: flag it as a copy of a report in another stream or a second later
+      - name: true_time
+        type: datetime
+        time_zone: naive
+        description: The report's true time; for a copy, the time of the report it copies.
+        range: [2012-12-03T04:53:58, 2015-09-13T20:58:01]
+      - name: true_lon
+        type: number(quantity)
+        units: degrees east
+        description: Where the vessel was at the report's true time, interpolated between its true pings at 10 s.
+        range: [7.331131, 12.854379]
+      - name: true_lat
+        type: number(quantity)
+        units: degrees north
+        description: As `true_lon`.
+        range: [55.7359, 58.11944]
+      - name: time_error_s
+        type: number(quantity)
+        units: seconds
+        description: How far the written time is from the true one; a clock's grain and a stream's lag included.
+        range: [-249820, 172273]
+      - name: stream_lag_s
+        type: number(quantity)
+        units: seconds
+        description: The stream's own lag at the report, the receipt's latency or the hourly unit's clock; 0 elsewhere.
+        range: [0, 90]
+      - name: planted_m
+        type: number(quantity)
+        units: metres
+        description: As dansk_planted's, for a report with a fault, how far it is from where the vessel was.
+        range: [0, 2928050]
+      - name: planted_s
+        type: number(quantity)
+        units: seconds
+        description: As dansk_planted's, for a copy, how far its time is from the report it copies.
+        range: [-249780, 172253]
+      - name: true_ceiling_kn
+        type: number(quantity)
+        units: knots
+        description: The vessel's true top speed, the highest it records twice in a row on its true track.
+        range: [8.396, 35.29023]
+      - name: true_grain_s
+        type: number(quantity)
+        units: seconds
+        description: The clock's grain, the finest step its times are written in.
+        examples: [1, 60]
+
   - name: benthis_parameters
     label: BENTHIS gear groups, gear width and seabed contact
     description: >

@@ -23,6 +23,9 @@ NULL
 #' @eval .rb_dataset_rd("dansk_planted")
 NULL
 
+#' @eval .rb_dataset_rd("dansk_truth")
+NULL
+
 #' @eval .rb_dataset_rd("benthis_parameters")
 NULL
 

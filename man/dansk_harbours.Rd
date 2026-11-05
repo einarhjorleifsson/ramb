@@ -36,6 +36,7 @@ Other example data:
 \code{\link{creel}},
 \code{\link{dansk}},
 \code{\link{dansk_planted}},
+\code{\link{dansk_truth}},
 \code{\link{ird_mg_gillnet}},
 \code{\link{metier5_benthis_lookup}},
 \code{\link{trawlsurvey}},

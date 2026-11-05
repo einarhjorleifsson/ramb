@@ -46,6 +46,7 @@ Other example data:
 \code{\link{dansk}},
 \code{\link{dansk_harbours}},
 \code{\link{dansk_planted}},
+\code{\link{dansk_truth}},
 \code{\link{metier5_benthis_lookup}},
 \code{\link{trawlsurvey}},
 \code{\link{trawlsurveytows}},

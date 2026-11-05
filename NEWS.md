@@ -1,3 +1,13 @@
+# ramb 2026.11.05.3
+
+- `dansk_truth` (new example, fishycode plan 065 step 1): four of `dansk_planted`'s vessels at 1 min and 6 min, faults and
+  all, written through eight clocks and streams (the fix's own time; cut or rounded to the minute; jittered up to half
+  a step; stamped on receipt, 1-90 s late; an hourly stream beside; resampled with fills; a derived speed), with new
+  faults of position, time and speed (a relocation, a late stamp, a misplaced fill, a 60 kn speed report). Every row
+  holds the report as written and as it truly was (`true_time`, `true_lon`, `true_lat`), what is wrong
+  (`wrong_position`, `wrong_time`, `wrong_speed`), what an ideal flagger does (`expect`), and its track's true ceiling and
+  clock grain: for scoring a flagger on both kinds of error. 160,097 rows, 3.3 MB; `data-raw/truth.R`, a fixed seed.
+
 # ramb 2026.11.05.2
 
 - `rb_map_time()` holds each vessel's whole series by default (the maintainer, 2026-11-05): `span_max` is 3,000,000
