@@ -1,3 +1,15 @@
+# ramb 2026.11.05.11
+
+- `rb_flag_ping_impossible(stream = )` (fishycode plan 068): each vessel's streams judged apart, for every method. No
+  leg, scan, vote or piece of evidence joins two streams, so two clocks that differ never read as distance (fishycode's
+  rule "derive within one stream"); `limits` by vessel, or by vessel and stream. Equal to running each stream as its
+  own vessel, flags and evidence, on `dansk_truth` for `"clean"`, `"forward"` and `"local"`. Opt-in: on `dansk_truth`
+  it halves the good pings flagged beside a fault (110 to 57 in 10,000 at 1 min, 508 to 270 at 6 min, `"local"` with
+  the own limits and the vote) for 6-7 points of the wrong positions caught, the planted ties (two reports of one time
+  in two streams) showing only on legs between streams; on Iceland's 40 hand-judged cases, with the new local speed,
+  34 right of 36. With `stream =` the warning on unharmonised clocks is not given; without it, the warning now names
+  `stream =`.
+
 # ramb 2026.11.05.10
 
 - `rb_flag_ping_impossible(local_speed = c("larger_side", "both_sides"))` (fishycode plan 068, its asks answered by the

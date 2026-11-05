@@ -14,6 +14,7 @@ rb_flag_ping_impossible(
   feed = NULL,
   noise_nm = 0.3,
   speed = NULL,
+  stream = NULL,
   limits = NULL,
   anchor = c("kept", "vote"),
   local_speed = c("larger_side", "both_sides"),
@@ -67,6 +68,15 @@ floor. A ping with no feed (\code{NA}) never takes part in it. Not for \code{"fw
 \item{speed}{For \code{"local"}: the column of the recorded speed over ground, knots (\code{NA} where none; below 0 or 102.3
 or more counts as none, AIS's "not available"). Default \code{NULL}: none, and every leg is judged at the fixed
 limit.}
+
+\item{stream}{The column naming each ping's stream (a feed, or a part of one on its own clock). Given, each
+vessel's streams are judged apart: no leg, scan, vote or piece of evidence joins two streams, so two clocks
+that differ never read as distance, and the warning on unharmonised clocks is not given. \code{limits} may then be by
+vessel, or by vessel and stream. Default \code{NULL}: a vessel's streams judged together, as before. For every method.
+On \code{dansk_truth} (fishycode plan 068; \code{"local"} with the own limits, the recorded speed and the vote) it halves
+the good pings flagged beside a fault (110 to 57 in 10,000 at 1 min, 508 to 270 at 6 min) for 6-7 points of the
+wrong positions caught: the planted ties, two reports of one time in two streams, show only on legs between
+them.}
 
 \item{limits}{For \code{"local"}: each vessel's own limits, the table of \code{\link[=rb_create_ping_limits]{rb_create_ping_limits()}} for these pings (by
 vessel, or by vessel and stream: its keys must be columns of \code{x}). A leg is impossible when longer than twice the

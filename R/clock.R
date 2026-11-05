@@ -120,7 +120,8 @@
           n,
           fn
         ),
-        i = "Harmonize them first (step 0): rb_create_ping_lags(), rb_add_ping_own_lag(), rb_add_ping_time(); a lag between two clocks reads as distance."
+        i = "Harmonize them first (step 0): rb_create_ping_lags(), rb_add_ping_own_lag(), rb_add_ping_time(); a lag between two clocks reads as distance.",
+        if (fn == "rb_flag_ping_impossible") c(i = "Or judge each stream apart: rb_flag_ping_impossible(stream = stream).")
       ),
       class = "ramb_unharmonised"
     )
