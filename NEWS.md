@@ -1,3 +1,16 @@
+# ramb 2026.11.05.8
+
+- `rb_create_ping_limits(max_step_s = 300, lag = )` (fishycode plan 065 step 5): the time error is measured against
+  the recorded speed on steps of at most `max_step_s` only, and a stream whose lags against a reference clock are
+  measured (`lag`, plan 059's copies and receipt times) takes their spread where it is the larger, basis `"lag"`, with
+  its count (`time_error_lag_n`). Over longer steps the measure read the vessel's changes of speed, not its clock: of
+  Iceland's 2024 streams with copies (the same report heard by two feeds), 213 of 219 read more than twice the copies'
+  spread with no cap, 78 of 140 at 600 s, 6 of 34 at 300 s, none of 7 at 120 s; `dansk_truth`'s hourly stream, on time
+  to the second, 1,253 s. 300 s keeps the Adriatic set's steps written 3 min long (at 120 s its flags with a recorded
+  speed rise from 2 to 18). astd, whose speed is derived, has no other measure: its copies' lags spread a median 72 s
+  (276 streams), and with them the vessels' own limits flag 6,535 astd pings production keeps, 20,088 without. Built by
+  Claude (AI).
+
 # ramb 2026.11.05.7
 
 - `rb_flag_ping_impossible(method = "local", limits = )` (fishycode plan 065 step 4): each vessel judged by its own

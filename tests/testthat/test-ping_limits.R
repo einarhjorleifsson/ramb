@@ -182,3 +182,36 @@ test_that("limits are for the local rule, by keys the pings carry", {
   expect_error(rb_flag_ping_impossible(d[names(d) != "stream"], method = "local", limits = lim), "stream")
   expect_error(rb_flag_ping_impossible(d, method = "local", limits = lim[, c("vid", "ceiling_kn")]), "grain_s")
 })
+
+test_that("the time error is measured on short steps only: over long ones it reads the vessel's changes of speed", {
+  d <- steam(step = 600, n = 300)
+  e <- withr::with_seed(2, round(stats::runif(300, -60, 60)))
+  d$time <- d$time + 7 + e
+  expect_equal(rb_create_ping_limits(d, speed = speed)$time_error_basis, "grain")
+  long <- rb_create_ping_limits(d, speed = speed, max_step_s = Inf)
+  expect_equal(long$time_error_basis, "recorded")
+  expect_gt(long$time_error_s, 60)
+  expect_error(rb_create_ping_limits(d, max_step_s = 0), "max_step_s")
+})
+
+test_that("a stream's measured lags: their spread is its time error where it is the larger", {
+  a <- steam(step = 60, n = 300)
+  a$stream <- "a"
+  b <- steam(step = 60, n = 300)
+  b$stream <- "b"
+  b$speed <- NA # a derived speed, left out: no other measure
+  b$lag <- withr::with_seed(3, stats::runif(300, 0, 40))
+  b$lag[1:100] <- NA # not measured
+  a$lag <- NA_real_
+  d <- rbind(a, b)
+  lim <- rb_create_ping_limits(d, stream = stream, speed = speed, lag = lag)
+  # a: an exact clock with a recorded speed, measured at about 0; b: no recorded speed, its lags' spread
+  expect_equal(lim$time_error_basis, c("recorded", "lag"))
+  expect_lt(lim$time_error_s[1], 1e-3)
+  expect_equal(lim$time_error_lag_n, c(0, 200))
+  expect_equal(lim$time_error_s[2], stats::quantile(abs(b$lag[101:300] - stats::median(b$lag[101:300])), 0.99, names = FALSE),
+               tolerance = 1e-6)
+  # under 30 measured lags, none
+  b$lag[101:280] <- NA
+  expect_equal(rb_create_ping_limits(rbind(a, b), stream = stream, speed = speed, lag = lag)$time_error_basis, c("recorded", "grain"))
+})

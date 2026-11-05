@@ -74,7 +74,7 @@ it. Default \code{NULL}: the fixed \code{kn_max}, \code{margin_m} and no time er
 065 step 4), without a recorded speed it caught 53 \% of the wrong positions at 1 min and 52 \% at 6 min (\code{"clean"}
 at 25 kn: 56 and 45 \%), flagging 17 good pings in 10,000 of its own at 1 min (\code{"clean"}: 45) and 79 at 6 min (29),
 where a vessel's recorded ceiling misses its fastest stretches; with the recorded speed, against \code{"local"}
-without limits: 65 and 64 \% (70 and 59 \%), 15 and 112 own flags in 10,000 (20 and 92).}
+without limits: 65 and 64 \% (70 and 59 \%), 15 and 110 own flags in 10,000 (20 and 92).}
 
 \item{evidence}{\code{TRUE} adds the evidence columns, see Details. Default \code{FALSE}.}
 

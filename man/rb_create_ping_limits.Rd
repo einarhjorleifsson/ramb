@@ -8,9 +8,11 @@ rb_create_ping_limits(
   x,
   stream = NULL,
   speed = NULL,
+  lag = NULL,
   default_kn = 25,
   min_recorded = 100,
   min_moving = 30,
+  max_step_s = 300,
   vid = vid,
   time = time,
   lon = lon,
@@ -28,9 +30,17 @@ each. Default \code{NULL}: one stream, a row per vessel.}
 "not available"). Default \code{NULL}: none, and the ceiling is the track's. A speed derived from the positions is no
 witness: leave it out.}
 
+\item{lag}{Optional: each ping's measured lag against a reference clock, seconds, \code{NA} where not measured (the
+\code{lag_s} of \code{\link[=rb_add_ping_own_lag]{rb_add_ping_own_lag()}} where its basis is \code{"copy"} or \code{"receipt"}, not a lag of 0 assumed): a stream
+whose lags spread takes that spread as its time error where it is the larger. A stream with no recorded speed
+(a derived one) has no other measure.}
+
 \item{default_kn}{The ceiling of a vessel too little seen to know its own, knots.}
 
 \item{min_recorded, min_moving}{The recorded speeds a recorded ceiling needs: in all, and over 1 kn.}
+
+\item{max_step_s}{The longest step the time error is measured on: over a longer one the vessel's speed changes
+between its reports, and the measure reads that, not its clock.}
 
 \item{vid, time, lon, lat}{The columns, if named otherwise.}
 }
@@ -40,8 +50,9 @@ them: \code{vid}, the stream under its own name, \code{pings}; the vessel's \cod
 \code{"track"} or \code{"default"}), \code{recorded_kn} with \code{recorded_n} and \code{recorded_moving_n} (its reports, and those over 1
 kn), \code{track_kn} with \code{track_n} (its moving steps), each \code{NA} where it has too little, and \code{ceilings_agree} (the
 track's ceiling within 0.8-1.25 of the recorded one, \code{NA} without both); the stream's \code{grain_s},
-\code{dt_median_s}, \code{time_error_s} with \code{time_error_basis} and \code{time_error_n} (its steady steps); the dataset's \code{noise_m}
-and \code{noise_basis}.
+\code{dt_median_s}, \code{time_error_s} with \code{time_error_basis} (\code{"recorded"}, \code{"lag"}, \code{"grain"} or \code{"none"}),
+\code{time_error_n} (its steady steps) and \code{time_error_lag_n} (its measured lags); the dataset's \code{noise_m} and
+\code{noise_basis}.
 }
 \description{
 Step 0 of the fishing-activity flow, before the pings are flagged: what a speed rule needs to judge a vessel by its
@@ -65,13 +76,17 @@ Else \code{default_kn}: \code{"default"}. A sparse track misses a short burst at
 \code{dansk_truth}'s ceilings read 0.86-0.97 of the true one from the recorded speed.
 \item \strong{How far its times may be off,} by stream: \code{grain_s}, the clock's grain (the coarsest of 1 h, 1 min, 1 s, 0.1 s
 and 1 ms that 99 \% of its times are whole multiples of), and \code{time_error_s}, measured against the recorded speed:
-over steady moving steps (recorded speed over 2 kn at both ends, the two within 10 \%), the 99th percentile of
-|written step - distance / recorded speed|, \code{time_error_basis} \code{"recorded"}. Where fewer than 30 such steps, or
-where it is over two median steps (then it measures the vessel stopping and turning between reports, not its
-clock), the grain stands for it: \code{"grain"}; \code{"none"} where the times have no grain either. A clock written to the
-minute doubles one step and halves the next, and a rule blames the next position (fishycode TODO 190). On a stream
-of hourly reports the measure still reads the vessel's changes of speed: \code{dansk_truth}'s hourly stream, on time to
-the second, gets 1,253 s.
+over steady moving steps of at most \code{max_step_s} (recorded speed over 2 kn at both ends, the two within 10 \%), the
+99th percentile of |written step - distance / recorded speed|, \code{time_error_basis} \code{"recorded"}; with \code{lag}, the
+99th percentile of the stream's measured lags' distance from their median (at least 30), \code{"lag"}, where it is the
+larger. Where neither, or the measure is over two median steps, the grain stands for it: \code{"grain"}; \code{"none"}
+where the times have no grain either. A clock written to the minute doubles one step and halves the next, and a
+rule blames the next position (fishycode TODO 190). Over longer steps the measure reads the vessel's changes of
+speed, not its clock (fishycode plan 065 step 5): with no cap, \code{dansk_truth}'s hourly stream, on time to the
+second, got 1,253 s, and of Iceland's 2024 streams with plan 059's copies (the same report heard by two feeds),
+213 of 219 more than twice the copies' spread; at 300 s, 6 of 34. The measure on whole seconds still reads 12-42 s
+at 1 min steps on \code{dansk_truth} (turns and speed changes within a step): it is a margin, not the clock's error
+alone.
 \item \strong{The noise,} the dataset's: the median over the vessels of the 95th percentile of their steps at rest (recorded
 speed under 0.3 kn at both ends, 1 to 300 s apart, at least 30): \code{noise_basis} \code{"rest"}; with no recorded speed, of
 the middle ping's distance from the line between its neighbours, over steps of 1 to 120 s (at least 100):

@@ -681,7 +681,7 @@ rb_flag_ping_duplicate <- function(
 #'   065 step 4), without a recorded speed it caught 53 % of the wrong positions at 1 min and 52 % at 6 min (`"clean"`
 #'   at 25 kn: 56 and 45 %), flagging 17 good pings in 10,000 of its own at 1 min (`"clean"`: 45) and 79 at 6 min (29),
 #'   where a vessel's recorded ceiling misses its fastest stretches; with the recorded speed, against `"local"`
-#'   without limits: 65 and 64 % (70 and 59 %), 15 and 112 own flags in 10,000 (20 and 92).
+#'   without limits: 65 and 64 % (70 and 59 %), 15 and 110 own flags in 10,000 (20 and 92).
 #' @param evidence `TRUE` adds the evidence columns, see Details. Default `FALSE`.
 #' @param vid,time,lon,lat The columns, if named otherwise.
 #' @param batch_pings For a lazy table: pings per batch.

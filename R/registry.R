@@ -135,6 +135,7 @@
       "time_error_s",
       "time_error_basis",
       "time_error_n",
+      "time_error_lag_n",
       "noise_m",
       "noise_basis"
     ),
