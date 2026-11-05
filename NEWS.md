@@ -1,3 +1,27 @@
+# ramb 2026.11.05.2
+
+- `rb_map_time()` holds each vessel's whole series by default (the maintainer, 2026-11-05): `span_max` is 3,000,000
+  where it was 150,000. The cap came from one crash in a first design that made every ping a map feature; the page
+  as built holds a series as arrays and draws at most about 5,000 pings a window. Measured in a browser: 450,149 pings
+  load in 0.8 s, 2,173,541 in 7.9 s (84 MB of JSON, most of the time the transfer), window moves 15-80 ms
+  (fishycode plan 064 §1.4). Raw pings need nothing but a time and a position: a vessel held whole is offered whole
+  alone, no longer by month as well, and the page shows no span list where every vessel has only its whole series.
+- `rb_map_time(span = )`: the units a user steps through, besides the whole series. A column of the pings that names
+  them, one span per value from its first ping to its last (`span = "trip_id"`, or `c(trip = "trip_id")` to name the
+  list), or a table of intervals, or `list(data = , start = , end = , label = )`, as for `lanes`. A span holds every ping
+  of its vessel from its start to its end, those with no value too: a trip whose id is missing on a ping a speed filter
+  removed stays one span, with that ping in it to be seen (by runs, the case study's trips split 37 times in 1,623, each
+  removed ping in neither half). Spans that overlap are reported: a state such as behaviour belongs in `lanes`. The
+  list names each span by its value and start ("19_836 · 2023-02-15 05:15 (246)"), and the sidebar names the list by
+  the column. A vessel over `span_max` is offered by its spans, else by month, as before.
+- `span = list(fault = <table>)`: a table of intervals, or `list(data = , start = , end = , label = )`, named as a
+  column is, the name labelling the list in the sidebar.
+- The map follows the panel: `rb_map_pings()` and `rb_map_track()` layers show only the chosen vessel and span. Their
+  features carry the time on the panel's clock (`rb_t` on a ping, `rb_t0` and `rb_t1` on a line), filtered in the page
+  as a vessel or span is loaded; a track's line that runs over a span's start or end is shown whole.
+- Built by Claude (AI) and checked in a browser on the case study (its trips as spans) and on `dansk` from the lazy
+  table (the whole series, the track filtered, a change of base map).
+
 # ramb 2026.11.05.1
 
 - `rb_map_track(max_gap_s = Inf)` replaces `gap_h = 1` (the maintainer, 2026-11-05): a silence between two pings

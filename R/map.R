@@ -2040,11 +2040,14 @@ rb_map_pings <- function(
     function(i) sprintf(", CAST(%s AS VARCHAR) AS rb_class_%d", q(col[i]), i),
     ""
   )
+  # each ping's time in seconds on the time panel's clock, so a panel shows only its vessel's span (rb_map_time())
+  t_s <- if (!is.null(ctx$time)) .rb_time_s_sql(con, ctx$src, ctx$time)
   pts <- dplyr::tbl(
     con,
     dplyr::sql(sprintf(
-      "SELECT *%s FROM (%s)",
+      "SELECT *%s%s FROM (%s)",
       paste(classes, collapse = ""),
+      if (is.null(t_s)) "" else sprintf(", %s AS rb_t", t_s),
       ctx$src
     ))
   )
@@ -2054,8 +2057,12 @@ rb_map_pings <- function(
     popup,
     ctx$by,
     intersect(.rb_or(s$state[["choose_fields"]], character()), ctx$cols),
-    if (any(is_discrete)) paste0("rb_class_", which(is_discrete))
+    if (any(is_discrete)) paste0("rb_class_", which(is_discrete)),
+    if (!is.null(t_s)) "rb_t"
   ))
+  if (!is.null(t_s)) {
+    s$state$panel_fields[[id]] <- list(by = ctx$by, t = "rb_t")
+  }
   tiles <- rb_map_tiles_table(
     pts,
     lon = ctx$lon,
@@ -2223,6 +2230,8 @@ rb_map_track <- function(
     paste("PARTITION BY", paste(q(keys), collapse = ", "))
   }
   gap <- .rb_gap_sql(max_gap_s)
+  # each line's first and last time in seconds on the time panel's clock, so a panel shows only its vessel's span
+  t_s <- .rb_time_s_sql(con, ctx$src, ctx$time)
   # a line per vessel and stretch: a silence of more than max_gap_s starts a new one, and so does a change of any
   # column's value, so each run carries one value of each; a run ends at the next run's first fix, so the line stays
   # joined across a change
@@ -2231,7 +2240,7 @@ rb_map_track <- function(
     con,
     dplyr::sql(sprintf(
       "WITH s AS (
-         SELECT %1$s %2$s AS lon, %3$s AS lat, %4$s AS t %8$s FROM (%7$s)
+         SELECT %1$s %2$s AS lon, %3$s AS lat, %4$s AS t, %11$s AS rb_ts %8$s FROM (%7$s)
          WHERE %2$s IS NOT NULL AND %3$s IS NOT NULL AND %4$s IS NOT NULL),
        w AS (
          SELECT *, CASE WHEN epoch(t) - epoch(lag(t) OVER o) > %6$s %9$s THEN 1 ELSE 0 END AS brk,
@@ -2240,7 +2249,8 @@ rb_map_track <- function(
        g AS (SELECT *, sum(brk) OVER (%5$s ORDER BY t ROWS UNBOUNDED PRECEDING) AS stretch FROM w),
        a AS (
          SELECT %1$s %10$s count(*) AS pings, strftime(min(t), '%%Y-%%m-%%d %%H:%%M') AS start,
-                strftime(max(t), '%%Y-%%m-%%d %%H:%%M') AS stop, list(ST_Point(lon, lat) ORDER BY t) AS pts,
+                strftime(max(t), '%%Y-%%m-%%d %%H:%%M') AS stop, min(rb_ts) AS rb_t0, max(rb_ts) AS rb_t1,
+                list(ST_Point(lon, lat) ORDER BY t) AS pts,
                 last(CASE WHEN dt_next <= %6$s THEN lon2 END ORDER BY t) AS lon2,
                 last(CASE WHEN dt_next <= %6$s THEN lat2 END ORDER BY t) AS lat2
          FROM g GROUP BY %1$s stretch),
@@ -2256,7 +2266,8 @@ rb_map_track <- function(
       ctx$src,
       paste(vals, collapse = ""),
       paste(changed, collapse = ""),
-      paste(kept, collapse = "")
+      paste(kept, collapse = ""),
+      .rb_or(t_s, "CAST(NULL AS DOUBLE)")
     ))
   )
   props <- c(
@@ -2264,8 +2275,12 @@ rb_map_track <- function(
     if (k) paste0("rb_path_", seq_len(k)),
     "pings",
     "start",
-    "stop"
+    "stop",
+    if (!is.null(t_s)) c("rb_t0", "rb_t1")
   )
+  if (!is.null(t_s)) {
+    s$state$panel_fields[[id]] <- list(by = by, t0 = "rb_t0", t1 = "rb_t1")
+  }
   tiles <- rb_map_tiles_table(lines, properties = props)
   line <- paste0(id, "-line")
   colours <- lapply(seq_len(k), function(i) {
@@ -2366,9 +2381,12 @@ rb_map_track <- function(
 #' the map, and a click on a ping of the window marks its time on the chart. The vessel, the span and the window go into
 #' the page's address.
 #'
-#' The page holds one vessel's span at a time: the whole series of a vessel with up to `span_max` pings, else one month
-#' (the latest first); its months can be chosen too. The window's track is drawn whole, its pings thinned to about
-#' 5,000 (every k-th, a marked one always), so the map stays quick.
+#' The page holds one vessel's span at a time: by default its whole series; with `span`, also each of its trips or other
+#' intervals, chosen under *Span*. A vessel with more than `span_max` pings is offered by its spans only, or by month
+#' where there are none. The map's other layers show only the chosen vessel and span, so the pings of the vessel's other
+#' times and of other vessels are out of the way; a track's line that runs over a span's start or end is shown whole.
+#' The window's track is drawn whole, its pings thinned to about 5,000 (every k-th, a marked one always), so the map
+#' stays quick.
 #'
 #' Times are shown as the data hold them, in no time zone, labelled by `time_label`.
 #'
@@ -2386,7 +2404,16 @@ rb_map_track <- function(
 #' @param max_gap_s A silence between two pings longer than this many seconds breaks the panel's line, on the chart
 #'   and on the map, and a lane's run of one value. By default the track's ([rb_map_track()]'s `max_gap_s`) when the
 #'   map has a track already, else `Inf`: nothing broken, so no gap is hidden.
-#' @param span_max The most pings the page holds at once: a vessel with more is shown a month at a time.
+#' @param span Units the page holds one at a time, chosen besides the whole series: a column of the pings that names
+#'   them, as a string (a trip, a voyage, a haul: `"trip_id"`, or `c(trip = "trip_id")` to name the list), one span per
+#'   value from its first ping to its last; or a table of intervals, or `list(data = , start = , end = , label = )`, as
+#'   for `lanes`, named as a column is with `list(trips = <table>)`. A span holds every ping of its vessel from its start
+#'   to its end, those whose value is missing too, such
+#'   as a ping a filter removed. Spans that overlap are reported: a state that comes and goes, such as behaviour,
+#'   belongs in `lanes`. `NULL`, the default, offers the whole series alone.
+#' @param span_max The most pings the page holds at once: a vessel with more is offered by its spans, else by month.
+#'   The browser holds far more than the default is likely to meet: a series of 2.2 million pings loaded in about
+#'   8 seconds, most of it the transfer.
 #' @param time_label The clock the times are on, shown beside them.
 #' @return An [rb_map()] with the time panel.
 #' @seealso [rb_map_pings()] and [rb_map_track()], the layers it pairs with; [rb_map_bundle()], which writes the
@@ -2406,8 +2433,9 @@ rb_map_time <- function(
   col = "speed",
   marks = NULL,
   lanes = NULL,
+  span = NULL,
   max_gap_s = NULL,
-  span_max = 150000,
+  span_max = 3000000,
   time_label = "UTC",
   data = NULL,
   lon = NULL,
@@ -2576,6 +2604,89 @@ rb_map_time <- function(
     if (!is.null(create_l)) DBI::dbExecute(con, create_l)
   }
   make()
+  # what the spans are called in the page: a column's name, or the name given it, c(trip = "trip_id")
+  # a table of intervals, or list(data = ), named as a column is: list(fault = <table>)
+  named_table <- is.list(span) && !is.data.frame(span) && !inherits(span, "tbl_lazy") && length(span) == 1 &&
+    !is.null(names(span)) && nzchar(names(span)) && names(span) != "data" &&
+    (is.data.frame(span[[1]]) || inherits(span[[1]], "tbl_lazy") || (is.list(span[[1]]) && !is.null(span[[1]]$data)))
+  span_label <- if (is.character(span)) {
+    if (!is.null(names(span)) && nzchar(names(span)[1])) names(span)[1] else span[1]
+  } else if (named_table) {
+    names(span)
+  } else if (!is.null(span)) {
+    "Span"
+  }
+  if (is.character(span)) {
+    span <- unname(span)
+  }
+  if (named_table) {
+    span <- span[[1]]
+  }
+  # the spans (`span`): each vessel's intervals in time order, numbered from 1, with the pings each holds; an interval
+  # that holds none is left out. Kept here, where a span's series finds its start and end. A column gives one span per
+  # value, from its first ping to its last: a trip whose id is missing on a ping, as on one a speed filter removed, stays
+  # one span, and that ping is in it to be seen
+  span_tab <- if (!is.null(span)) {
+    sql_s <- if (is.character(span)) {
+      if (length(span) != 1 || !span %in% ctx$cols) {
+        stop(
+          sprintf("`span`: no column %s in the pings.", paste(span, collapse = ", ")),
+          call. = FALSE
+        )
+      }
+      sprintf(
+        "(SELECT %1$s AS rb_v, min(%2$s) / 1e6 AS rb_t0, max(%2$s) / 1e6 AS rb_t1, CAST(%3$s AS VARCHAR) AS rb_label
+          FROM (%4$s) WHERE %5$s IS NOT NULL AND %3$s IS NOT NULL GROUP BY 1, 4)",
+        vessel,
+        us(q(ctx$time), type_of(ctx$time)),
+        q(span),
+        ctx$src,
+        q(ctx$time)
+      )
+    } else {
+      .rb_time_lane(
+        span,
+        "span",
+        0L,
+        ctx,
+        vessel,
+        us,
+        type_of,
+        Inf,
+        what = "`span`"
+      )
+    }
+    sp <- DBI::dbGetQuery(
+      con,
+      sprintf(
+        "WITH s AS (SELECT rb_v, rb_t0, rb_t1, rb_label FROM %s WHERE rb_t1 >= rb_t0)
+         SELECT s.rb_v, s.rb_t0, s.rb_t1, any_value(s.rb_label) AS rb_label, count(*) AS rb_n
+         FROM s JOIN %s p ON p.rb_v = s.rb_v AND p.rb_t BETWEEN s.rb_t0 AND s.rb_t1
+         GROUP BY s.rb_v, s.rb_t0, s.rb_t1 ORDER BY s.rb_v, s.rb_t0, s.rb_t1",
+        sql_s,
+        nm
+      )
+    )
+    sp$rb_k <- stats::ave(seq_len(nrow(sp)), sp$rb_v, FUN = seq_along)
+    # a unit's spans do not overlap; a state's do (Fishing from its first ping to its last, over Other), and so do two
+    # trips that claim the same hours: said, not refused
+    over <- sum(unlist(lapply(split(sp, sp$rb_v), function(x) {
+      if (nrow(x) < 2) {
+        return(0L)
+      }
+      ends <- cummax(x$rb_t1)
+      sum(x$rb_t0[-1] < ends[-nrow(x)])
+    })))
+    if (over > 0) {
+      message(sprintf(
+        "%s of %s spans of %s begin before an earlier one has ended. A span is a unit such as a trip or a voyage; a state that comes and goes, such as behaviour, belongs in `lanes`.",
+        format(over, big.mark = ","),
+        format(nrow(sp), big.mark = ","),
+        span_label
+      ))
+    }
+    sp
+  }
   vs <- DBI::dbGetQuery(
     con,
     sprintf(
@@ -2597,9 +2708,40 @@ rb_map_time <- function(
     )
   )
   fmt_n <- function(n) format(n, big.mark = ",", trim = TRUE)
+  # a span's name in the list: its label where it has one, and its start on the data's own clock
+  span_name <- function(label, t0) {
+    start <- format(
+      as.POSIXct(t0, origin = "1970-01-01", tz = "UTC"),
+      "%Y-%m-%d %H:%M"
+    )
+    if (is.na(label)) start else sprintf("%s · %s", label, start)
+  }
+  # each vessel's spans: the whole series where it holds no more than span_max, then its own spans (`span`), else, for
+  # a vessel too long to hold whole, its months
   vessels <- lapply(seq_len(nrow(vs)), function(j) {
-    mj <- months[months$v == vs$v[j], ]
     whole <- vs$n[j] <= span_max
+    sj <- if (!is.null(span_tab)) span_tab[span_tab$rb_v == vs$v[j], ]
+    own <- if (!is.null(sj) && nrow(sj)) {
+      lapply(seq_len(nrow(sj)), function(i) {
+        nmi <- span_name(sj$rb_label[i], sj$rb_t0[i])
+        list(
+          value = sprintf("s%d", sj$rb_k[i]),
+          name = nmi,
+          label = sprintf("%s (%s)", nmi, fmt_n(sj$rb_n[i])),
+          n = sj$rb_n[i]
+        )
+      })
+    }
+    by_month <- if (!whole && !length(own)) {
+      mj <- months[months$v == vs$v[j], ]
+      lapply(seq_len(nrow(mj)), function(i) {
+        list(
+          value = mj$m[i],
+          label = sprintf("%s (%s)", mj$m[i], fmt_n(mj$n[i])),
+          n = mj$n[i]
+        )
+      })
+    }
     spans <- c(
       if (whole) {
         list(list(
@@ -2608,13 +2750,8 @@ rb_map_time <- function(
           n = vs$n[j]
         ))
       },
-      lapply(seq_len(nrow(mj)), function(i) {
-        list(
-          value = mj$m[i],
-          label = sprintf("%s (%s)", mj$m[i], fmt_n(mj$n[i])),
-          n = mj$n[i]
-        )
-      })
+      own,
+      by_month
     )
     list(
       value = vs$v[j],
@@ -2622,7 +2759,8 @@ rb_map_time <- function(
       n = vs$n[j],
       t0 = vs$t0[j],
       t1 = vs$t1[j],
-      span = if (whole) "all" else mj$m[nrow(mj)],
+      # the whole series where it is held, else the latest span
+      span = if (whole) "all" else spans[[length(spans)]]$value,
       spans = spans
     )
   })
@@ -2635,6 +2773,16 @@ rb_map_time <- function(
       DBI::dbQuoteString(con, v),
       if (identical(span, "all")) {
         ""
+      } else if (grepl("^s[0-9]+$", span) && !is.null(span_tab)) {
+        # one of the vessel's own spans: its pings from its start to its end, as numbers DuckDB reads as DOUBLE
+        sk <- span_tab[
+          span_tab$rb_v == v & span_tab$rb_k == as.integer(substring(span, 2)),
+        ]
+        sprintf(
+          " AND rb_t BETWEEN %s AND %s",
+          sprintf("%.17e", sk$rb_t0[1]),
+          sprintf("%.17e", sk$rb_t1[1])
+        )
       } else {
         sprintf(" AND rb_m = %s", DBI::dbQuoteString(con, span))
       }
@@ -2699,6 +2847,7 @@ rb_map_time <- function(
       by = ctx$by,
       time_label = time_label,
       span_max = span_max,
+      span_label = span_label,
       # none for Inf, which JSON cannot hold: the page breaks the line nowhere
       max_gap_s = if (is.finite(max_gap_s)) max_gap_s,
       cols = lapply(col, function(cc) list(field = cc, label = cc)),
@@ -2715,6 +2864,24 @@ rb_map_time <- function(
     )
   )
   .rb_hold(.rb_quick_map(s))
+}
+
+# A time column as seconds since 1970 on its own clock, as the time panel holds its pings (rb_map_time()'s `us`): a
+# date at its midnight, a time with a zone as its instant; NULL for a column that is not a date-time
+.rb_time_s_sql <- function(con, src, col) {
+  qc <- as.character(DBI::dbQuoteIdentifier(con, col))
+  ty <- DBI::dbGetQuery(
+    con,
+    sprintf("DESCRIBE SELECT %s FROM (%s)", qc, src)
+  )$column_type[1]
+  if (!grepl("^(TIMESTAMP|DATE)", ty)) {
+    return(NULL)
+  }
+  if (startsWith(ty, "DATE")) {
+    sprintf("epoch_us(CAST(%s AS TIMESTAMP)) / 1e6", qc)
+  } else {
+    sprintf("epoch_us(%s) / 1e6", qc)
+  }
 }
 
 # The gap that breaks a line, in seconds: a positive number, Inf for none
@@ -2779,15 +2946,25 @@ rb_map_time <- function(
 }
 
 # One lane's intervals as SQL: rb_v, rb_lane (its number), rb_t0 and rb_t1 (seconds on the pings' clock), rb_label
-.rb_time_lane <- function(lane, name, k, ctx, vessel, us, type_of, max_gap_s) {
+.rb_time_lane <- function(
+  lane,
+  name,
+  k,
+  ctx,
+  vessel,
+  us,
+  type_of,
+  max_gap_s,
+  what = sprintf("Lane %s", name)
+) {
   con <- ctx$con
   q <- function(v) as.character(DBI::dbQuoteIdentifier(con, v))
   if (is.character(lane)) {
     if (length(lane) != 1 || !lane %in% ctx$cols) {
       stop(
         sprintf(
-          "Lane %s: no column %s in the pings.",
-          name,
+          "%s: no column %s in the pings.",
+          what,
           paste(lane, collapse = ", ")
         ),
         call. = FALSE
@@ -2819,8 +2996,8 @@ rb_map_time <- function(
   if (!is.list(spec) || is.null(spec$data)) {
     stop(
       sprintf(
-        "Lane %s: a column's name, a table, or list(data = , start = , end = ).",
-        name
+        "%s: a column's name, a table, or list(data = , start = , end = ).",
+        what
       ),
       call. = FALSE
     )
@@ -2840,8 +3017,8 @@ rb_map_time <- function(
     if (!length(hit)) {
       stop(
         sprintf(
-          "Lane %s: no start and end; name them (`start`, `end`) or use T_in and T_out, T1 and T2, w_start and w_end, or start and end.",
-          name
+          "%s: no start and end; name them (`start`, `end`) or use T_in and T_out, T1 and T2, w_start and w_end, or start and end.",
+          what
         ),
         call. = FALSE
       )
@@ -2852,8 +3029,8 @@ rb_map_time <- function(
   if (length(setdiff(need, cols))) {
     stop(
       sprintf(
-        "Lane %s: no column %s in its table.",
-        name,
+        "%s: no column %s in its table.",
+        what,
         paste(setdiff(need, cols), collapse = ", ")
       ),
       call. = FALSE
@@ -2864,7 +3041,7 @@ rb_map_time <- function(
   ty <- function(cc) types$column_type[match(cc, types$column_name)]
   if (!all(grepl("^(TIMESTAMP|DATE)", ty(se)))) {
     stop(
-      sprintf("Lane %s: %s and %s are date-times.", name, se[1], se[2]),
+      sprintf("%s: %s and %s are date-times.", what, se[1], se[2]),
       call. = FALSE
     )
   }
@@ -2919,12 +3096,24 @@ format.rb_map <- function(x, ...) {
     sprintf("  layers: %s", paste(layers, collapse = ", ")),
     if (!is.null(tp)) {
       sprintf(
-        "  time panel: %s over time, %d vessel%s%s",
+        "  time panel: %s over time, %d vessel%s%s%s",
         paste(vapply(tp$cols, `[[`, "", "field"), collapse = ", "),
         length(tp$vessels),
         if (length(tp$vessels) == 1) "" else "s",
         if (length(tp$lanes)) {
           sprintf("; lanes: %s", paste(vapply(tp$lanes, `[[`, "", "label"), collapse = ", "))
+        } else {
+          ""
+        },
+        if (!is.null(tp$span_label)) {
+          sprintf(
+            "; spans: %s (%s)",
+            tp$span_label,
+            format(
+              sum(vapply(tp$vessels, function(v) sum(vapply(v$spans, `[[`, "", "value") != "all"), 1)),
+              big.mark = ","
+            )
+          )
         } else {
           ""
         }
@@ -3343,6 +3532,10 @@ format.rb_map <- function(x, ...) {
   # the time panel (rb_map_time()): its config for the page, its series for the server and its tables
   if (!is.null(state$time)) {
     m$config$time <- state$time$config
+    # the layers whose features carry a vessel and a time: the page shows on them only the panel's vessel and span
+    m$config$time$layers <- unname(lapply(names(state$panel_fields), function(id) {
+      c(list(id = id), Filter(Negate(is.null), state$panel_fields[[id]]))
+    }))
     m$time <- state$time
   }
   attr(m, "quick") <- state

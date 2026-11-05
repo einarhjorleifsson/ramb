@@ -107,7 +107,7 @@
       <summary data-t="gTime"></summary>
       <div class="body">
         <div class="row"><label for="t-vessel" data-t="tVessel"></label><select id="t-vessel"></select></div>
-        <div class="row"><label for="t-span" data-t="tSpan"></label><select id="t-span"></select></div>
+        <div class="row" id="t-span-row"><label for="t-span" data-t="tSpan"></label><select id="t-span"></select></div>
         <div class="row" id="t-cols-row" hidden><label data-t="tCols"></label><span id="t-cols"></span></div>
         <div class="row"><button id="t-whole" data-t="tWholeBtn" data-tt="tWholeTip"></button></div>
       </div>
@@ -792,8 +792,13 @@ function setChosen(i, vals) {
   if (!f.multi) { el.value = vals?.[0] ?? ""; return; }
   for (const x of el.querySelectorAll("input")) x.checked = vals === null || vals.includes(x.value);
 }
-// the time panel's group from the start, so the sidebar does not move when the map has loaded and the panel is set up
-if (TP) $("g-time").hidden = false;
+// the time panel's group from the start, so the sidebar does not move when the map has loaded and the panel is set up;
+// its spans named as the map names them (a trip, a voyage), and no list where every vessel has only its whole series
+if (TP) {
+  $("g-time").hidden = false;
+  if (TP.span_label) $("g-time").querySelector('label[for="t-span"]').dataset.t = TP.span_label;
+  $("t-span-row").hidden = TP.vessels.every(v => v.spans.length < 2);
+}
 for (const k of CONFIG.about ?? []) $("about").insertAdjacentHTML("beforeend", `<p data-t="${k}"></p>`);
 if (!(CONFIG.about ?? []).length) $("g-about").hidden = true;
 $("side").querySelector("h1").dataset.t = CONFIG.title;
@@ -1232,8 +1237,19 @@ function choiceFilter(l, st) {
     const cond = ["in", ["get", f.field], ["literal", os.filter(o => o.match !== null).map(o => o.match)]];
     return [os.some(o => o.match === null) ? ["any", ["!", ["has", f.field]], cond] : cond];
   });
-  const parts = [st.filter, ...conds].filter(Boolean);
+  const parts = [st.filter, ...conds, ...timeFilter(l)].filter(Boolean);
   return parts.length === 0 ? null : parts.length === 1 ? parts[0] : ["all", ...parts];
+}
+// The time panel's vessel and span on a layer whose features carry them (rb_map_time()): its pings from the span's
+// first to its last, its lines that overlap the span. Set as a vessel or span is loaded, not as the window moves
+function timeFilter(l) {
+  const f = TP?.layers?.find(x => x.id === l.id);
+  if (!f || !TS?.t?.length) return [];
+  const t0 = TS.t[0], t1 = TS.t[TS.t.length - 1], c = [];
+  if (TP.by && f.by === TP.by) c.push(["==", ["to-string", ["get", f.by]], tVes().value]);
+  if (f.t) c.push([">=", ["get", f.t], t0], ["<=", ["get", f.t], t1]);
+  else c.push([">=", ["get", f.t1], t0], ["<=", ["get", f.t0], t1]);
+  return c;
 }
 function applyChoice(l) {
   for (const st of l.style) if (map.getLayer(st.id)) map.setFilter(st.id, choiceFilter(l, st));
@@ -1482,7 +1498,7 @@ function tVessels() {
 function tSpans(v, want = null) {
   const s = want ?? $("t-span").value;
   $("t-span").replaceChildren(...v.spans.map(x => new Option(
-    x.value === "all" ? tr("tWhole", x.n.toLocaleString(loc())) : `${x.value} (${x.n.toLocaleString(loc())})`, x.value)));
+    x.value === "all" ? tr("tWhole", x.n.toLocaleString(loc())) : `${x.name ?? x.value} (${x.n.toLocaleString(loc())})`, x.value)));
   $("t-span").value = v.spans.some(x => x.value === s) ? s : v.span;
 }
 function timeLang() { tVessels(); tSpans(tVes()); tInfo(); TU?.redraw(false, false); }
@@ -1537,6 +1553,8 @@ async function tLoad(win = null) {
   if (!(TS.hi > TS.lo)) TS.hi = TS.lo + 1;
   map.setPaintProperty("rb-time-dot", "circle-color", ["case", ["has", "v"],
     ["interpolate", ["linear"], ["get", "v"], ...INFERNO9.flatMap((c, j) => [TS.lo + (TS.hi - TS.lo) * j / 8, c])], "#808080"]);
+  // the other layers show only this vessel and span
+  for (const l of OTHER) applyChoice(l);
   await tChart();
   tSetWindow(win);
 }

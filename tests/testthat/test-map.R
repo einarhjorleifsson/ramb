@@ -1427,6 +1427,93 @@ test_that("a time panel's lanes from interval tables, its vessel keys matched ac
   expect_error(rb_map_time(d[, c("vid", "lon", "lat", "speed")]), "time column")
 })
 
+test_that("a time panel's spans: the whole series of raw pings, or a column's runs or a table's intervals", {
+  skip_if_no_spatial()
+  d <- time_pings()
+  # raw pings, nothing but time and position: each vessel's whole series alone, no months, no list in the page
+  tp <- rb_map_time(d)$config$time
+  expect_equal(
+    lapply(tp$vessels, function(v) vapply(v$spans, `[[`, "", "value")),
+    list("all", "all")
+  )
+  expect_null(tp$span_label)
+  # a column's runs of one value: numbered in time order, named by value and start, a span holding every ping of its
+  # vessel from its start to its end; the column's name, or the name given, labels them
+  d$haul <- ifelse(d$behaviour == "Fishing", paste0("h", cumsum(c(1, diff(d$behaviour == "Fishing") == 1))), NA)
+  m <- rb_map_time(d, span = c(Haul = "haul"))
+  tp <- m$config$time
+  expect_equal(tp$span_label, "Haul")
+  expect_equal(rb_map_time(d, span = "haul")$config$time$span_label, "haul")
+  e1 <- d[d$vid == "EX_1", ]
+  e1 <- e1[order(e1$time), ]
+  runs <- rle(ifelse(is.na(e1$haul), "", e1$haul))
+  n_runs <- sum(runs$values != "")
+  sp <- tp$vessels[[1]]$spans
+  expect_equal(vapply(sp, `[[`, "", "value"), c("all", sprintf("s%d", seq_len(n_runs))))
+  first <- which(!is.na(e1$haul))[1]
+  last <- first + runs$lengths[which(runs$values != "")[1]] - 1
+  expect_equal(
+    sp[[2]]$name,
+    sprintf("%s · %s", e1$haul[first], format(e1$time[first], "%Y-%m-%d %H:%M"))
+  )
+  s <- jsonlite::fromJSON(get(.rb_map_app(m), "/time", "v=EX_1&span=s1")$body)
+  expect_equal(s$t, as.numeric(e1$time[first:last]))
+  expect_equal(sp[[2]]$n, length(s$t))
+  expect_match(format(m)[3], "spans: Haul")
+  # one span per value: an id missing on a ping inside its unit, as on one a speed filter removed, leaves the unit one
+  # span, and that ping in it to be seen
+  d2 <- d
+  mid <- which(d2$vid == "EX_1" & d2$time == e1$time[first + 1])
+  d2$haul[mid] <- NA
+  sp2 <- rb_map_time(d2, span = "haul")$config$time$vessels[[1]]$spans
+  expect_equal(length(sp2), length(sp))
+  s2 <- jsonlite::fromJSON(get(.rb_map_app(rb_map_time(d2, span = "haul")), "/time", "v=EX_1&span=s1")$body)
+  expect_equal(s2$t, as.numeric(e1$time[first:last]))
+  # a state's values come and go: their spans overlap, which is said
+  expect_message(rb_map_time(d, span = "behaviour"), "belongs in `lanes`")
+  expect_no_message(rb_map_time(d, span = "haul"))
+  # a table's intervals, with a label column; an interval that holds no ping is left out
+  tab <- data.frame(
+    vid = c("EX_1", "EX_1", "EX_12"),
+    start = c(min(e1$time), as.POSIXct("2000-01-01", tz = "UTC"), min(d$time[d$vid == "EX_12"])),
+    end = c(min(e1$time) + 3600, as.POSIXct("2000-01-02", tz = "UTC"), max(d$time[d$vid == "EX_12"])),
+    trip = c("t1", "none", "t2")
+  )
+  tp <- rb_map_time(d, span = list(data = tab, label = "trip"))$config$time
+  expect_equal(tp$span_label, "Span")
+  # a table named as a column is: list(trips = <table or spec>)
+  tn <- rb_map_time(d, span = list(trips = list(data = tab, label = "trip")))$config$time
+  expect_equal(tn$span_label, "trips")
+  expect_equal(tn$vessels[[1]]$spans, tp$vessels[[1]]$spans)
+  expect_equal(rb_map_time(d, span = list(trips = tab))$config$time$span_label, "trips")
+  expect_equal(vapply(tp$vessels[[1]]$spans, `[[`, "", "value"), c("all", "s1"))
+  expect_equal(tp$vessels[[1]]$spans[[2]]$n, sum(e1$time <= min(e1$time) + 3600))
+  # a vessel over span_max is offered by its spans alone, the latest first; with none, by month
+  tp <- rb_map_time(d, span = list(data = tab, label = "trip"), span_max = 10000)$config$time
+  expect_equal(vapply(tp$vessels[[2]]$spans, `[[`, "", "value"), "s1")
+  expect_equal(tp$vessels[[2]]$span, "s1")
+  expect_error(rb_map_time(d, span = "nope"), "`span`: no column nope")
+  # the layers whose features carry the vessel and a time, which the page filters to the vessel and span
+  ml <- d |> rb_map_track(behaviour) |> rb_map_pings(speed) |> rb_map_time()
+  expect_equal(
+    ml$config$time$layers,
+    list(
+      list(id = "path", by = "vid", t0 = "rb_t0", t1 = "rb_t1"),
+      list(id = "pings", by = "vid", t = "rb_t")
+    )
+  )
+  # their times are the panel's: a track's first and last, a ping's own
+  lines <- DBI::dbGetQuery(
+    .rb_connection(),
+    sprintf(
+      "SELECT vid, min(rb_t0) AS t0, max(rb_t1) AS t1 FROM %s GROUP BY vid ORDER BY vid",
+      attr(ml$layers$path$tiles, "table")
+    )
+  )
+  expect_equal(lines$t0, as.numeric(tapply(d$time, d$vid, min)))
+  expect_equal(lines$t1, as.numeric(tapply(d$time, d$vid, max)))
+})
+
 test_that("a bundle carries the time panel's spans, a file each", {
   skip_if_no_spatial()
   d <- time_pings()
@@ -1434,7 +1521,8 @@ test_that("a bundle carries the time panel's spans, a file each", {
   dir <- tempfile()
   rb_map_bundle(m, dir)
   f <- sort(list.files(file.path(dir, "time")))
-  expect_equal(f, c("0_2018-10.js", "0_2020-10.js", "0_all.js", "1_2014-12.js"))
+  # EX_1 held whole, EX_12 over span_max by its one month
+  expect_equal(f, c("0_all.js", "1_2014-12.js"))
   js <- readLines(file.path(dir, "time", "0_all.js"), warn = FALSE)
   s <- jsonlite::fromJSON(sub(
     '^RB_BUNDLE\\("time/0_all",(.*)\\);$',

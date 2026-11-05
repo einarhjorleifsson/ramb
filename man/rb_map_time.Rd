@@ -9,8 +9,9 @@ rb_map_time(
   col = "speed",
   marks = NULL,
   lanes = NULL,
+  span = NULL,
   max_gap_s = NULL,
-  span_max = 150000,
+  span_max = 3e+06,
   time_label = "UTC",
   data = NULL,
   lon = NULL,
@@ -40,11 +41,21 @@ windows) or \code{start} and \code{end};
 \item or \code{list(data = , start = , end = , label = )}, naming the columns, \code{label} a column that names each interval.
 }}
 
+\item{span}{Units the page holds one at a time, chosen besides the whole series: a column of the pings that names
+them, as a string (a trip, a voyage, a haul: \code{"trip_id"}, or \code{c(trip = "trip_id")} to name the list), one span per
+value from its first ping to its last; or a table of intervals, or \code{list(data = , start = , end = , label = )}, as
+for \code{lanes}, named as a column is with \verb{list(trips = <table>)}. A span holds every ping of its vessel from its start
+to its end, those whose value is missing too, such
+as a ping a filter removed. Spans that overlap are reported: a state that comes and goes, such as behaviour,
+belongs in \code{lanes}. \code{NULL}, the default, offers the whole series alone.}
+
 \item{max_gap_s}{A silence between two pings longer than this many seconds breaks the panel's line, on the chart
 and on the map, and a lane's run of one value. By default the track's (\code{\link[=rb_map_track]{rb_map_track()}}'s \code{max_gap_s}) when the
 map has a track already, else \code{Inf}: nothing broken, so no gap is hidden.}
 
-\item{span_max}{The most pings the page holds at once: a vessel with more is shown a month at a time.}
+\item{span_max}{The most pings the page holds at once: a vessel with more is offered by its spans, else by month.
+The browser holds far more than the default is likely to meet: a series of 2.2 million pings loaded in about
+8 seconds, most of it the transfer.}
 
 \item{time_label}{The clock the times are on, shown beside them.}
 
@@ -77,9 +88,12 @@ the whole span. The map draws the window's track and pings, and fits to them. A 
 the map, and a click on a ping of the window marks its time on the chart. The vessel, the span and the window go into
 the page's address.
 
-The page holds one vessel's span at a time: the whole series of a vessel with up to \code{span_max} pings, else one month
-(the latest first); its months can be chosen too. The window's track is drawn whole, its pings thinned to about
-5,000 (every k-th, a marked one always), so the map stays quick.
+The page holds one vessel's span at a time: by default its whole series; with \code{span}, also each of its trips or other
+intervals, chosen under \emph{Span}. A vessel with more than \code{span_max} pings is offered by its spans only, or by month
+where there are none. The map's other layers show only the chosen vessel and span, so the pings of the vessel's other
+times and of other vessels are out of the way; a track's line that runs over a span's start or end is shown whole.
+The window's track is drawn whole, its pings thinned to about 5,000 (every k-th, a marked one always), so the map
+stays quick.
 
 Times are shown as the data hold them, in no time zone, labelled by \code{time_label}.
 }
