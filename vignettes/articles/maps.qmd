@@ -42,6 +42,7 @@ end:
 
 ```{r}
 #| eval: false
+library(ramb)
 rb_read_example("dansk") |>
   rb_map_pings(time = "time_stamp")
 rb_read_example("dansk") |>
@@ -71,50 +72,53 @@ The panel and the map are linked:
   map to find its time on the chart;
 - click an interval in a lane to set the window to it.
 
-Here the Danish pings are flagged by
-[rb_flag_ping_impossible()](../reference/rb_flag_ping_impossible.html),
-and the panel draws their speed and course, marks the flagged pings and
-has lanes for the labelled behaviour and gear:
+Here the panel draws the Danish pings' speed and course, with lanes for
+the labelled behaviour and gear. The pings are read from their parquet
+file as they are, with no copy into R, as in the quick look:
 
 ```{r}
 library(ramb)
 
-pings <- dplyr::collect(rb_read_example("dansk"))
-pings <- data.frame(
-  vid = pings$vessel_id,
-  time = pings$time_stamp,
-  lon = pings$lon,
-  lat = pings$lat,
-  speed = pings$speed,
-  course = pings$course,
-  gear = pings$gear,
-  behaviour = pings$behaviour
-)
-pings <- rb_flag_ping_impossible(pings, method = "clean")
-
-m <- pings |>
-  rb_map_track(behaviour, title = "Danish pings over time") |>
+m <- rb_read_example("dansk") |>
+  rb_map_track(
+    behaviour,
+    time = "time_stamp",
+    by = vessel_id,
+    title = "Danish pings over time"
+  ) |>
   rb_map_time(
     c(speed, course),
-    marks = ping_flag,
     lanes = list(behaviour = "behaviour", gear = "gear")
   )
 m
 ```
 
 Printed at the console, the map opens in the Viewer pane (here, knitted,
-it prints what it holds). Choose a vessel above the chart. Its speed is
-drawn in blue on the left axis; tick *course* to add it, on its own scale
-on the right. A flagged ping is a red tick along the chart's top and a
-red ring on the map. The lanes under the chart are the runs of
-`behaviour` and `gear`, each value in its own colour, broken where the
-vessel falls silent for over an hour.
+it prints what it holds). The panel's controls are in the sidebar, under
+*Time*: choose a vessel there, and the map shows only its pings. Its speed is drawn in blue on
+the left axis; tick *course* to add it, on its own scale on the right.
+The lanes under the chart are the runs of `behaviour` and `gear`, each
+value in its own colour.
+
+The track, the chart and the lanes join a vessel's pings however long it
+falls silent, so no gap is hidden: a silence shows as a long straight
+line. To break them where two pings are more than an hour apart, give
+the track `max_gap_s = 3600` (in seconds); the panel takes the track's.
 
 Some things to know:
 
-- **The page holds one vessel's pings at a time:** the whole series of a
-  vessel with up to 150,000 pings (`span_max`), else a month, the latest
-  first. Its months can be chosen under *Span*.
+- **Marks:** `marks =` names a column that marks pings, such as a flag:
+  a red tick along the chart's top and a red ring on the map at each
+  ping it marks (a logical column's `TRUE`s, any other's values that are
+  not missing).
+
+- **The page holds one vessel at a time, its whole series by default:**
+  raw pings need nothing more than a time and a position. To step through
+  a vessel's trips, or any other intervals, name them in `span`: a column
+  of the pings, `span = c(trip = "trip_id")`, or a table of intervals as
+  for the lanes. The map then shows only the chosen trip. A vessel with
+  more than `span_max` pings (3 million) is offered by its spans, else by
+  month.
 - **The map stays quick.** The window's track is drawn whole, and its
   pings are thinned to about 5,000 (every second, third, ... ping; a
   marked one always kept). The panel says when they are.
