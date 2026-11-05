@@ -15,6 +15,7 @@ rb_flag_ping_impossible(
   noise_nm = 0.3,
   speed = NULL,
   limits = NULL,
+  anchor = c("kept", "vote"),
   evidence = FALSE,
   vid = vid,
   time = time,
@@ -54,7 +55,7 @@ equals \code{"forward"} at 30 times its time.
 \item{max_gap_h}{For \code{"clean"} and \code{"forward"}: after a gap longer than this the scan restarts.}
 
 \item{...}{Passed to the method (\code{k}, \code{factor}, \code{margin_kn} and \code{margin_m} for \code{"local"}; \code{ang}, \code{distlim} for
-\code{"clean"}'s first stage).}
+\code{"clean"}'s first stage); with \code{anchor = "vote"}, its constants \code{vote_n} (5 pings) and \code{detour_m} (50 m).}
 
 \item{feed}{The column naming the feed of each ping, for the noise floor \code{noise_nm}. Default \code{NULL}: no
 floor. A ping with no feed (\code{NA}) never takes part in it. Not for \code{"fwdbwd"} and \code{"sequential"}.}
@@ -76,6 +77,11 @@ at 25 kn: 56 and 45 \%), flagging 17 good pings in 10,000 of its own at 1 min (\
 where a vessel's recorded ceiling misses its fastest stretches; with the recorded speed, against \code{"local"}
 without limits: 65 and 64 \% (70 and 59 \%), 15 and 110 own flags in 10,000 (20 and 92).}
 
+\item{anchor}{The forward scan's anchor at a jump: \code{"kept"} (default), today's scan, the next ping blamed;
+\code{"vote"}, the pings after the jump decide which end is wrong (see Details). For \code{"clean"} (its second stage),
+\code{"forward"} and \code{"local"} (its second stage). A ping with no position or time is then not judged and is no
+anchor (\code{"forward"}'s default scan adopts it as one).}
+
 \item{evidence}{\code{TRUE} adds the evidence columns, see Details. Default \code{FALSE}.}
 
 \item{vid, time, lon, lat}{The columns, if named otherwise.}
@@ -83,7 +89,10 @@ without limits: 65 and 64 \% (70 and 59 \%), 15 and 110 own flags in 10,000 (20 
 \item{batch_pings}{For a lazy table: pings per batch.}
 }
 \value{
-\code{x} with \code{ping_flag} and \code{ping_flag_basis} added or updated: the same type, the same rows; with \code{evidence = TRUE}, the evidence columns too. The basis of a flag this call makes is \code{"recorded"} where the vessel's recorded
+\code{x} with \code{ping_flag} and \code{ping_flag_basis} added or updated: the same type, the same rows; with \code{evidence = TRUE}, the evidence columns too. The stage in \code{ping_flag}: \code{"vmask"}, \code{"spike"} and \code{"forward"} (\code{"clean"}),
+\code{"forward"}, or \code{"local_spike"} and \code{"local_forward"}; with \code{anchor = "vote"}, also \code{"anchor"} or
+\code{"local_anchor"}, an anchor the pings after a jump found wrong. The basis of a flag this call makes is
+\code{"recorded"} where the vessel's recorded
 speed set the limit (\code{"local"}), \code{"ceiling"} where the vessel's own ceiling did (\code{limits}), and \code{"track"} where the
 fixed limit did.
 }
@@ -101,6 +110,18 @@ cost in good fishing pings is the copies of reports interleaved with the track, 
 caught more than \code{"clean"} and \code{"forward"} at every rate; of those two, neither is best everywhere: \code{"clean"}
 erodes good pings beside a fault it cannot resolve, \code{"forward"} loses a stretch when the first ping after a gap is
 wrong (fishycode plan 062 step 3, decision 276).
+
+Every method but \code{"sda"} ends in a forward scan, which keeps the last ping it kept as its anchor and blames the
+next ping it cannot reach, and every ping after until the vessel could have covered the jump. When the anchor is
+the wrong one (a port event placed off the berth, a copy of a report written at another time), the good pings after
+it are flagged for it. With \code{anchor = "vote"} the pings after the jump decide which end is wrong: of the \code{vote_n}
+(5) pings after it, those that can be reached from the next ping and not from the anchor against those the
+reverse; where they tie, the anchor's detour between its neighbours against the next ping's (more than twice it
+plus \code{detour_m}, 50 m). An anchor found wrong is flagged in its place (\code{"anchor"}, \code{"local_anchor"}), provided the
+leg that skips it is possible. On \code{dansk_truth} (fishycode plan 066) it caught more wrong positions and flagged
+fewer good pings than the default for every method (\code{"local"} with the vessels' own limits: 55.0 \% caught against
+52.7, 2,385 good pings flagged against 2,681); its cost is a run of consistent wrong pings before a silence long
+enough that the leg skipping a good anchor covers it (4 of the 10 planted relocations \code{"local"} caught at 6 min).
 
 Two opt-in arguments serve a track merged from several feeds (a national AIS network and a commercial
 one, terrestrial and satellite, AIS and VMS). Their defaults leave the rule as it was.

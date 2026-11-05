@@ -96,9 +96,29 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// whack_forward_vote_cpp
+IntegerVector whack_forward_vote_cpp(NumericVector lon, NumericVector lat, NumericVector time, double ms_max, double max_gap_sec, double min_dt, IntegerVector feed, double noise_m, int vote_n, double detour_m);
+RcppExport SEXP _ramb_whack_forward_vote_cpp(SEXP lonSEXP, SEXP latSEXP, SEXP timeSEXP, SEXP ms_maxSEXP, SEXP max_gap_secSEXP, SEXP min_dtSEXP, SEXP feedSEXP, SEXP noise_mSEXP, SEXP vote_nSEXP, SEXP detour_mSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type lon(lonSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type lat(latSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type time(timeSEXP);
+    Rcpp::traits::input_parameter< double >::type ms_max(ms_maxSEXP);
+    Rcpp::traits::input_parameter< double >::type max_gap_sec(max_gap_secSEXP);
+    Rcpp::traits::input_parameter< double >::type min_dt(min_dtSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type feed(feedSEXP);
+    Rcpp::traits::input_parameter< double >::type noise_m(noise_mSEXP);
+    Rcpp::traits::input_parameter< int >::type vote_n(vote_nSEXP);
+    Rcpp::traits::input_parameter< double >::type detour_m(detour_mSEXP);
+    rcpp_result_gen = Rcpp::wrap(whack_forward_vote_cpp(lon, lat, time, ms_max, max_gap_sec, min_dt, feed, noise_m, vote_n, detour_m));
+    return rcpp_result_gen;
+END_RCPP
+}
 // whack_local_v_cpp
-List whack_local_v_cpp(NumericVector lon, NumericVector lat, NumericVector time, IntegerVector vessel, NumericVector sog_ms, IntegerVector feed, NumericVector kn_v, NumericVector m0_v, NumericVector te_v, LogicalVector own, double min_dt, double gap_s, int K, double factor, double margin_ms, double noise_m);
-RcppExport SEXP _ramb_whack_local_v_cpp(SEXP lonSEXP, SEXP latSEXP, SEXP timeSEXP, SEXP vesselSEXP, SEXP sog_msSEXP, SEXP feedSEXP, SEXP kn_vSEXP, SEXP m0_vSEXP, SEXP te_vSEXP, SEXP ownSEXP, SEXP min_dtSEXP, SEXP gap_sSEXP, SEXP KSEXP, SEXP factorSEXP, SEXP margin_msSEXP, SEXP noise_mSEXP) {
+List whack_local_v_cpp(NumericVector lon, NumericVector lat, NumericVector time, IntegerVector vessel, NumericVector sog_ms, IntegerVector feed, NumericVector kn_v, NumericVector m0_v, NumericVector te_v, LogicalVector own, double min_dt, double gap_s, int K, double factor, double margin_ms, double noise_m, int anchor, int vote_n, double detour_m);
+RcppExport SEXP _ramb_whack_local_v_cpp(SEXP lonSEXP, SEXP latSEXP, SEXP timeSEXP, SEXP vesselSEXP, SEXP sog_msSEXP, SEXP feedSEXP, SEXP kn_vSEXP, SEXP m0_vSEXP, SEXP te_vSEXP, SEXP ownSEXP, SEXP min_dtSEXP, SEXP gap_sSEXP, SEXP KSEXP, SEXP factorSEXP, SEXP margin_msSEXP, SEXP noise_mSEXP, SEXP anchorSEXP, SEXP vote_nSEXP, SEXP detour_mSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -118,7 +138,10 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type factor(factorSEXP);
     Rcpp::traits::input_parameter< double >::type margin_ms(margin_msSEXP);
     Rcpp::traits::input_parameter< double >::type noise_m(noise_mSEXP);
-    rcpp_result_gen = Rcpp::wrap(whack_local_v_cpp(lon, lat, time, vessel, sog_ms, feed, kn_v, m0_v, te_v, own, min_dt, gap_s, K, factor, margin_ms, noise_m));
+    Rcpp::traits::input_parameter< int >::type anchor(anchorSEXP);
+    Rcpp::traits::input_parameter< int >::type vote_n(vote_nSEXP);
+    Rcpp::traits::input_parameter< double >::type detour_m(detour_mSEXP);
+    rcpp_result_gen = Rcpp::wrap(whack_local_v_cpp(lon, lat, time, vessel, sog_ms, feed, kn_v, m0_v, te_v, own, min_dt, gap_s, K, factor, margin_ms, noise_m, anchor, vote_n, detour_m));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -175,7 +198,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_ramb_cnr_cut_cpp", (DL_FUNC) &_ramb_cnr_cut_cpp, 9},
     {"_ramb_cnr_join_cpp", (DL_FUNC) &_ramb_cnr_join_cpp, 9},
     {"_ramb_whack_forward_cpp", (DL_FUNC) &_ramb_whack_forward_cpp, 8},
-    {"_ramb_whack_local_v_cpp", (DL_FUNC) &_ramb_whack_local_v_cpp, 16},
+    {"_ramb_whack_forward_vote_cpp", (DL_FUNC) &_ramb_whack_forward_vote_cpp, 10},
+    {"_ramb_whack_local_v_cpp", (DL_FUNC) &_ramb_whack_local_v_cpp, 19},
     {"_ramb_whack_local_cpp", (DL_FUNC) &_ramb_whack_local_cpp, 14},
     {"_ramb_whack_sda_cpp", (DL_FUNC) &_ramb_whack_sda_cpp, 12},
     {NULL, NULL, 0}

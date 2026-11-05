@@ -1,3 +1,23 @@
+# ramb 2026.11.05.9
+
+- `rb_flag_ping_impossible(anchor = "vote")` (fishycode plan 066, TODO 191): the forward scan of `"clean"` (its second
+  stage), `"forward"` and `"local"` (its second stage) keeps the last ping it kept as its anchor and, at a jump,
+  blames the next ping and every ping after until the vessel could have covered it, so a wrong anchor costs the good
+  pings after it. With `"vote"` the pings after the jump decide which end is wrong: of the `vote_n` (5) after it, those
+  reached from the next ping and not from the anchor against the reverse; on a tie, the anchor's detour against the
+  next ping's (more than twice it plus `detour_m`, 50 m). An anchor found wrong is flagged in its place, stage
+  `"anchor"` or `"local_anchor"`, when the leg that skips it is possible. `"kept"`, the default, is the scan as before,
+  bit for bit. One implementation for both engines (`src/scan_vote.h`; `whack_forward_vote_cpp()` new,
+  `whack_local_v_cpp(anchor = )`). Chosen from seven ways prototyped and scored (fishycode's study
+  `$FISHYDATA/archive/2026-11-05-forward-anchor/`): on `dansk_truth` more wrong positions caught and fewer good pings
+  flagged for every method (`"local"` with the recorded speed 68.7 % and 2,458 against 67.0 % and 2,607; with the
+  vessels' own limits 55.0 % and 2,385 against 52.7 % and 2,681; `"clean"` 54.5 % and 3,389 against 53.4 % and 3,525);
+  on Iceland's 40 hand-judged cases the own limits' right verdicts 31 against 15, wrong flags 3 against 16, most of
+  them STK port event rows at 0 kn placed off the berth. Its cost: a run of consistent wrong pings before a silence
+  long enough that the leg skipping a good anchor covers it (4 of the 10 planted relocations `"local"` caught at
+  6 min). A dynamic-programming chain (the most pings kept) scored higher on the planted set but broke ties toward the
+  later ping, keeping event rows placed off after the berth's reports. Built by Claude (AI).
+
 # ramb 2026.11.05.8
 
 - `rb_create_ping_limits(max_step_s = 300, lag = )` (fishycode plan 065 step 5): the time error is measured against

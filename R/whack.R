@@ -25,15 +25,21 @@
 # code per ping, NA unknown): a leg between pings of different feeds no longer than noise_m metres is
 # never impossible.
 #
+# anchor = "vote" (fishycode plan 066): the pings after a jump may find the anchor the wrong end, and it is flagged
+# in place of the good pings after it (src/scan_vote.h; vote_n, detour_m its constants).
+#
 # x: data frame with vid, lon, lat, time (POSIXct). Returns x sorted by
-# (vid, time) with a logical column whack2 (TRUE = flagged). Grouping on the
-# input is restored.
+# (vid, time) with logical columns whack2 (TRUE = flagged) and whack2_anchor (TRUE = an anchor the vote flagged).
+# Grouping on the input is restored.
 .rb_whack_forward <- function(
   x,
   kn_max = 25,
   max_gap_h = 4,
   min_dt_s = 10,
-  noise_m = 0
+  noise_m = 0,
+  anchor = "kept",
+  vote_n = 5,
+  detour_m = 50
 ) {
   ms_max <- kn_max * 0.514444
   max_gap_sec <- max_gap_h * 3600
@@ -44,6 +50,20 @@
   # NA). `time` is passed as seconds-since-epoch, which is POSIXct's own
   # underlying numeric representation, so no unit conversion is needed here.
   .fwd <- function(lon, lat, time, feed) {
+    if (anchor == "vote") {
+      return(whack_forward_vote_cpp(
+        lon,
+        lat,
+        as.numeric(time),
+        ms_max,
+        max_gap_sec,
+        min_dt_s,
+        feed,
+        noise_m,
+        as.integer(vote_n),
+        detour_m
+      ))
+    }
     whack_forward_cpp(
       lon,
       lat,
@@ -65,8 +85,12 @@
   out$.rb_fc <- .rb_feed_codes(out)
   out <- out |>
     dplyr::group_by(vid) |>
-    dplyr::mutate(whack2 = .fwd(lon, lat, time, .rb_fc)) |>
+    dplyr::mutate(.rb_code = as.integer(.fwd(lon, lat, time, .rb_fc))) |>
     dplyr::ungroup()
+  # whack_forward_cpp() gives TRUE/FALSE (1/0), whack_forward_vote_cpp() 0, 2 or 3
+  out$whack2 <- out$.rb_code != 0L
+  out$whack2_anchor <- out$.rb_code == 3L
+  out$.rb_code <- NULL
   out$.rb_fc <- NULL
   if (length(grp_vars) > 0) {
     out <- dplyr::group_by(out, dplyr::across(dplyr::all_of(grp_vars)))
@@ -289,16 +313,20 @@
 # .rb_whack_forward on what stage 1 left (resolves runs and interleaved
 # streams). Labels, never removes.
 #
-# noise_m is the stages' one option (see .rb_whack_sda() and .rb_whack_forward()).
+# noise_m is the stages' one option (see .rb_whack_sda() and .rb_whack_forward()); anchor, vote_n and detour_m the
+# second stage's (fishycode plan 066).
 #
 # Returns x sorted by (vid, time) with whack (logical) and whack_stage
-# (NA, "vmask", "spike" or "forward").
+# (NA, "vmask", "spike", "forward" or "anchor").
 .whack_clean_df <- function(
   x,
   kn_max = 25,
   max_gap_h = 4,
   min_dt_s = 10,
   noise_m = 0,
+  anchor = "kept",
+  vote_n = 5,
+  detour_m = 50,
   ...
 ) {
   grp_vars <- dplyr::group_vars(x)
@@ -315,11 +343,14 @@
     kn_max = kn_max,
     max_gap_h = max_gap_h,
     min_dt_s = min_dt_s,
-    noise_m = noise_m
+    noise_m = noise_m,
+    anchor = anchor,
+    vote_n = vote_n,
+    detour_m = detour_m
   )
   # .rb_whack_forward() re-sorts by vid, time, lon, lat; out[!s1, ] already is, so the order is the same
   stage <- out$whack_sda
-  stage[!s1] <- ifelse(fwd$whack2, "forward", NA_character_)
+  stage[!s1] <- ifelse(fwd$whack2_anchor, "anchor", ifelse(fwd$whack2, "forward", NA_character_))
   out$whack_sda <- NULL
   out$whack_stage <- stage
   out$whack <- !is.na(stage)
@@ -400,9 +431,12 @@
 # A recorded speed below 0 or of 102.3 knots or more is none: AIS writes 102.3 for "not available".
 # noise_m, with `.rb_feed`, is the other engines' noise floor between feeds.
 #
+# anchor = "vote" (fishycode plan 066): in stage 2 the pings after a jump may find the anchor the wrong end, and it is
+# flagged, "local_anchor" (src/scan_vote.h; vote_n, detour_m its constants).
+#
 # x: data frame with vid, time, lon, lat and `.rb_speed` (knots, NA where none). Returns x sorted by (vid, time, lon,
-# lat) with whack_local (NA, "local_spike" or "local_forward"), whack_basis ("recorded" or "track") and whack_v (the
-# local speed in knots a flag was judged by, NA under the fixed limit).
+# lat) with whack_local (NA, "local_spike", "local_forward" or "local_anchor"), whack_basis ("recorded" or "track")
+# and whack_v (the local speed in knots a flag was judged by, NA under the fixed limit).
 .rb_whack_local <- function(
   x,
   kn_max = 25,
@@ -412,7 +446,10 @@
   k = 5,
   factor = 1.5,
   margin_kn = 5,
-  margin_m = 50
+  margin_m = 50,
+  anchor = "kept",
+  vote_n = 5,
+  detour_m = 50
 ) {
   grp_vars <- dplyr::group_vars(x)
   x <- dplyr::arrange(dplyr::ungroup(x), vid, time, lon, lat)
@@ -447,9 +484,12 @@
     as.integer(k),
     factor,
     margin_kn * 0.514444,
-    noise_m
+    noise_m,
+    as.integer(anchor == "vote"),
+    as.integer(vote_n),
+    detour_m
   )
-  x$whack_local <- c(NA_character_, "local_spike", "local_forward")[r$code + 1L]
+  x$whack_local <- c(NA_character_, "local_spike", "local_forward", "local_anchor")[r$code + 1L]
   x$whack_basis <- c(NA_character_, "recorded", "track", "ceiling")[r$basis + 1L]
   x$whack_v <- r$v / 0.514444
   if (length(grp_vars) > 0) {

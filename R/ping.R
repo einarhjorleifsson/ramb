@@ -624,6 +624,18 @@ rb_flag_ping_duplicate <- function(
 #' erodes good pings beside a fault it cannot resolve, `"forward"` loses a stretch when the first ping after a gap is
 #' wrong (fishycode plan 062 step 3, decision 276).
 #'
+#' Every method but `"sda"` ends in a forward scan, which keeps the last ping it kept as its anchor and blames the
+#' next ping it cannot reach, and every ping after until the vessel could have covered the jump. When the anchor is
+#' the wrong one (a port event placed off the berth, a copy of a report written at another time), the good pings after
+#' it are flagged for it. With `anchor = "vote"` the pings after the jump decide which end is wrong: of the `vote_n`
+#' (5) pings after it, those that can be reached from the next ping and not from the anchor against those the
+#' reverse; where they tie, the anchor's detour between its neighbours against the next ping's (more than twice it
+#' plus `detour_m`, 50 m). An anchor found wrong is flagged in its place (`"anchor"`, `"local_anchor"`), provided the
+#' leg that skips it is possible. On `dansk_truth` (fishycode plan 066) it caught more wrong positions and flagged
+#' fewer good pings than the default for every method (`"local"` with the vessels' own limits: 55.0 % caught against
+#' 52.7, 2,385 good pings flagged against 2,681); its cost is a run of consistent wrong pings before a silence long
+#' enough that the leg skipping a good anchor covers it (4 of the 10 planted relocations `"local"` caught at 6 min).
+#'
 #' Two opt-in arguments serve a track merged from several feeds (a national AIS network and a commercial
 #' one, terrestrial and satellite, AIS and VMS). Their defaults leave the rule as it was.
 #'
@@ -665,7 +677,7 @@ rb_flag_ping_duplicate <- function(
 #' @param min_dt_s A time step shorter than this counts as this many seconds.
 #' @param max_gap_h For `"clean"` and `"forward"`: after a gap longer than this the scan restarts.
 #' @param ... Passed to the method (`k`, `factor`, `margin_kn` and `margin_m` for `"local"`; `ang`, `distlim` for
-#'   `"clean"`'s first stage).
+#'   `"clean"`'s first stage); with `anchor = "vote"`, its constants `vote_n` (5 pings) and `detour_m` (50 m).
 #' @param feed The column naming the feed of each ping, for the noise floor `noise_nm`. Default `NULL`: no
 #'   floor. A ping with no feed (`NA`) never takes part in it. Not for `"fwdbwd"` and `"sequential"`.
 #' @param noise_nm The noise floor between feeds, nautical miles (1852 m). Only with `feed`.
@@ -682,12 +694,19 @@ rb_flag_ping_duplicate <- function(
 #'   at 25 kn: 56 and 45 %), flagging 17 good pings in 10,000 of its own at 1 min (`"clean"`: 45) and 79 at 6 min (29),
 #'   where a vessel's recorded ceiling misses its fastest stretches; with the recorded speed, against `"local"`
 #'   without limits: 65 and 64 % (70 and 59 %), 15 and 110 own flags in 10,000 (20 and 92).
+#' @param anchor The forward scan's anchor at a jump: `"kept"` (default), today's scan, the next ping blamed;
+#'   `"vote"`, the pings after the jump decide which end is wrong (see Details). For `"clean"` (its second stage),
+#'   `"forward"` and `"local"` (its second stage). A ping with no position or time is then not judged and is no
+#'   anchor (`"forward"`'s default scan adopts it as one).
 #' @param evidence `TRUE` adds the evidence columns, see Details. Default `FALSE`.
 #' @param vid,time,lon,lat The columns, if named otherwise.
 #' @param batch_pings For a lazy table: pings per batch.
 #'
 #' @return `x` with `ping_flag` and `ping_flag_basis` added or updated: the same type, the same rows; with `evidence =
-#'   TRUE`, the evidence columns too. The basis of a flag this call makes is `"recorded"` where the vessel's recorded
+#'   TRUE`, the evidence columns too. The stage in `ping_flag`: `"vmask"`, `"spike"` and `"forward"` (`"clean"`),
+#'   `"forward"`, or `"local_spike"` and `"local_forward"`; with `anchor = "vote"`, also `"anchor"` or
+#'   `"local_anchor"`, an anchor the pings after a jump found wrong. The basis of a flag this call makes is
+#'   `"recorded"` where the vessel's recorded
 #'   speed set the limit (`"local"`), `"ceiling"` where the vessel's own ceiling did (`limits`), and `"track"` where the
 #'   fixed limit did.
 #'
@@ -725,6 +744,7 @@ rb_flag_ping_impossible <- function(
   noise_nm = 0.3,
   speed = NULL,
   limits = NULL,
+  anchor = c("kept", "vote"),
   evidence = FALSE,
   vid = vid,
   time = time,
@@ -758,6 +778,7 @@ rb_flag_ping_impossible <- function(
   )
   .rb_warn_unharmonised(x, "rb_flag_ping_impossible")
   method <- match.arg(method)
+  anchor <- match.arg(anchor)
   if (method %in% c("sda", "fwdbwd", "sequential")) {
     .rb_withdrawn_method(method)
   }
@@ -776,6 +797,41 @@ rb_flag_ping_impossible <- function(
       "\".",
       call. = FALSE
     )
+  }
+  if (anchor == "vote" && !method %in% c("clean", "forward", "local")) {
+    stop(
+      "`anchor = \"vote\"` (the pings after a jump decide which end is wrong) is used by the methods \"clean\", ",
+      "\"forward\" and \"local\", not \"",
+      method,
+      "\".",
+      call. = FALSE
+    )
+  }
+  vote_args <- intersect(c("vote_n", "detour_m"), names(list(...)))
+  if (length(vote_args) && anchor != "vote") {
+    stop(
+      paste0("`", vote_args, "`", collapse = " and "),
+      " (the constants of the vote) ",
+      if (length(vote_args) > 1) "are" else "is",
+      " used with `anchor = \"vote\"`.",
+      call. = FALSE
+    )
+  }
+  if (anchor == "vote") {
+    vd <- list(...)
+    if (
+      "vote_n" %in% names(vd) &&
+        (!is.numeric(vd$vote_n) || length(vd$vote_n) != 1 || is.na(vd$vote_n) || vd$vote_n < 1 ||
+          vd$vote_n != round(vd$vote_n))
+    ) {
+      stop("`vote_n` must be one whole number, 1 or more.", call. = FALSE)
+    }
+    if (
+      "detour_m" %in% names(vd) &&
+        (!is.numeric(vd$detour_m) || length(vd$detour_m) != 1 || is.na(vd$detour_m) || vd$detour_m < 0)
+    ) {
+      stop("`detour_m` must be one number, 0 or more.", call. = FALSE)
+    }
   }
   if (!is.null(limits) && method != "local") {
     stop(
@@ -861,7 +917,8 @@ rb_flag_ping_impossible <- function(
               kn_max = kn_max,
               max_gap_h = max_gap_h,
               min_dt_s = min_dt_s,
-              noise_m = noise_m
+              noise_m = noise_m,
+              anchor = anchor
             ),
             dots
           )
@@ -879,14 +936,24 @@ rb_flag_ping_impossible <- function(
         stats::setNames(o$whack_sda, o$.rb_i)
       },
       forward = {
-        o <- .rb_whack_forward(
-          s,
-          kn_max = kn_max,
-          max_gap_h = max_gap_h,
-          min_dt_s = min_dt_s,
-          noise_m = noise_m
+        o <- do.call(
+          .rb_whack_forward,
+          c(
+            list(
+              s,
+              kn_max = kn_max,
+              max_gap_h = max_gap_h,
+              min_dt_s = min_dt_s,
+              noise_m = noise_m,
+              anchor = anchor
+            ),
+            dots[intersect(c("vote_n", "detour_m"), names(dots))]
+          )
         )
-        stats::setNames(ifelse(o$whack2, "forward", NA_character_), o$.rb_i)
+        stats::setNames(
+          ifelse(o$whack2_anchor, "anchor", ifelse(o$whack2, "forward", NA_character_)),
+          o$.rb_i
+        )
       },
       local = {
         o <- do.call(
@@ -897,7 +964,8 @@ rb_flag_ping_impossible <- function(
               kn_max = kn_max,
               min_dt_s = min_dt_s,
               max_gap_h = max_gap_h,
-              noise_m = noise_m
+              noise_m = noise_m,
+              anchor = anchor
             ),
             dots
           )

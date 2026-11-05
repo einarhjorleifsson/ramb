@@ -16,6 +16,9 @@
 // injected NA). Flagged for the maintainer to decide on separately; not
 // changed here.
 #include <Rcpp.h>
+#include <cmath>
+#include <algorithm>
+#include "scan_vote.h"
 using namespace Rcpp;
 
 // [[Rcpp::export]]
@@ -80,4 +83,46 @@ LogicalVector whack_forward_cpp(NumericVector lon, NumericVector lat,
   }
 
   return flag;
+}
+
+// whack_forward_vote_cpp() — the same scan with anchor = "vote" (rb_flag_ping_impossible(anchor = "vote"), fishycode
+// plan 066; scan_vote.h): the pings after a jump may find the anchor the wrong end, and it is flagged instead. The leg
+// rule is whack_forward_cpp()'s (the noise floor between feeds first, then the speed over max(dt, min_dt)). A ping
+// with no position or time is not judged and is no ping's anchor (whack_forward_cpp() makes it one). Returns a code
+// per ping: 0 kept, 2 flagged, 3 an anchor flagged by the pings after it.
+// [[Rcpp::export]]
+IntegerVector whack_forward_vote_cpp(NumericVector lon, NumericVector lat, NumericVector time, double ms_max,
+                                     double max_gap_sec, double min_dt, IntegerVector feed, double noise_m,
+                                     int vote_n, double detour_m) {
+  const int n = lon.size();
+  IntegerVector out(n, 0);
+  const bool floor_on = noise_m > 0 && feed.size() == n;
+  std::vector<int> k;
+  for (int i = 0; i < n; i++) {
+    if (!ISNAN(lon[i]) && !ISNAN(lat[i]) && !ISNAN(time[i])) k.push_back(i);
+  }
+  const int m = k.size();
+  if (m < 2) return out;
+  const double r = 6371000.0;
+  auto len = [&](int x, int y) {
+    int a = k[x], b = k[y];
+    double phi1 = lat[a] * M_PI / 180.0, phi2 = lat[b] * M_PI / 180.0;
+    double dphi = (lat[b] - lat[a]) * M_PI / 180.0, dlam = (lon[b] - lon[a]) * M_PI / 180.0;
+    double s = std::sqrt(std::sin(dphi / 2) * std::sin(dphi / 2) +
+                         std::cos(phi1) * std::cos(phi2) * std::sin(dlam / 2) * std::sin(dlam / 2));
+    if (s > 1.0) s = 1.0;
+    return 2 * r * std::asin(s);
+  };
+  auto gap = [&](int x, int y) { return std::fabs(time[k[y]] - time[k[x]]) > max_gap_sec; };
+  auto ok = [&](int x, int y) {
+    if (x > y) std::swap(x, y);
+    double d = len(x, y);
+    if (floor_on && feed[k[x]] >= 0 && feed[k[y]] >= 0 && feed[k[x]] != feed[k[y]] && d <= noise_m) return true;
+    double dt = std::max(time[k[y]] - time[k[x]], min_dt);
+    return d / dt <= ms_max;
+  };
+  std::vector<int> by;
+  std::vector<int> c = ramb_scan::vote(m, gap, ok, len, vote_n, detour_m, by);
+  for (int q = 0; q < m; q++) out[k[q]] = c[q];
+  return out;
 }

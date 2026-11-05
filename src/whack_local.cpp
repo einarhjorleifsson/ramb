@@ -11,7 +11,8 @@
 //      after a gap: its leg out impossible and the next leg possible; the last likewise. Repeated on the pings left,
 //      the local speeds taken again, until no more.
 //   2. a forward scan from the last ping kept, with the same limit (v the larger of the two pings'), restarting after
-//      a gap (code 2): the runs of bad pings.
+//      a gap (code 2): the runs of bad pings. With anchor = 1 (rb_flag_ping_impossible(anchor = "vote"), fishycode
+//      plan 066) the pings after a jump may find the anchor the wrong end (scan_vote.h), and it is flagged (code 3).
 // Each flag's basis: 1 where the ping's local speed came from recorded speeds, 2 where the fixed limit judged it.
 //
 // Each vessel's own limits (fishycode plan 065, rb_create_ping_limits()): whack_local_v_cpp() takes, per ping, the
@@ -28,6 +29,7 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include "scan_vote.h"
 using namespace Rcpp;
 
 namespace {
@@ -69,7 +71,7 @@ struct Rule {
 List whack_local_v_cpp(NumericVector lon, NumericVector lat, NumericVector time, IntegerVector vessel,
                        NumericVector sog_ms, IntegerVector feed, NumericVector kn_v, NumericVector m0_v,
                        NumericVector te_v, LogicalVector own, double min_dt, double gap_s, int K, double factor,
-                       double margin_ms, double noise_m) {
+                       double margin_ms, double noise_m, int anchor = 0, int vote_n = 5, double detour_m = 50) {
   const int n = lon.size();
   IntegerVector code(n, 0), basis(n, 0);
   NumericVector judged(n, NA_REAL);  // the local speed (m/s) a flagged ping was judged by, NA where the fixed limit
@@ -164,7 +166,28 @@ List whack_local_v_cpp(NumericVector lon, NumericVector lat, NumericVector time,
       keep.swap(left);
     }
     // 2. a forward scan from the last ping kept, with the same limit
-    if (keep.size() >= 2) {
+    if (keep.size() >= 2 && anchor == 1) {
+      std::vector<double> v = local(keep);
+      const int m = keep.size();
+      auto vv = [&](int x, int y) {
+        return std::isnan(v[y]) ? v[x] : (std::isnan(v[x]) ? v[y] : std::max(v[y], v[x]));
+      };
+      auto gap = [&](int x, int y) { return std::fabs(time[keep[y]] - time[keep[x]]) > R.gap_s; };
+      auto ok = [&](int x, int y) {
+        if (x > y) std::swap(x, y);
+        return dist(keep[x], keep[y]) <= lim(keep[x], keep[y], time[keep[y]] - time[keep[x]], vv(x, y));
+      };
+      auto len = [&](int x, int y) { return hav(lon[keep[x]], lat[keep[x]], lon[keep[y]], lat[keep[y]]); };
+      std::vector<int> by;
+      std::vector<int> c = ramb_scan::vote(m, gap, ok, len, vote_n, detour_m, by);
+      for (int q = 0; q < m; q++) {
+        if (!c[q]) continue;
+        double s = vv(q, by[q]);
+        code[keep[q]] = c[q];
+        basis[keep[q]] = basis_of(keep[q], s);
+        if (!std::isnan(s)) judged[keep[q]] = s;
+      }
+    } else if (keep.size() >= 2) {
       std::vector<double> v = local(keep);
       int j = 0;
       for (int q = 1; q < (int)keep.size(); q++) {
@@ -191,5 +214,5 @@ List whack_local_cpp(NumericVector lon, NumericVector lat, NumericVector time, I
   const int n = lon.size();
   return whack_local_v_cpp(lon, lat, time, vessel, sog_ms, feed, NumericVector(n, kn_max_ms), NumericVector(n, margin_m),
                            NumericVector(n, 0.0), LogicalVector(n, false), min_dt, gap_s, K, factor, margin_ms,
-                           noise_m);
+                           noise_m, 0, 5, 50);
 }
