@@ -134,6 +134,7 @@ locations". Marine Mammal Science, 24(2), 315–325.
 \seealso{
 Other flag pings:
 \code{\link[=rb_add_ping_speed]{rb_add_ping_speed()}},
+\code{\link[=rb_create_ping_limits]{rb_create_ping_limits()}},
 \code{\link[=rb_flag_ping_duplicate]{rb_flag_ping_duplicate()}},
 \code{\link[=rb_flag_ping_invalid]{rb_flag_ping_invalid()}},
 \code{\link[=rb_flag_ping_port]{rb_flag_ping_port()}}

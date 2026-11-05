@@ -113,6 +113,33 @@
     c("time_delivered", "lag_s", "lag_basis"),
     after = "rb_create_ping_lags"
   ),
+  # step 0: each vessel's own limits (fishycode plan 065), measured on its pings before they are flagged
+  .rb_step(
+    "rb_create_ping_limits",
+    "ping",
+    "builder",
+    "x",
+    c("vid", "time", "lon", "lat"),
+    c(
+      "pings",
+      "ceiling_kn",
+      "ceiling_basis",
+      "recorded_kn",
+      "recorded_n",
+      "recorded_moving_n",
+      "track_kn",
+      "track_n",
+      "ceilings_agree",
+      "grain_s",
+      "dt_median_s",
+      "time_error_s",
+      "time_error_basis",
+      "time_error_n",
+      "noise_m",
+      "noise_basis"
+    ),
+    after = "rb_add_ping_time"
+  ),
   # step 0: ping flags
   .rb_step(
     "rb_flag_ping_invalid",

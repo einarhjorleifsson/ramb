@@ -30,6 +30,7 @@ pings' columns.
 \seealso{
 Other flag pings:
 \code{\link[=rb_add_ping_speed]{rb_add_ping_speed()}},
+\code{\link[=rb_create_ping_limits]{rb_create_ping_limits()}},
 \code{\link[=rb_flag_ping_duplicate]{rb_flag_ping_duplicate()}},
 \code{\link[=rb_flag_ping_impossible]{rb_flag_ping_impossible()}},
 \code{\link[=rb_flag_ping_invalid]{rb_flag_ping_invalid()}}

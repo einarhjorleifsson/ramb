@@ -628,6 +628,23 @@ etiquette_cases <- local({
       sf = TRUE,
       note = "`lags` a data frame, registered on a lazy `x`'s connection."
     ),
+    list(
+      fn = "rb_create_ping_limits",
+      main = "x",
+      args = function() {
+        list(
+          x = fresh(clocks),
+          stream = quote(stream),
+          speed = quote(speed),
+          min_recorded = 10,
+          min_moving = 10
+        )
+      },
+      shape = "new",
+      lazy = TRUE,
+      sf = TRUE,
+      note = "one row per vessel and stream, sorted by them; only the named columns read."
+    ),
     # Step 0: flag pings ----------------------------------------------------------------------------------------------
     list(
       fn = "rb_flag_ping_invalid",

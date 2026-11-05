@@ -1,3 +1,22 @@
+# ramb 2026.11.05.6
+
+- `rb_create_ping_limits()` (new, fishycode plan 065 step 3): each vessel's own limits for a speed rule, measured on its
+  pings before they are flagged, in place of a guessed 25 kn. A row per vessel, or per vessel and stream: its ceiling
+  (the highest speed it records twice in a row; without a recorded speed, the 99.9th percentile of its track's running
+  median of 5 step speeds; else `default_kn`, each with its basis and the count it rests on, and `ceilings_agree` where
+  it has both), the stream's clock (`grain_s`, `dt_median_s`, and `time_error_s` measured against the recorded speed,
+  or the grain standing for it), and the dataset's position noise. Lazy in DuckDB: Iceland's AIS of 2024, 1,850
+  vessels in six streams, in about 30 s. Nothing is labelled or dropped.
+- Built from the study `$FISHYDATA/archive/2026-11-05-speed-ceiling/` and equal to its rules on `dansk_planted` and four
+  other examples, with three changes, each from a score: a track's step speed is the lower of the speeds from one and
+  from two pings back (a copy of the track interleaved in its stream set ceilings of 61-226 times the true one on
+  `dansk_truth`'s 1 min tracks, now 0.90-0.95; on Iceland's 2024, vessels whose track reads over 1.5 times their
+  recorded ceiling fall from 35 to 9, the median ratio from 0.936 to 0.919); both running medians count only where
+  their window is whole (a stream's first or last value set a ceiling of 226 kn in a test, and could set the recorded
+  one); and the time error by stream. Scored on `dansk_truth` by clock and rate: every stream's grain right; the
+  recorded ceiling 0.94-1.01 of the true at 1 min and 0.86-0.97 at 6 min (a short burst at top speed is unseen
+  there); the time error short of the true step error on one receipt stream of 12. Built by Claude (AI).
+
 # ramb 2026.11.05.5
 
 - ‹ › beside the time panel's span list (fishycode plan 065 step 2): a fault, a trip or a month at a time, each step into
