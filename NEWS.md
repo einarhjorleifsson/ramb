@@ -1,3 +1,12 @@
+# ramb 2026.11.06.1
+
+- `rb_create_port_calls(presence = )` (fishycode plan 048 §7.3): with `TRUE` and `events` carrying `lon`, `lat`, each
+  good event with a position is a ping for the dwell rules, a report of the vessel at that place at that time. Where a
+  track's port events were pings (STK's), a port call that stood on them stands on them as judged events, beside the
+  event pairs; a bad event, or one with no position, gives none, and one equal to a ping is that ping. `FALSE`, the
+  default, as before. Fishycode's scratch run of plan 048 step 3 lost 19,241 of 1,623,775 port calls when STK's event
+  rows left the track and only their pairs came back.
+
 # ramb 2026.11.06
 
 - `rb_flag_port_event()` (fishycode plan 048 step 2), new: recorded port events judged as events, before

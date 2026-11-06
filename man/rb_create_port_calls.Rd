@@ -12,6 +12,7 @@ rb_create_port_calls(
   min_dwell = NULL,
   radius_in = 2000,
   events = NULL,
+  presence = FALSE,
   window = NULL,
   crs_m = 3575,
   speed_kn = NULL,
@@ -41,7 +42,14 @@ or \code{"valley"}, set from the data (above).}
 \item{radius_in}{For \code{"dwell"}: the arrival radius, metres.}
 
 \item{events}{For \code{"dwell"}: optional data frame or lazy table of port events: \code{vid}, \code{time}, \code{io} (\code{"I"}
-arrival, \code{"U"} departure), \code{port_id}, \code{good} (logical).}
+arrival, \code{"U"} departure), \code{port_id}, \code{good} (logical, as \code{\link[=rb_flag_port_event]{rb_flag_port_event()}} adds it), and for \code{presence}
+\code{lon}, \code{lat}.}
+
+\item{presence}{For \code{"dwell"} with \code{events}: \code{TRUE} takes each good event with a position into the pings the rules
+read, as a report of the vessel at that place at that time (fishycode plan 048 §7.3): where a track's port events
+were pings, a port call that stood on them stands on them as judged events, beside the pairs. An event with no
+position, or not good, gives none; one equal to a ping (vessel, time and position) is that ping. \code{FALSE}, the
+default, as before.}
 
 \item{window}{Optional \code{c(from, to)} (POSIXct): keep only the port calls that overlap \verb{[from, to)}
 (\code{T_out >= from} and \code{T_in < to}; for \code{"dwell"}, once the port calls from pings and from events are merged).

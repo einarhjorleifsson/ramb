@@ -194,7 +194,13 @@
 #' @param min_dwell For `"dwell"`: optional data frame `port_id`, `min_dwell_h`: a minimum per port.
 #' @param radius_in For `"dwell"`: the arrival radius, metres.
 #' @param events For `"dwell"`: optional data frame or lazy table of port events: `vid`, `time`, `io` (`"I"`
-#'   arrival, `"U"` departure), `port_id`, `good` (logical).
+#'   arrival, `"U"` departure), `port_id`, `good` (logical, as [rb_flag_port_event()] adds it), and for `presence`
+#'   `lon`, `lat`.
+#' @param presence For `"dwell"` with `events`: `TRUE` takes each good event with a position into the pings the rules
+#'   read, as a report of the vessel at that place at that time (fishycode plan 048 §7.3): where a track's port events
+#'   were pings, a port call that stood on them stands on them as judged events, beside the pairs. An event with no
+#'   position, or not good, gives none; one equal to a ping (vessel, time and position) is that ping. `FALSE`, the
+#'   default, as before.
 #' @param window Optional `c(from, to)` (POSIXct): keep only the port calls that overlap `[from, to)`
 #'   (`T_out >= from` and `T_in < to`; for `"dwell"`, once the port calls from pings and from events are merged).
 #'   For processing a long series in chunks: pad each chunk's pings with every vessel's last ping before `from`
@@ -225,6 +231,7 @@ rb_create_port_calls <- function(
   min_dwell = NULL,
   radius_in = 2000,
   events = NULL,
+  presence = FALSE,
   window = NULL,
   crs_m = 3575,
   speed_kn = NULL,
@@ -244,6 +251,9 @@ rb_create_port_calls <- function(
     )
   }
   window <- .rb_check_window(window)
+  if (!isFALSE(presence) && method != "dwell") {
+    stop("`presence` is for method \"dwell\".", call. = FALSE)
+  }
   .rb_scope()
   if (method != "dwell") {
     v <- rb_create_voyages(
@@ -340,6 +350,26 @@ rb_create_port_calls <- function(
         i = if ("good" %in% miss) "`good` says which events may be trusted: it is added by `rb_flag_port_event()`."
       ))
     }
+  }
+  if (!(is.logical(presence) && length(presence) == 1 && !is.na(presence))) {
+    stop("`presence` must be TRUE or FALSE.", call. = FALSE)
+  }
+  if (presence) {
+    if (is.null(events)) {
+      stop("`presence = TRUE` takes the good events' positions: give `events`.", call. = FALSE)
+    }
+    miss <- setdiff(c("lon", "lat"), colnames(events))
+    if (length(miss)) {
+      rlang::abort(c(
+        sprintf("With `presence = TRUE`, `events` must have %s.", paste0("`", miss, "`", collapse = ", ")),
+        i = "An event's presence is its position at its time; an event with no position gives none."
+      ))
+    }
+    # the good events with a position, as pings; UNION, so one equal to a ping is that ping
+    pe <- .rb_as_lazy(events, con) |>
+      dplyr::filter(good, !is.na(lon), !is.na(lat), !is.na(time)) |>
+      dplyr::transmute(vid, time, lon = as.numeric(lon), lat = as.numeric(lat))
+    p <- dplyr::union(p, pe)
   }
   ev_sql <- if (is.null(events)) {
     "SELECT NULL::INTEGER AS vid, NULL::TIMESTAMP AS time, NULL::VARCHAR AS io, NULL::VARCHAR AS port_id, NULL::BOOLEAN AS good WHERE false"
