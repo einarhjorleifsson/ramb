@@ -9,7 +9,8 @@
 # calls, voyages, windows, links); "tool" serves a step but is not one (plots, vocabularies, the MFRI logbook
 # helpers). The verbs follow the shape (fishycode plan 032): rb_create_*() for a table of its own, rb_add_*() for
 # the input with columns added, rb_flag_*() for a flag column, rb_link_*() for a table of pairs.
-# A step's name holds its stage word, or for step 1 the objects it makes or adds: voyages, port_calls.
+# A step's name holds its stage word, or for step 1 the objects it makes, adds or judges: voyages, port_calls,
+# port_event.
 # Column names are the grammar's; a function whose columns can be renamed passes the user's names to the check.
 # `paths` is the per-unit path a step serves (plan 013, "paths are branches in the code"); "all" until the path
 # column exists.
@@ -223,6 +224,16 @@
       "rule",
       "basis"
     ),
+    after = "rb_flag_ping_port"
+  ),
+  # recorded port events judged as events (fishycode plan 048), before rb_create_port_calls(events = ) takes `good`
+  .rb_step(
+    "rb_flag_port_event",
+    "trip",
+    "step",
+    "events",
+    c("vid", "time", "io"),
+    c("event_flag", "event_track_kn", "good"),
     after = "rb_flag_ping_port"
   ),
   # the port calls of chunks (rb_create_port_calls(window = )) merged into those of the whole series

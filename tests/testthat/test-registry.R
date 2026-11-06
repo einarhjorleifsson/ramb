@@ -3,7 +3,7 @@
 
 test_that("every exported step function has a row, and every row an export", {
   ns <- setdiff(getNamespaceExports("ramb"), names(.rb_renamed_from))
-  rx <- "^rb_[a-z]+_([a-z]+_)?(vessel|ping|trip|record|gear|fishing|effort|catch|voyages|port_calls)(_|$)"
+  rx <- "^rb_[a-z]+_([a-z]+_)?(vessel|ping|trip|record|gear|fishing|effort|catch|voyages|port_calls|port_event)(_|$)"
   steps <- grep(rx, ns, value = TRUE)
   steps <- steps[!grepl("_mfri$", steps)]
   reg <- .rb_registry()
@@ -26,8 +26,8 @@ test_that("rows hang together: kinds, stages, inputs and the step before", {
         "catch"
       )
   ))
-  # the stage word is in the name; step 1 may name its objects instead (fishycode plan 032)
-  word <- function(s) if (s == "trip") "(trip|voyages|port_calls)" else s
+  # the stage word is in the name; step 1 may name its objects instead (fishycode plans 032 and 048)
+  word <- function(s) if (s == "trip") "(trip|voyages|port_calls|port_event)" else s
   expect_true(all(mapply(
     function(f, s) grepl(paste0("_", word(s), "(_|$)"), f),
     reg$fn,

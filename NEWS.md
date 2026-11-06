@@ -1,3 +1,21 @@
+# ramb 2026.11.06
+
+- `rb_flag_port_event()` (fishycode plan 048 step 2), new: recorded port events judged as events, before
+  `rb_create_port_calls(events = )` takes them. Any system's arrival and departure reports (STK's I/U rows, a VMS's
+  entry and exit reports, a tracker's geofence events) get the first test each fails, `event_flag`, the track's implied
+  speed, `event_track_kn`, and `good`: by position (`"other_port"`, and `"outside_port"` for an arrival), by sequence
+  (`"flicker"`, `"repeat"`), against the cleaned track (`"track"`: the pings either side farther from the port than the
+  vessel could sail; an event with no ping either side is not good, `NA`), and by sending unit (`"unit"`, opt-in with
+  `unit =`). Each test runs only where its input is given. Where a port call trusted an event only if the speed filter
+  kept it as a ping, the step asks the question that test stood for of the event itself. The defaults come from STK's
+  events of 2008, 2016 and 2024 against the cleaned track without them: `radius_m` 2 km (no allowance flags 3-10 times
+  more events in 2016 and 2024, the vessel just outside its polygon minutes after a departure), `kn_max` 25, and the
+  unit test at 70 % of 20 or more, where the track begins to contradict such units' passing events (6.9 % in 2008,
+  at most 2.1 % below). The unit test leaves an event the track has judged: with a track it would have set aside 13,506
+  events of the three years that the track confirms. On CNR-IRBIM's tracker log (66 geofence events) every event is
+  good.
+- `rb_create_port_calls()`: `events` without `good` now says that `rb_flag_port_event()` adds it.
+
 # ramb 2026.11.05.11
 
 - `rb_flag_ping_impossible(stream = )` (fishycode plan 068): each vessel's streams judged apart, for every method. No

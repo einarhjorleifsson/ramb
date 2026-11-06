@@ -329,6 +329,18 @@ rb_create_port_calls <- function(
   }
   hg_nm <- .rb_register(con, hg, "rb_hg_")
 
+  if (!is.null(events)) {
+    if (!(is.data.frame(events) || inherits(events, "tbl_lazy"))) {
+      stop("`events` must be a data frame or a lazy DuckDB table.", call. = FALSE)
+    }
+    miss <- setdiff(c("vid", "time", "io", "port_id", "good"), colnames(events))
+    if (length(miss)) {
+      rlang::abort(c(
+        sprintf("`events` must have %s.", paste0("`", miss, "`", collapse = ", ")),
+        i = if ("good" %in% miss) "`good` says which events may be trusted: it is added by `rb_flag_port_event()`."
+      ))
+    }
+  }
   ev_sql <- if (is.null(events)) {
     "SELECT NULL::INTEGER AS vid, NULL::TIMESTAMP AS time, NULL::VARCHAR AS io, NULL::VARCHAR AS port_id, NULL::BOOLEAN AS good WHERE false"
   } else {

@@ -825,6 +825,34 @@ etiquette_cases <- local({
 
     # Step 1: port calls, voyages, trips -----------------------------------------------------------------------------
     list(
+      fn = "rb_flag_port_event",
+      main = "events",
+      args = function() {
+        e <- tibble::tibble(
+          vid = 1L,
+          time = utc("2024-01-01") + 3600 * 0:4,
+          io = c("I", "U", "I", "I", "U"),
+          port_id = c("big", "big", "big", "far", "far"),
+          # every event placed (sf points take no NA): the fourth in port "big" though it names "far"
+          lon = c(0.5, 0.5, 0.5, 0.5, 5.5),
+          lat = c(0.5, 0.5, 0.5, 0.5, 5.5),
+          unit = "u"
+        )
+        p <- tibble::tibble(
+          vid = 1L,
+          time = utc("2024-01-01") + 1800 * 0:9,
+          lon = 0.5,
+          lat = 0.5
+        )
+        list(events = add_rid(e), ports = fresh(sq_ports), pings = p, unit = quote(unit))
+      },
+      shape = "same",
+      lazy = TRUE,
+      lazy_also = "pings",
+      sf = TRUE,
+      note = "`ports` is sf (polygons); events take lon/lat columns; `pings` is made lazy with them."
+    ),
+    list(
       fn = "rb_create_port_calls",
       main = "pings",
       args = function() {

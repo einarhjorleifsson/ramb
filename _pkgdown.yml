@@ -37,6 +37,7 @@ reference:
   - rb_flag_ping_port
 - title: "Trip (step 1)"
   contents:
+  - rb_flag_port_event
   - rb_create_port_calls
   - rb_merge_port_calls
   - rb_create_voyages
