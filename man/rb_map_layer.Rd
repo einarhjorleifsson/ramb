@@ -61,7 +61,11 @@ starts.}
 \item{popup}{For a vector or geojson layer, what a click shows: \code{click} (the style ids that answer), \code{title} (a
 field), \code{fields} (each a list of \code{field}, \code{label}, and optionally \code{values}, a value-to-text lookup whose text may
 hold \code{{field}} placeholders; \code{template}, a text with \code{{field}} placeholders shown in place of the value when there
-is one; and \code{format}, \code{"value"} or \code{"count"}), \code{maxWidth}. For a grid, \code{fields} only, the first in bold.}
+is one; and \code{format}, \code{"value"} or \code{"count"}), \code{maxWidth}. For a grid, \code{fields} only, the first in bold. Opt-in,
+a label on hover: \code{hover}, the style ids whose features show their \code{title} in a light label beside the pointer
+while it is over them (\code{TRUE} for those of \code{click}), and \code{hover_fields}, \code{TRUE} to show the \code{fields} there too.
+Over features of several layers, the topmost speaks, as for a click; a click hides the label until the pointer is
+over another feature.}
 
 \item{legend}{A list of swatches, each \code{swatch} (\code{fill} and \code{stroke}, or \code{dot}) and \code{label}.}
 

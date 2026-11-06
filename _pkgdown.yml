@@ -119,6 +119,7 @@ reference:
   - rb_map_layer
   - rb_map_tiles_table
   - rb_map_serve
+  - rb_map_notes
   - rb_map_palettes
   - print.rb_map
 - title: "MFRI-only readers"

@@ -14,6 +14,9 @@
 #   /fit/<id>?bbox=w,s,e,n           a dem layer's floor and cap for the values in a box, from its colour's `fit`
 #   /time?v=<vessel>&span=<span>     the time panel's series of one vessel's span (rb_map_time()), as JSON; the vessel
 #                                    and the span are checked against the panel's before R sees them
+#   /notes                           with rb_map_serve(notes = ): the notes (GET), a note or a reply added (POST),
+#   /notes/<id>                      a note deleted (DELETE), each answered with the notes; only for a page opened
+#                                    from this computer, a write only from the page itself
 
 .rb_map_engine <- 3L # the page's ENGINE: changed together
 .rb_maps <- new.env(parent = emptyenv()) # the servers rb_map_serve() started, by port
@@ -61,7 +64,11 @@
 #' @param popup For a vector or geojson layer, what a click shows: `click` (the style ids that answer), `title` (a
 #'   field), `fields` (each a list of `field`, `label`, and optionally `values`, a value-to-text lookup whose text may
 #'   hold `{field}` placeholders; `template`, a text with `{field}` placeholders shown in place of the value when there
-#'   is one; and `format`, `"value"` or `"count"`), `maxWidth`. For a grid, `fields` only, the first in bold.
+#'   is one; and `format`, `"value"` or `"count"`), `maxWidth`. For a grid, `fields` only, the first in bold. Opt-in,
+#'   a label on hover: `hover`, the style ids whose features show their `title` in a light label beside the pointer
+#'   while it is over them (`TRUE` for those of `click`), and `hover_fields`, `TRUE` to show the `fields` there too.
+#'   Over features of several layers, the topmost speaks, as for a click; a click hides the label until the pointer is
+#'   over another feature.
 #' @param legend A list of swatches, each `swatch` (`fill` and `stroke`, or `dot`) and `label`.
 #' @param variants For a vector, geojson or dem layer, styles to choose between in the page, such as the column the
 #'   points are coloured by: `label` (the control's text) and `options`, each a `value`, a `label`, `paint` (by the
@@ -273,6 +280,9 @@ rb_map_layer <- function(
       o
     })
   }
+  if (!is.null(popup[["hover"]]) || !is.null(popup[["hover_fields"]])) {
+    popup <- .rb_map_hover(popup, kind, style)
+  }
   # one-element arrays stay arrays in the config's JSON
   if (!is.null(popup$click)) {
     popup$click <- as.list(popup$click)
@@ -402,6 +412,39 @@ rb_map_layer <- function(
     ),
     class = "rb_map_layer"
   )
+}
+
+# A popup's hover, checked: style ids of the layer's own (TRUE for the click's), a title to show, hover_fields a flag
+.rb_map_hover <- function(popup, kind, style) {
+  if (!kind %in% c("vector", "geojson")) {
+    stop("`popup$hover` is for a vector or geojson layer.", call. = FALSE)
+  }
+  if (is.null(popup[["hover"]])) {
+    stop("`popup$hover_fields` goes with `popup$hover`, the style ids that show a label on hover.", call. = FALSE)
+  }
+  if (isTRUE(popup[["hover"]])) {
+    if (is.null(popup[["click"]])) {
+      stop("`popup$hover = TRUE` takes the style ids of `popup$click`: give `click`, or the ids to `hover`.", call. = FALSE)
+    }
+    popup[["hover"]] <- popup[["click"]]
+  }
+  ids <- unlist(popup[["hover"]])
+  style_ids <- vapply(style, function(s) if (is.null(s$id)) "" else s$id, "")
+  if (!is.character(ids) || !length(ids) || anyNA(ids) || !all(ids %in% style_ids)) {
+    stop(
+      "`popup$hover` is some of the layer's style ids (or TRUE for those of `click`): their features show a label on hover.",
+      call. = FALSE
+    )
+  }
+  if (!is.character(popup[["title"]]) || length(popup[["title"]]) != 1) {
+    stop("`popup$hover` shows a feature's `title`: give `popup$title`, a field.", call. = FALSE)
+  }
+  hf <- popup[["hover_fields"]]
+  if (!is.null(hf) && !(is.logical(hf) && length(hf) == 1 && !is.na(hf))) {
+    stop("`popup$hover_fields` is TRUE or FALSE.", call. = FALSE)
+  }
+  popup[["hover"]] <- as.list(unique(ids))
+  popup
 }
 
 #' A group of layers in a map's sidebar
@@ -885,6 +928,11 @@ rb_map_basemaps <- function() {
 #' @param port,host Where the server listens.
 #' @param open Whether to open the page: RStudio's Viewer when there is one, else a browser.
 #' @param query Settings for the first view, in the page's address (`list(lang = "is", palette = "deep")`).
+#' @param notes Opt-in, notes pinned on the map: the path of a `.geojson` file (in a folder that exists) where the
+#'   server keeps them, made at the first note; `NULL`, none. The page then has a Notes group: "Add a note", a click
+#'   on the map, a text, and the note is written to the file with the features under it; a reply joins a note's
+#'   thread. [rb_map_notes()] reads them in R and [rb_map_notes_add()] answers. They are answered only for a page
+#'   opened from this computer (as `localhost`, `127.0.0.1` or `host`), and never in a bundle.
 #' @return The page's address, invisibly.
 #' @export
 #' @examples
@@ -902,6 +950,8 @@ rb_map_basemaps <- function() {
 #'   rb_map_serve(m)
 #'   # again, opening on the ocean base map (it replaces the first):
 #'   # rb_map_serve(m, query = list(base = "ocean"))
+#'   # with notes pinned on the map, kept in a file:
+#'   # rb_map_serve(m, notes = "harbour_notes.geojson"); rb_map_notes("harbour_notes.geojson")
 #'   # rb_map_stop() # when done
 #' }
 rb_map_serve <- function(
@@ -909,16 +959,22 @@ rb_map_serve <- function(
   port = 8790L,
   host = "127.0.0.1",
   open = interactive(),
-  query = NULL
+  query = NULL,
+  notes = NULL
 ) {
   .rb_need("httpuv")
   .rb_need("jsonlite")
   if (!inherits(map, "rb_map")) {
     stop("`map` is an rb_map().", call. = FALSE)
   }
+  if (!is.null(notes)) {
+    notes <- .rb_notes_path(notes)
+    .rb_notes_utf8()
+    .rb_notes_read(notes) # a file that is there must be notes: it is never overwritten otherwise
+  }
   port <- as.integer(port)
   rb_map_stop(port)
-  app <- .rb_map_app(map)
+  app <- .rb_map_app(map, notes = notes, host = host)
   .rb_tiles$served[[as.character(port)]] <- attr(map, "tables")
   .rb_maps[[as.character(port)]] <- tryCatch(
     httpuv::startServer(host, port, app),
@@ -974,6 +1030,285 @@ rb_map_stop <- function(port = NULL) {
     .rb_map_drop(p)
   }
   invisible(as.integer(ports))
+}
+
+#' Notes pinned on a served map
+#'
+#' A map served with `rb_map_serve(notes = )` takes notes: in its Notes group the reader presses "Add a note", clicks
+#' the map and writes, and the server writes the note to the file, a GeoJSON FeatureCollection with a point for each
+#' note. A note keeps its `id`, its `time` (UTC), its `author` (`"reader"` from the page), its `text`, the map's `zoom`
+#' and the page's `address` (its query and position: the view and layers as the reader saw them), and `under`, the
+#' features under it: each "layer: title", from the layers whose popup has a `title`. A reply joins a note's thread
+#' (`reply_to`, the first note's `id`) at its place. The page shows a pin for each thread, red while its last word is
+#' the reader's and blue once answered, with the thread and a box to reply in on a click, and asks for the notes again
+#' when it regains the focus and every 30 s.
+#'
+#' `rb_map_notes()` reads the notes, `rb_map_notes_add()` adds a note or a reply from R: a dialogue about places on a
+#' map, between a reader in the page and someone at R (or an assistant reading the file). Both may run while the map is
+#' served, in this R session or another: each write replaces the file whole, by a rename. The file is plain GeoJSON, a
+#' note a line, and opens in any GIS. Notes are written only by R in a UTF-8 locale, where letters outside ASCII are
+#' kept as they are.
+#'
+#' @param path The notes' file (`.geojson`).
+#' @param text The note's text.
+#' @param lon,lat Where it is pinned. A reply's place is its thread's.
+#' @param author Who wrote it.
+#' @param reply_to The `id` of the note it answers; a reply to a reply joins the same thread.
+#' @return `rb_map_notes()`: a data frame, a row for each note in the order written: `id`, `thread` (the `id` of its
+#'   thread's first note), `reply_to`, `time` (POSIXct, UTC), `author`, `text`, `lon`, `lat`, `zoom`, `under` (the
+#'   features under it, separated by "; ") and `address`; no rows when there is no file. `rb_map_notes_add()`: the
+#'   new note's `id`, invisibly.
+#' @seealso [rb_map_serve()]
+#' @export
+#' @examples
+#' f <- tempfile(fileext = ".geojson")
+#' rb_map_notes_add(f, "Is the bank's edge here?", lon = -14.6, lat = 64.0, author = "reader")
+#' rb_map_notes_add(f, "Yes, at the 200 m contour.", reply_to = 1, author = "analyst")
+#' rb_map_notes(f)[, c("id", "thread", "author", "text")]
+#' # a map served with them: rb_map_serve(m, notes = f)
+rb_map_notes <- function(path) {
+  path <- .rb_notes_path(path, folder = FALSE)
+  fs <- .rb_notes_read(path)
+  p <- lapply(fs, `[[`, "properties")
+  chr <- function(k) vapply(p, function(x) if (is.null(x[[k]])) NA_character_ else as.character(x[[k]]), "")
+  num <- function(k) vapply(p, function(x) if (is.null(x[[k]])) NA_real_ else as.numeric(x[[k]]), 0)
+  xy <- function(i) vapply(fs, function(f) as.numeric(.rb_or(f$geometry$coordinates[[i]], NA)), 0)
+  id <- as.integer(num("id"))
+  reply_to <- as.integer(num("reply_to"))
+  thread <- id
+  thread[!is.na(reply_to)] <- reply_to[!is.na(reply_to)]
+  data.frame(
+    id = id,
+    thread = thread,
+    reply_to = reply_to,
+    time = as.POSIXct(chr("time"), format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+    author = chr("author"),
+    text = chr("text"),
+    lon = xy(1),
+    lat = xy(2),
+    zoom = num("zoom"),
+    under = vapply(p, function(x) if (length(x$under)) paste(unlist(x$under), collapse = "; ") else NA_character_, ""),
+    address = chr("address"),
+    stringsAsFactors = FALSE
+  )
+}
+
+#' @rdname rb_map_notes
+#' @export
+rb_map_notes_add <- function(path, text, lon = NULL, lat = NULL, author = "analyst", reply_to = NULL) {
+  path <- .rb_notes_path(path)
+  .rb_notes_utf8()
+  if (!is.character(author) || length(author) != 1 || is.na(author) || !nzchar(trimws(author))) {
+    stop("`author` is a name.", call. = FALSE)
+  }
+  why <- .rb_notes_check(list(text = text, lon = lon, lat = lat, reply_to = reply_to), .rb_notes_read(path))
+  if (!is.null(why)) {
+    stop(why, call. = FALSE)
+  }
+  invisible(.rb_notes_add(path, list(text = text, lon = lon, lat = lat, reply_to = reply_to), trimws(author)))
+}
+
+# Notes are written only by an R in a UTF-8 locale: in another (C, as Rscript may start), R's strings and jsonlite write
+# a letter outside ASCII as "<c3><b3>", which would stay in the file
+.rb_notes_utf8 <- function() {
+  if (!isTRUE(l10n_info()[["UTF-8"]])) {
+    stop(
+      "Notes are written by R in a UTF-8 locale (this one is ", Sys.getlocale("LC_CTYPE"), "): start R with ",
+      "LANG=en_US.UTF-8, or Sys.setlocale(\"LC_ALL\", \"en_US.UTF-8\").",
+      call. = FALSE
+    )
+  }
+}
+
+# The notes' file: one path, a .geojson or .json file whose folder exists (when it is to be written)
+.rb_notes_path <- function(path, folder = TRUE) {
+  if (!is.character(path) || length(path) != 1 || is.na(path) || !grepl("[.](geo)?json$", path, ignore.case = TRUE)) {
+    stop("The notes' file is one path to a .geojson file.", call. = FALSE)
+  }
+  path <- normalizePath(path, mustWork = FALSE)
+  if (folder && !dir.exists(dirname(path))) {
+    stop(sprintf("The notes' folder %s does not exist.", dirname(path)), call. = FALSE)
+  }
+  path
+}
+
+# The notes as features, none when there is no file; a file that is not a FeatureCollection of numbered notes stops
+# whatever would read or write it, so it is never overwritten
+.rb_notes_read <- function(path) {
+  if (!file.exists(path)) {
+    return(list())
+  }
+  x <- tryCatch(
+    jsonlite::fromJSON(paste(readLines(path, warn = FALSE, encoding = "UTF-8"), collapse = "\n"),
+                       simplifyVector = FALSE),
+    error = function(e) NULL
+  )
+  ok <- is.list(x) && identical(x$type, "FeatureCollection") && is.list(x$features) &&
+    all(vapply(x$features, function(f) is.numeric(f$properties$id) && length(f$properties$id) == 1, logical(1)))
+  if (!ok) {
+    stop(sprintf("%s is not a notes file (a GeoJSON FeatureCollection, each feature with an id): left as it is.", path),
+         call. = FALSE)
+  }
+  structure(x$features, last_id = if (is.numeric(x$last_id)) x$last_id)
+}
+
+# The highest id given, deleted notes' included: a number is never given to two notes
+.rb_notes_last_id <- function(features) {
+  max(c(0, attr(features, "last_id"), vapply(features, function(f) as.numeric(f$properties$id), 0)))
+}
+
+# Each note on a line of its own, and the last id given (a foreign member, which GeoJSON readers pass over), written to
+# a file beside it and renamed over it
+.rb_notes_write <- function(path, features, last_id) {
+  one <- function(f) as.character(jsonlite::toJSON(f, auto_unbox = TRUE, null = "null", na = "null", digits = NA))
+  body <- if (length(features)) paste0("\n", paste(vapply(features, one, ""), collapse = ",\n"), "\n") else ""
+  tmp <- paste0(path, ".tmp")
+  writeBin(charToRaw(enc2utf8(paste0('{"type": "FeatureCollection", "last_id": ', last_id, ', "features": [', body,
+                                     "]}\n"))), tmp)
+  if (!file.rename(tmp, path)) {
+    unlink(tmp)
+    stop(sprintf("The notes could not be written to %s.", path), call. = FALSE)
+  }
+  invisible(path)
+}
+
+# A note's fields checked against the notes there: NULL, or why it is refused
+.rb_notes_check <- function(n, features) {
+  one_num <- function(x) is.numeric(x) && length(x) == 1 && is.finite(x)
+  if (!is.character(n$text) || length(n$text) != 1 || is.na(n$text) || !nzchar(trimws(n$text))) {
+    return("A note has a `text`.")
+  }
+  if (nchar(n$text) > 4000) {
+    return("A note's text is at most 4,000 characters.")
+  }
+  if (!is.null(n$reply_to)) {
+    ids <- vapply(features, function(f) as.numeric(f$properties$id), 0)
+    if (!one_num(n$reply_to) || !n$reply_to %in% ids) {
+      return("`reply_to` is the id of a note there.")
+    }
+  } else if (!one_num(n$lon) || !one_num(n$lat) || abs(n$lon) > 180 || abs(n$lat) > 90) {
+    return("A note has a place, `lon` and `lat` in degrees (a reply takes its thread's).")
+  }
+  if (!is.null(n$zoom) && !(one_num(n$zoom) && n$zoom >= 0 && n$zoom <= 24)) {
+    return("A note's `zoom` is a number from 0 to 24.")
+  }
+  if (!is.null(n$under) && !(is.list(n$under) || is.character(n$under))) {
+    return("A note's `under` is a list of texts.")
+  }
+  if (!is.null(n$under) && (length(n$under) > 50 ||
+                              !all(vapply(n$under, function(u) is.character(u) && length(u) == 1, logical(1))))) {
+    return("A note's `under` is at most 50 texts.")
+  }
+  if (!is.null(n$address) && !(is.character(n$address) && length(n$address) == 1 && nchar(n$address) <= 4000)) {
+    return("A note's `address` is a text of at most 4,000 characters.")
+  }
+  NULL
+}
+
+# A note added, checked before: a reply at its thread's first note, which it names; its id, one more than the last
+.rb_notes_add <- function(path, n, author) {
+  fs <- .rb_notes_read(path)
+  ids <- vapply(fs, function(f) as.numeric(f$properties$id), 0)
+  reply_to <- NULL
+  if (!is.null(n$reply_to)) {
+    root <- fs[[match(n$reply_to, ids)]]
+    if (!is.null(root$properties$reply_to)) {
+      root <- fs[[match(root$properties$reply_to, ids)]]
+    }
+    reply_to <- as.integer(root$properties$id)
+    n$lon <- root$geometry$coordinates[[1]]
+    n$lat <- root$geometry$coordinates[[2]]
+  }
+  id <- as.integer(.rb_notes_last_id(fs) + 1)
+  fs[[length(fs) + 1]] <- list(
+    type = "Feature",
+    geometry = list(type = "Point", coordinates = list(round(n$lon, 6), round(n$lat, 6))),
+    properties = list(
+      id = id,
+      reply_to = reply_to,
+      time = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+      author = author,
+      text = trimws(n$text),
+      zoom = if (!is.null(n$zoom)) round(n$zoom, 2),
+      under = as.list(vapply(n$under, function(u) substr(u, 1, 300), "")),
+      address = n$address
+    )
+  )
+  .rb_notes_write(path, fs, id)
+  id
+}
+
+# A note deleted, and with the first note of a thread its replies
+.rb_notes_delete <- function(path, id) {
+  fs <- .rb_notes_read(path)
+  ids <- vapply(fs, function(f) as.numeric(f$properties$id), 0)
+  to <- vapply(fs, function(f) as.numeric(.rb_or(f$properties$reply_to, NA)), 0)
+  if (!id %in% ids) {
+    return(FALSE)
+  }
+  .rb_notes_write(path, fs[!(ids == id | to %in% id)], .rb_notes_last_id(fs))
+  TRUE
+}
+
+# The routes of the notes: GET /notes, POST /notes (a note or a reply), DELETE /notes/<id>, each answered with the notes
+# (a new note's id in `added`). Only for a page opened from this computer (its Host, against DNS rebinding); a write
+# only from the page itself (its header, which a page elsewhere may not send without the server's leave, and its Origin)
+.rb_map_notes_reply <- function(req, notes, hosts, reply, json) {
+  host <- tolower(sub(":[0-9]+$", "", .rb_or(req$HTTP_HOST, "")))
+  if (!host %in% hosts) {
+    return(reply(403L, "the notes are kept for a page opened from this computer"))
+  }
+  method <- req$REQUEST_METHOD
+  if (method != "GET" && (!identical(req$HTTP_X_RB_NOTES, "1") ||
+                            (!is.null(req$HTTP_ORIGIN) && !identical(req$HTTP_ORIGIN, paste0("http://", req$HTTP_HOST))))) {
+    return(reply(403L, "a note comes from the map's page"))
+  }
+  answer <- function(added = NULL) {
+    force(added) # a note added before the notes are read
+    fc <- list(type = "FeatureCollection", features = .rb_notes_read(notes))
+    fc$added <- added
+    reply(200L, json(fc), "application/geo+json; charset=utf-8", list(`Cache-Control` = "no-store"))
+  }
+  path <- req$PATH_INFO
+  tryCatch(
+    {
+      if (path == "/notes" && method == "GET") {
+        return(answer())
+      }
+      if (path == "/notes" && method == "POST") {
+        if (suppressWarnings(as.numeric(.rb_or(req$CONTENT_LENGTH, "0"))) > 65536) {
+          return(reply(413L, "a note is at most 64 kB"))
+        }
+        b <- req$rook.input$read()
+        if (length(b) > 65536) {
+          return(reply(413L, "a note is at most 64 kB"))
+        }
+        b <- rawToChar(b)
+        Encoding(b) <- "UTF-8"
+        n <- tryCatch(jsonlite::fromJSON(b, simplifyVector = FALSE), error = function(e) NULL)
+        if (!is.list(n) || is.null(names(n))) {
+          return(reply(400L, "a note is a JSON object"))
+        }
+        if (is.list(n$under)) {
+          n$under <- lapply(n$under, function(u) if (is.character(u)) u else NA)
+        }
+        why <- .rb_notes_check(n, .rb_notes_read(notes))
+        if (!is.null(why)) {
+          return(reply(400L, why))
+        }
+        return(answer(.rb_notes_add(notes, n, "reader")))
+      }
+      d <- regmatches(path, regexec("^/notes/([0-9]+)$", path))[[1]]
+      if (length(d) == 2 && method == "DELETE") {
+        if (!.rb_notes_delete(notes, as.numeric(d[2]))) {
+          return(reply(404L, "no such note"))
+        }
+        return(answer())
+      }
+      reply(405L, "GET /notes, POST /notes or DELETE /notes/<id>")
+    },
+    error = function(e) reply(500L, sub("\n.*", "", conditionMessage(e)))
+  )
 }
 
 #' Write a map as a folder that opens with no R and no server
@@ -3656,8 +3991,12 @@ format.rb_map <- function(x, ...) {
 }
 
 # The app behind rb_map_serve(), a list with `call(req)` for httpuv: its routes in the header of this file
-.rb_map_app <- function(map) {
+.rb_map_app <- function(map, notes = NULL, host = "127.0.0.1") {
   json <- .rb_map_json
+  if (!is.null(notes)) {
+    map$config$notes <- list(file = basename(notes))
+  }
+  hosts <- unique(tolower(c("localhost", "127.0.0.1", "[::1]", host)))
   config <- json(map$config)
   page <- .rb_map_page(config)
   layers <- map$layers
@@ -3686,6 +4025,9 @@ format.rb_map <- function(x, ...) {
   }
   list(call = function(req) {
     path <- req$PATH_INFO
+    if (!is.null(notes) && (path == "/notes" || startsWith(path, "/notes/"))) {
+      return(.rb_map_notes_reply(req, notes, hosts, reply, json))
+    }
     if (req$REQUEST_METHOD != "GET") {
       return(reply(405L, "GET only"))
     }

@@ -63,6 +63,30 @@
   .langs button + button { border-left: 0; }
   .langs button.on { background: var(--bar); border-color: var(--bar); color: #fff; }
   #menu, #close { display: none; }
+  /* a feature's label on hover (popup `hover`): light, beside the pointer, never in its way */
+  .rb-hover { pointer-events: none; }
+  .rb-hover .maplibregl-popup-content { padding: 3px 8px; background: rgba(255,255,255,.93); box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+  .rb-hover .maplibregl-popup-tip { display: none; }
+  /* the notes (rb_map_serve(notes = )): pins on the map, a thread each, listed in their group */
+  #n-add.on { background: var(--bar); color: #fff; border-color: var(--bar); }
+  #n-list { list-style: none; margin: 6px 0 0; padding: 0; max-height: 40vh; overflow-y: auto; }
+  #n-list li { display: flex; gap: 6px; padding: 3px 2px; cursor: pointer; border-top: 1px solid var(--line); }
+  #n-list li:hover { background: #f3f5f7; }
+  #n-list li i { flex: none; width: 10px; height: 10px; margin-top: 3px; border-radius: 50%; border: 1px solid #fff;
+                 box-shadow: 0 0 0 .5px #666; }
+  #n-list li span { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .note { width: min(300px, 70vw); }
+  .note .entry + .entry { border-top: 1px solid var(--line); margin-top: 5px; padding-top: 4px; }
+  .note .who { color: var(--muted); font-size: 11px; display: flex; gap: 6px; }
+  .note .who { padding-right: 14px; }   /* clear of the popup's close button */
+  .note .who .del { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0; font: inherit;
+                    text-decoration: underline dotted; }
+  .note .who .del:hover { color: #b30000; }
+  .note .text { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 1px; }
+  .note .under { color: var(--muted); font-size: 11px; margin-top: 3px; }
+  .note textarea { width: 100%; box-sizing: border-box; font: inherit; margin-top: 6px; resize: vertical; }
+  .note .acts { display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; }
+  .note .err { color: #b30000; margin-top: 3px; }
   /* the time panel (rb_map_time()): under the map, beside the sidebar */
   :root { --timeh: clamp(230px, 36vh, 360px); }
   body.has-time #map { bottom: var(--timeh); }
@@ -117,6 +141,19 @@
         <div class="row" id="t-cols-row" hidden><label data-t="tCols"></label><span id="t-cols"></span></div>
         <div class="row" id="t-marks-row" hidden><label data-t="tMarks"></label><span id="t-marks"></span></div>
         <div class="row"><button id="t-whole" data-t="tWholeBtn" data-tt="tWholeTip"></button></div>
+      </div>
+    </details>
+    <!-- the notes (rb_map_serve(notes = )), shown when the server keeps them -->
+    <details class="group" id="g-notes" open hidden>
+      <summary data-t="gNotes"></summary>
+      <div class="body">
+        <div class="row"><button id="n-add" data-t="nAdd" data-tt="nAddTip"></button>
+          <label class="auto"><input type="checkbox" id="n-show" checked><span data-t="nShow"></span></label></div>
+        <div class="swatches" style="margin-left:0">
+          <span><i style="width:9px;height:9px;border-radius:50%;background:#d7301f"></i><span data-t="nWaiting"></span></span>
+          <span><i style="width:9px;height:9px;border-radius:50%;background:#2c5d87"></i><span data-t="nAnswered"></span></span></div>
+        <ol id="n-list"></ol>
+        <div class="info" id="n-file"></div>
       </div>
     </details>
     <details class="group" id="g-base">
@@ -175,7 +212,13 @@ const ENGINE_TEXTS = {
   gTime: "Time", tVessel: "Vessel", tSpan: "Span", tCols: "Columns", tMarks: "Marks", tWholeBtn: "Whole span", tWholeTip: "Show the whole span; a double click on the chart does the same",
   tWhole: "whole ({1})", tLoading: "loading the vessel's pings…", tFailed: "the pings did not come: {1}",
   tWindow: "{1} to {2}{3} · {4} pings", tThinned: "1 in {1} drawn on the map", tNone: "no pings in this span",
-  tDrag: "Drag across the chart to choose a time; double click for the whole span"
+  tDrag: "Drag across the chart to choose a time; double click for the whole span",
+  gNotes: "Notes", nAdd: "Add a note", nAddTip: "Then click the map where the note belongs (Esc to stop)",
+  nPlace: "Click the map…", nShow: "show", nWaiting: "waiting for an answer", nAnswered: "answered",
+  nFile: "Saved by the server to {1}.", nNone: "No notes yet.", nPlaceholder: "A note on this place",
+  nReplyPlaceholder: "A reply", nSave: "Save", nReply: "Reply", nCancel: "Cancel", nDelete: "delete",
+  nDeleteThread: "Delete note {1} and its replies?", nDeleteOne: "Delete this reply?", nOn: "On: {1}",
+  nFailed: "not saved: {1}", nReader: "you", nReplies: "{1} replies", nReply1: "1 reply"
 };
 let CONFIG;
 try { CONFIG = JSON.parse(document.getElementById("config").textContent); }
@@ -225,8 +268,14 @@ function bundleLoad(key) {
 const fromBase64 = s => { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u.buffer; };
 const bundleTiles = l => `tiles/${BUNDLE.tiles?.[l.id] ?? l.id}`;
 if (BUNDLE) maplibregl.addProtocol("bundle", async p => ({ data: fromBase64(await bundleLoad(p.url.slice("bundle://".length))) }));
+// The notes (rb_map_serve(notes = )): only from a server that keeps them, never in a bundle. A thread's pin is red while
+// its last word is the reader's, blue once answered
+const NOTES = !BUNDLE && CONFIG.notes ? CONFIG.notes : null;
+if (NOTES) SOURCES.add("rb-notes");
+const N_WAIT = "#d7301f", N_DONE = "#2c5d87";
+let noting = false, notes = [], notePopup = null, noteShown = null;   // placing a note; the notes; the thread shown
 // a layer's tiles: the server's, or the bundle's
-const layerTiles = (l, ext, v) => BUNDLE ? `bundle://${bundleTiles(l)}/{z}/{x}/{y}` : `${location.origin}/tiles/${l.id}/{z}/{x}/{y}.${ext}?v=${v}`;
+const layerTiles =(l, ext, v) => BUNDLE ? `bundle://${bundleTiles(l)}/{z}/{x}/{y}` : `${location.origin}/tiles/${l.id}/{z}/{x}/{y}.${ext}?v=${v}`;
 // A bundle's grid (rb_map_bundle()'s `grids`): its rows by cell at a few cell sizes, in blocks of cells. Each tile the
 // map asks for is made here, as its server would: the blocks under it at the size that makes a cell one to two screen
 // pixels (the `px` filter times that), their rows kept by the filters in the tile's address and summed by cell, sent
@@ -765,7 +814,7 @@ for (const g of CONFIG.groups) {
   d.className = "group"; d.id = "g-" + g.id; d.open = !!g.open;
   d.innerHTML = `<summary data-t="${g.title}"></summary><div class="body"></div>`;
   for (const id of g.layers) d.querySelector(".body").append(layerRow(LAYERS.find(l => l.id === id)));
-  $("groups").insertBefore(d, $("g-base"));
+  $("groups").insertBefore(d, $("g-notes"));
 }
 // The map's choices (a field's values to show, from the data's groups), above the groups: chips that tick on and off
 // for a field of few values (`multi`), a list to show one at a time for one of many; ‹ › step through either
@@ -806,6 +855,7 @@ if (TP) {
   if (TP.span_label) $("g-time").querySelector('label[for="t-span"]').dataset.t = TP.span_label;
   $("t-span-row").hidden = TP.vessels.every(v => v.spans.length < 2);
 }
+if (NOTES) $("g-notes").hidden = false;   // from the start, so the sidebar does not move when the notes come
 for (const k of CONFIG.about ?? []) $("about").insertAdjacentHTML("beforeend", `<p data-t="${k}"></p>`);
 if (!(CONFIG.about ?? []).length) $("g-about").hidden = true;
 $("side").querySelector("h1").dataset.t = CONFIG.title;
@@ -938,6 +988,7 @@ function applyLang(l) {
   for (const b of document.querySelectorAll("[data-lang]")) b.classList.toggle("on", b.dataset.lang === LANG);
   for (const l of OTHER) countText(l);
   if (TP && TU) timeLang();
+  if (NOTES) noteList();
   if (!tileError && G && map.getLayer(G.id)) $("status").textContent = zoomText();   // map.loaded() is false while tiles load
   popup?.remove();
   paint();
@@ -1040,7 +1091,8 @@ Promise.all([BUNDLE ? BUNDLE.meta : fetch("/meta").then(r => r.json()), styleLoa
   }
   for (const l of OTHER) addLayer(l, meta);
   if (TP) timeSetup(q);
-  const base = BASEMAPS.find(b => b.id === q.get("base"));
+  if (NOTES) notesSetup();
+  const base =BASEMAPS.find(b => b.id === q.get("base"));
   if (base && base !== BASEMAPS[0]) { document.querySelector(`#bases input[value="${base.id}"]`).checked = true; setBase(base.id); }
   addressRead = true;
   addressNow();   // the address as the page took it: a value it does not offer is dropped
@@ -1118,8 +1170,9 @@ function addLayer(l, meta) {
   const draw = () => {
     // elevations go under a grid, or under the base's labels; contours over both, under the labels
     const firstSymbol = () => map.getStyle().layers.find(x => x.type === "symbol" && !SOURCES.has(x.source))?.id;
+    // the notes' pins stay over every layer, one whose data come after them included
     const before = DEM.has(l.id) ? (G && map.getLayer(G.id) ? G.id : firstSymbol())
-                 : CONTOUR.has(l.id) ? firstSymbol() : undefined;
+                 : CONTOUR.has(l.id) ? firstSymbol() : map.getLayer("rb-notes-dot") ? "rb-notes-dot" : undefined;
     applyState(l);   // before the styles that read it
     for (const st of l.style) {
       const spec = { ...st, source: l.id };
@@ -1297,11 +1350,9 @@ for (const b of document.querySelectorAll("[data-all]")) b.addEventListener("cli
   writeAddress();
 });
 
-// A click on a feature: its title and fields; a field's value goes through `values` into a text, or into its
-// `template`, and a text's {name} is filled from the feature. Registered top layer first, so the topmost feature
-// under the click speaks
-function featurePopup(l, e) {
-  const p = e.features[0].properties;
+// A feature's title and fields; a field's value goes through `values` into a text, or into its `template`, and a
+// text's {name} is filled from the feature
+function featureHtml(l, p, fields = true) {
   const fill = t => t.replace(/\{([a-z_][a-z0-9_]*)\}/gi, (m, k) => esc(p[k] ?? ""));
   const line = (k, v) => v === undefined || v === null || v === "" || v === "null" ? "" : `<br>${k}: ${v}`;
   const val = f => {
@@ -1312,15 +1363,225 @@ function featurePopup(l, e) {
     if (f.format === "value" && v !== undefined && v !== null && v !== "") return fmt(+v);
     return v === undefined || v === null ? v : esc(v);
   };
+  return `<b>${esc(p[l.popup.title])}</b>${(fields ? l.popup.fields ?? [] : []).map(f => line(tr(f.label), val(f))).join("")}`;
+}
+// A click on a feature: its title and fields. Registered top layer first, so the topmost feature under the click speaks
+function featurePopup(l, e) {
   popup?.remove();
   popup = new maplibregl.Popup({ closeButton: false, maxWidth: l.popup.maxWidth ?? "300px" }).setLngLat(e.lngLat)
-    .setHTML(`<b>${esc(p[l.popup.title])}</b>${(l.popup.fields ?? []).map(f => line(tr(f.label), val(f))).join("")}`)
+    .setHTML(featureHtml(l, e.features[0].properties))
     .addTo(map);
 }
+// The notes' clicks first (rb_map_serve(notes = )): a click that places a note, or on a note's pin, opens no feature
+if (NOTES) map.on("click", noteClick);
 for (const l of [...OTHER].reverse()) for (const id of l.popup?.click ?? []) {
   map.on("click", id, e => { if (e.originalEvent.featureShown) return; e.originalEvent.featureShown = true; featurePopup(l, e); });
-  map.on("mouseenter", id, () => { map.getCanvas().style.cursor = "pointer"; });
-  map.on("mouseleave", id, () => { map.getCanvas().style.cursor = ""; });
+  map.on("mouseenter", id, () => { if (!noting) map.getCanvas().style.cursor = "pointer"; });
+  map.on("mouseleave", id, () => { if (!noting) map.getCanvas().style.cursor = ""; });
+}
+// A hover over a feature (popup `hover`): its title, and its fields with `hover_fields`, in a light label beside the
+// pointer, gone when it leaves. One query for every hover style, whose first feature is the topmost, as a click's. A
+// click hides it until the pointer is over another feature, so it does not sit over the click's popup; a drag hides it
+const HOVER = new Map(OTHER.flatMap(l => (l.popup?.hover ?? []).map(id => [id, l])));
+let hoverTip = null, hoverKey = null, hoverClicked = null, hoverFrame = 0, hoverEvent = null;
+function hideHover() { hoverTip?.remove(); hoverKey = null; }
+// the topmost feature of the hover styles at a point, and a key that tells it from another
+function hoverFeature(point) {
+  const ids = [...HOVER.keys()].filter(id => map.getLayer(id));
+  const f = ids.length ? map.queryRenderedFeatures(point, { layers: ids })[0] : null;
+  return f ? { f, key: `${f.layer.id}\u001f${f.id ?? JSON.stringify(f.properties)}` } : null;
+}
+function hoverAt(e) {
+  const h = e.originalEvent.buttons ? null : hoverFeature(e.point);
+  if (!h) { hoverClicked = null; return hideHover(); }
+  const { f, key } = h, l = HOVER.get(f.layer.id);
+  if (key === hoverClicked) return hideHover();
+  hoverClicked = null;
+  hoverTip ??= new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: "rb-hover", offset: 14,
+                                      maxWidth: l.popup.maxWidth ?? "300px" });
+  if (key !== hoverKey) hoverTip.setHTML(featureHtml(l, f.properties, !!l.popup.hover_fields));
+  hoverKey = key;
+  hoverTip.setLngLat(e.lngLat);
+  if (!hoverTip.isOpen()) hoverTip.addTo(map);
+}
+if (HOVER.size) {
+  map.on("mousemove", e => {
+    hoverEvent = e;
+    hoverFrame ||= requestAnimationFrame(() => { hoverFrame = 0; hoverAt(hoverEvent); });
+  });
+  map.on("mouseout", hideHover);
+  map.on("dragstart", hideHover);
+  map.on("click", e => { hoverClicked = hoverFeature(e.point)?.key ?? null; hideHover(); });
+}
+
+// The notes (rb_map_serve(notes = )) -----------------------------------------------------------------------------------
+// "Add a note", then a click on the map: a note pinned there, with the features under it and the page's address,
+// written by the server to its file. A reply, from the page or from R (rb_map_notes_add()), joins the note's thread at
+// its place. The notes are asked for again when the page regains the focus and every 30 s, so a reply written in R
+// shows without a reload; a thread shown is drawn again when it has grown, unless a reply is being written in it
+// (functions, not constants: the page's language lists the notes before this part of the page has run)
+function noteRoots() { return notes.filter(n => n.reply_to == null); }
+function noteThread(id) { return notes.filter(n => n.id === id || n.reply_to === id); }
+function noteWaiting(id) { return noteThread(id).at(-1)?.author === "reader"; }
+function noteWho(a) { return a === "reader" ? tr("nReader") : a ?? ""; }
+function noteTime(t) { return String(t ?? "").replace("T", " ").slice(0, 16); }
+async function notesCall(method, path = "/notes", body = null) {
+  const r = await fetch(path, { method, cache: "no-store", body: body ? JSON.stringify(body) : undefined,
+                                headers: { "X-RB-Notes": "1", ...(body ? { "Content-Type": "application/json" } : {}) } });
+  const t = await r.text();
+  if (!r.ok) throw new Error(t || `HTTP ${r.status}`);
+  return JSON.parse(t);
+}
+function notesFrom(fc) {
+  const before = noteShown == null ? 0 : noteThread(noteShown).length;
+  notes = (fc.features ?? []).map(f => ({ ...f.properties, lon: f.geometry?.coordinates?.[0], lat: f.geometry?.coordinates?.[1] }))
+                             .filter(n => Number.isFinite(n.id));
+  map.getSource("rb-notes")?.setData({ type: "FeatureCollection", features: noteRoots()
+    .filter(n => Number.isFinite(n.lon) && Number.isFinite(n.lat))
+    .map(n => ({ type: "Feature", properties: { id: n.id, waiting: noteWaiting(n.id) },
+                 geometry: { type: "Point", coordinates: [n.lon, n.lat] } })) });
+  noteList();
+  if (noteShown != null && notePopup?.isOpen()) {
+    const ta = notePopup.getElement().querySelector("textarea");
+    if (!noteThread(noteShown).length) notePopup.remove();
+    else if (noteThread(noteShown).length !== before && !ta?.value) noteOpen(noteShown, false);
+  }
+}
+function notesLoad() { return notesCall("GET").then(notesFrom).catch(err => { $("n-file").textContent = tr("nFailed", err.message); }); }
+function noteList() {
+  const roots = noteRoots();
+  $("n-list").replaceChildren(...roots.map(n => {
+    const li = document.createElement("li"), k = noteThread(n.id).length - 1;
+    li.dataset.id = n.id;
+    li.innerHTML = `<i style="background:${noteWaiting(n.id) ? N_WAIT : N_DONE}"></i><span><b>${n.id}</b> ${esc(n.text)}` +
+                   `${k ? ` <em>(${k === 1 ? tr("nReply1") : tr("nReplies", k)})</em>` : ""}</span>`;
+    return li;
+  }));
+  $("n-file").textContent = `${roots.length ? "" : tr("nNone") + " "}${tr("nFile", NOTES.file)}`;
+}
+// placing a note: the next click on the map; Esc or the button again stops it
+function notePlacing(on) {
+  noting = on;
+  $("n-add").classList.toggle("on", on);
+  $("n-add").dataset.t = on ? "nPlace" : "nAdd";
+  $("n-add").textContent = tr($("n-add").dataset.t);
+  map.getCanvas().style.cursor = on ? "crosshair" : "";
+  if (on) { popup?.remove(); hideHover(); document.body.classList.remove("side-open"); }
+}
+// the features under a point, each "layer: title", from the layers whose features have a title
+function notesUnder(point) {
+  const ids = [...new Set(OTHER.flatMap(l => l.popup?.title ? [...(l.popup.click ?? []), ...(l.popup.hover ?? [])] : []))]
+    .filter(id => map.getLayer(id));
+  const out = [];
+  for (const f of ids.length ? map.queryRenderedFeatures(point, { layers: ids }) : []) {
+    const l = OTHER.find(x => x.style.some(s => s.id === f.layer.id)), t = f.properties[l.popup.title];
+    const s = `${tr(l.label)}: ${t}`;
+    if (t != null && t !== "" && !out.includes(s)) out.push(s);
+  }
+  return out.slice(0, 20);
+}
+function noteClick(e) {
+  if (noting) {
+    e.originalEvent.featureShown = true;
+    notePlacing(false);
+    return noteForm(e);
+  }
+  const f = map.getLayer("rb-notes-dot") ? map.queryRenderedFeatures(e.point, { layers: ["rb-notes-dot"] })[0] : null;
+  if (!f) return;
+  e.originalEvent.featureShown = true;
+  noteOpen(f.properties.id);
+}
+// a box of buttons and a text: Save (or Ctrl/⌘ + Enter) sends it, an error is shown in it and the text kept
+function noteBox(html, send) {
+  const box = document.createElement("div");
+  box.className = "note";
+  box.innerHTML = html + `<div class="err" hidden></div>`;
+  const ta = box.querySelector("textarea"), err = box.querySelector(".err");
+  const go = async () => {
+    if (!ta.value.trim()) return ta.focus();
+    const bs = box.querySelectorAll("button");
+    bs.forEach(b => { b.disabled = true; });
+    try { await send(ta.value); }
+    catch (x) { err.hidden = false; err.textContent = tr("nFailed", x.message); bs.forEach(b => { b.disabled = false; }); }
+  };
+  box.querySelector('[data-act="send"]').addEventListener("click", go);
+  box.querySelector('[data-act="cancel"]')?.addEventListener("click", () => notePopup?.remove());
+  ta.addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) go(); });
+  return box;
+}
+function noteShow(lnglat, box) {
+  popup?.remove(); notePopup?.remove();
+  // no focus on the popup's first button (a note's "delete"): the text box takes it
+  notePopup = new maplibregl.Popup({ closeOnClick: false, focusAfterOpen: false, maxWidth: "360px" })
+    .setLngLat(lnglat).setDOMContent(box).addTo(map);
+  notePopup.on("close", () => { noteShown = null; });
+}
+// a new note's form where the map was clicked
+function noteForm(e) {
+  const under = notesUnder(e.point), at = e.lngLat.wrap();
+  const box = noteBox(`<textarea rows="4" placeholder="${esc(tr("nPlaceholder"))}"></textarea>` +
+    (under.length ? `<div class="under">${esc(tr("nOn", under.join("; ")))}</div>` : "") +
+    `<div class="acts"><button data-act="cancel">${esc(tr("nCancel"))}</button><button data-act="send">${esc(tr("nSave"))}</button></div>`,
+    async text => {
+      addressNow();
+      const fc = await notesCall("POST", "/notes", { text, lon: at.lng, lat: at.lat, zoom: map.getZoom(), under,
+                                                     address: location.search + location.hash });
+      notesFrom(fc);
+      noteOpen(fc.added);
+    });
+  noteShow(at, box);
+  noteShown = null;
+  box.querySelector("textarea").focus();
+}
+// a thread: each note with its author and time, the reply box under them (focused, unless drawn again on its own)
+function noteOpen(id, focus = true) {
+  const th = noteThread(id), root = th[0];
+  if (!root || root.id !== id) return;
+  const box = noteBox(th.map(n => `<div class="entry"><div class="who"><b>${n.id === id ? "#" + id : "↳"}</b>` +
+      `<span>${esc(noteWho(n.author))}</span><span>${esc(noteTime(n.time))}</span>` +
+      `<button class="del" data-del="${n.id}">${esc(tr("nDelete"))}</button></div>` +
+      `<div class="text">${esc(n.text)}</div>` +
+      (Array.isArray(n.under) && n.under.length ? `<div class="under">${esc(tr("nOn", n.under.join("; ")))}</div>` : "") +
+      "</div>").join("") +
+    `<textarea rows="2" placeholder="${esc(tr("nReplyPlaceholder"))}"></textarea>` +
+    `<div class="acts"><button data-act="send">${esc(tr("nReply"))}</button></div>`,
+    async text => { notesFrom(await notesCall("POST", "/notes", { text, reply_to: id })); noteOpen(id); });
+  for (const b of box.querySelectorAll("[data-del]")) b.addEventListener("click", async () => {
+    const d = +b.dataset.del;
+    if (!confirm(d === id ? tr("nDeleteThread", id) : tr("nDeleteOne"))) return;
+    try { notesFrom(await notesCall("DELETE", `/notes/${d}`)); if (d !== id) noteOpen(id); }
+    catch (x) { const err = box.querySelector(".err"); err.hidden = false; err.textContent = tr("nFailed", x.message); }
+  });
+  noteShow([root.lon, root.lat], box);
+  noteShown = id;
+  if (focus) box.querySelector("textarea").focus({ preventScroll: true });
+}
+function notesSetup() {
+  map.addSource("rb-notes", { type: "geojson", data: EMPTY });
+  map.addLayer({ id: "rb-notes-dot", type: "circle", source: "rb-notes",
+                 paint: { "circle-radius": 9, "circle-color": ["case", ["get", "waiting"], N_WAIT, N_DONE],
+                          "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
+  map.addLayer({ id: "rb-notes-id", type: "symbol", source: "rb-notes",
+                 layout: { "text-field": ["to-string", ["get", "id"]], "text-font": FONT, "text-size": 11,
+                           "text-allow-overlap": true, "text-ignore-placement": true },
+                 paint: { "text-color": "#fff" } });
+  map.on("mouseenter", "rb-notes-dot", () => { if (!noting) map.getCanvas().style.cursor = "pointer"; });
+  map.on("mouseleave", "rb-notes-dot", () => { if (!noting) map.getCanvas().style.cursor = ""; });
+  $("n-add").addEventListener("click", () => notePlacing(!noting));
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && noting) notePlacing(false); });
+  $("n-show").addEventListener("change", () => {
+    for (const id of ["rb-notes-dot", "rb-notes-id"]) map.setLayoutProperty(id, "visibility", $("n-show").checked ? "visible" : "none");
+  });
+  $("n-list").addEventListener("click", e => {
+    const n = notes.find(x => x.id === +e.target.closest("li")?.dataset.id);
+    if (!n) return;
+    map.easeTo({ center: [n.lon, n.lat], zoom: Math.max(map.getZoom(), n.zoom ?? 0) });
+    document.body.classList.remove("side-open");
+    noteOpen(n.id);
+  });
+  notesLoad();
+  window.addEventListener("focus", notesLoad);
+  setInterval(() => { if (!document.hidden) notesLoad(); }, 30000);
 }
 
 // The grid's controls --------------------------------------------------------------------------------------------------

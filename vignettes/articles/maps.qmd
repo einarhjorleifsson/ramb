@@ -414,6 +414,13 @@ area <- rb_map_layer(
 A GeoJSON layer's style has no `"source-layer"`: there are no tiles to
 pick a layer from.
 
+On a busy map, clicking each feature to learn its name is slow. A label
+on hover shows a feature's `title` beside the pointer as it moves over
+it: `popup = list(click = "area-fill", hover = TRUE, title = "name")`
+(`TRUE` takes the styles of `click`; or name the styles to `hover`), with
+`hover_fields = TRUE` for its `fields` too. Where features overlap, the
+topmost speaks, as for a click.
+
 ## All together, in two languages
 
 The layers go into groups, and the groups into the map. Within a group,
@@ -480,6 +487,26 @@ The palettes and base maps to choose from:
 vapply(rb_map_palettes(), `[[`, "", "id")
 vapply(rb_map_basemaps(), `[[`, "", "id")
 ```
+
+## Notes on the map
+
+A map served with a file for notes takes them from its reader: in the
+Notes group, *Add a note*, a click on the map, a few words, and the
+server writes the note to the file with the features under it and the
+page's address. A reply joins a note's thread, from the page or from R,
+so a map can carry a conversation about places: a red pin waits for an
+answer, a blue one has one.
+
+```{r}
+#| eval: false
+rb_map_serve(m, notes = "danish_notes.geojson")
+# later, in this R session or another
+rb_map_notes("danish_notes.geojson")
+rb_map_notes_add("danish_notes.geojson", "That patch is a mussel ground.", reply_to = 1)
+```
+
+The file is plain GeoJSON, a note a line, and opens in any GIS. A bundle
+(`rb_map_bundle()`) has no server, and no notes.
 
 ## When a layer stays empty
 

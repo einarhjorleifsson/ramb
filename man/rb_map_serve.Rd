@@ -10,7 +10,8 @@ rb_map_serve(
   port = 8790L,
   host = "127.0.0.1",
   open = interactive(),
-  query = NULL
+  query = NULL,
+  notes = NULL
 )
 
 rb_map_stop(port = NULL)
@@ -23,6 +24,12 @@ rb_map_stop(port = NULL)
 \item{open}{Whether to open the page: RStudio's Viewer when there is one, else a browser.}
 
 \item{query}{Settings for the first view, in the page's address (\code{list(lang = "is", palette = "deep")}).}
+
+\item{notes}{Opt-in, notes pinned on the map: the path of a \code{.geojson} file (in a folder that exists) where the
+server keeps them, made at the first note; \code{NULL}, none. The page then has a Notes group: "Add a note", a click
+on the map, a text, and the note is written to the file with the features under it; a reply joins a note's
+thread. \code{\link[=rb_map_notes]{rb_map_notes()}} reads them in R and \code{\link[=rb_map_notes_add]{rb_map_notes_add()}} answers. They are answered only for a page
+opened from this computer (as \code{localhost}, \verb{127.0.0.1} or \code{host}), and never in a bundle.}
 }
 \value{
 The page's address, invisibly.
@@ -47,6 +54,8 @@ if (interactive()) {
   rb_map_serve(m)
   # again, opening on the ocean base map (it replaces the first):
   # rb_map_serve(m, query = list(base = "ocean"))
+  # with notes pinned on the map, kept in a file:
+  # rb_map_serve(m, notes = "harbour_notes.geojson"); rb_map_notes("harbour_notes.geojson")
   # rb_map_stop() # when done
 }
 }

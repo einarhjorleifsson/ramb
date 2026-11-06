@@ -1542,3 +1542,176 @@ test_that("a bundle carries the time panel's spans, a file each", {
   )
   expect_match(page, '"time":\\{', perl = TRUE)
 })
+
+test_that("a label on hover: style ids of the layer's own, TRUE for the click's, with a title", {
+  data <- '{"type": "FeatureCollection", "features": []}'
+  st <- list(list(id = "a-fill", type = "fill"), list(id = "a-line", type = "line"))
+  a <- rb_map_layer("a", "geojson", data = data, style = st,
+                    popup = list(click = "a-fill", hover = TRUE, title = "name"))
+  expect_equal(a$config$popup$hover, list("a-fill"))
+  b <- rb_map_layer("b", "geojson", data = data, style = st,
+                    popup = list(hover = c("a-fill", "a-line"), title = "name", hover_fields = TRUE))
+  expect_equal(b$config$popup$hover, list("a-fill", "a-line"))
+  expect_null(b$config$popup$click)
+  # one id stays an array in the config's JSON
+  j <- .rb_map_json(rb_map(rb_map_group("g", layers = list(a)))$config)
+  expect_match(j, '"hover":["a-fill"]', fixed = TRUE)
+  expect_error(rb_map_layer("c", "geojson", data = data, style = st, popup = list(hover = "nope", title = "name")),
+               "style ids")
+  expect_error(rb_map_layer("c", "geojson", data = data, style = st, popup = list(hover = "a-fill")), "title")
+  expect_error(rb_map_layer("c", "geojson", data = data, style = st, popup = list(hover = TRUE, title = "name")),
+               "click")
+  expect_error(rb_map_layer("c", "geojson", data = data, style = st,
+                            popup = list(hover = "a-fill", title = "name", hover_fields = "yes")), "TRUE or FALSE")
+  expect_error(rb_map_layer("c", "geojson", data = data, style = st,
+                            popup = list(click = "a-fill", title = "name", hover_fields = TRUE)), "goes with")
+  expect_error(rb_map_layer("c", "dem", tiles = function(z, x, y) NULL,
+                            style = list(list(id = "c-shade", type = "hillshade")),
+                            popup = list(hover = "c-shade", title = "name")), "vector or geojson")
+  # no hover, as before
+  expect_null(rb_map_layer("d", "geojson", data = data, style = st, popup = list(click = "a-fill", title = "x"))$config$popup$hover)
+})
+
+# a request to a map's app, as httpuv makes it: a page opened as localhost, its header, and a body to read
+notes_call <- function(app, method, path, body = NULL, host = "localhost:8811", page = TRUE, origin = NULL) {
+  req <- list(REQUEST_METHOD = method, PATH_INFO = path, QUERY_STRING = "", HTTP_HOST = host)
+  if (page) req$HTTP_X_RB_NOTES <- "1"
+  req$HTTP_ORIGIN <- origin
+  if (!is.null(body)) {
+    req$rook.input <- list(read = function(...) charToRaw(enc2utf8(body)))
+    req$CONTENT_LENGTH <- as.character(length(charToRaw(enc2utf8(body))))
+  }
+  app$call(req)
+}
+
+test_that("notes from R: a note, a reply at its place, a reply to a reply in the same thread, read back", {
+  skip_if_not_installed("jsonlite")
+  skip_if_not(isTRUE(l10n_info()[["UTF-8"]]), "notes are written in a UTF-8 locale")
+  f <- tempfile(fileext = ".geojson")
+  n0 <- rb_map_notes(f)
+  expect_equal(nrow(n0), 0)
+  expect_named(n0, c("id", "thread", "reply_to", "time", "author", "text", "lon", "lat", "zoom", "under", "address"))
+  expect_equal(rb_map_notes_add(f, "Er brún Rósagarðs hér?", lon = -14.6, lat = 64.05, author = "reader"), 1L)
+  expect_equal(rb_map_notes_add(f, "Já, við 200 m.", reply_to = 1), 2L)
+  expect_equal(rb_map_notes_add(f, "Og þá?", reply_to = 2, author = "reader"), 3L)
+  expect_equal(rb_map_notes_add(f, "Another place", lon = -20, lat = 65), 4L)
+  n <- rb_map_notes(f)
+  expect_equal(n$id, 1:4)
+  expect_equal(n$thread, c(1L, 1L, 1L, 4L))
+  expect_equal(n$reply_to, c(NA, 1L, 1L, NA))
+  expect_equal(n$author, c("reader", "analyst", "reader", "analyst"))
+  expect_equal(n$text[1:3], c("Er brún Rósagarðs hér?", "Já, við 200 m.", "Og þá?"))
+  expect_equal(n$lon, c(-14.6, -14.6, -14.6, -20))
+  expect_s3_class(n$time, "POSIXct")
+  expect_equal(attr(n$time, "tzone"), "UTC")
+  # plain GeoJSON, a note a line, its letters as written
+  lines <- readLines(f, encoding = "UTF-8")
+  expect_length(lines, 6)
+  expect_match(lines[2], "Rósagarðs", fixed = TRUE)
+  expect_equal(jsonlite::fromJSON(f, simplifyVector = FALSE)$type, "FeatureCollection")
+  expect_error(rb_map_notes_add(f, "", lon = 1, lat = 1), "text")
+  expect_error(rb_map_notes_add(f, "x"), "place")
+  expect_error(rb_map_notes_add(f, "x", lon = 200, lat = 1), "place")
+  expect_error(rb_map_notes_add(f, "x", reply_to = 99), "reply_to")
+  expect_error(rb_map_notes_add(f, "x", lon = 1, lat = 1, author = ""), "author")
+  expect_error(rb_map_notes_add("notes.csv", "x", lon = 1, lat = 1), "geojson")
+  expect_error(rb_map_notes_add(file.path(tempfile(), "n.geojson"), "x", lon = 1, lat = 1), "does not exist")
+  # a file that is not notes is never overwritten
+  g <- tempfile(fileext = ".geojson")
+  writeLines('{"type": "Feature"}', g)
+  expect_error(rb_map_notes_add(g, "x", lon = 1, lat = 1), "not a notes file")
+  expect_equal(readLines(g), '{"type": "Feature"}')
+})
+
+test_that("notes served: the page's notes, replies and deletions through /notes, from the page only", {
+  skip_if_not_installed("jsonlite")
+  skip_if_not(isTRUE(l10n_info()[["UTF-8"]]), "notes are written in a UTF-8 locale")
+  f <- tempfile(fileext = ".geojson")
+  a <- rb_map_layer("a", "geojson", data = '{"type": "FeatureCollection", "features": []}',
+                    style = list(list(id = "a-fill", type = "fill")))
+  m <- rb_map(rb_map_group("g", layers = list(a)))
+  app <- .rb_map_app(m, notes = f)
+  cfg <- jsonlite::fromJSON(get(app, "/config.json")$body, simplifyVector = FALSE)
+  expect_equal(cfg$notes$file, basename(f))
+  expect_null(m$config$notes) # the map itself is left as it was: a bundle of it has no notes
+  r <- notes_call(app, "GET", "/notes")
+  expect_equal(r$status, 200L)
+  expect_equal(r$headers$`Cache-Control`, "no-store")
+  expect_length(jsonlite::fromJSON(r$body, simplifyVector = FALSE)$features, 0)
+  expect_false(file.exists(f)) # made at the first note
+  r <- notes_call(app, "POST", "/notes", '{"text": "Hér er grunnið", "lon": -20.5, "lat": 65.25, "zoom": 7.333,
+                                            "under": ["Areas: Rósagarður"], "address": "?a=1#7.33/65.25/-20.5"}')
+  expect_equal(r$status, 200L)
+  fc <- jsonlite::fromJSON(r$body, simplifyVector = FALSE)
+  expect_equal(fc$added, 1L)
+  p <- fc$features[[1]]$properties
+  expect_equal(p$author, "reader")
+  expect_equal(p$text, "Hér er grunnið")
+  expect_equal(p$zoom, 7.33)
+  expect_equal(p$under, list("Areas: Rósagarður"))
+  expect_equal(p$address, "?a=1#7.33/65.25/-20.5")
+  expect_null(p$reply_to)
+  r <- notes_call(app, "POST", "/notes", '{"text": "A reply", "reply_to": 1}')
+  expect_equal(jsonlite::fromJSON(r$body, simplifyVector = FALSE)$added, 2L)
+  rb_map_notes_add(f, "From R", reply_to = 1, author = "claude") # R and the server write the same file
+  n <- rb_map_notes(f)
+  expect_equal(n$author, c("reader", "reader", "claude"))
+  expect_equal(n$under[1], "Areas: Rósagarður")
+  expect_equal(unique(n$lon), -20.5)
+  # refused: no text, no place, a bad reply, not JSON, too big; nothing written
+  before <- readLines(f, encoding = "UTF-8")
+  expect_equal(notes_call(app, "POST", "/notes", '{"text": " ", "lon": 1, "lat": 1}')$status, 400L)
+  expect_equal(notes_call(app, "POST", "/notes", '{"text": "x"}')$status, 400L)
+  expect_equal(notes_call(app, "POST", "/notes", '{"text": "x", "reply_to": 9}')$status, 400L)
+  expect_equal(notes_call(app, "POST", "/notes", '{"text": "x", "lon": 1, "lat": 1, "under": [1]}')$status, 400L)
+  expect_equal(notes_call(app, "POST", "/notes", "not json")$status, 400L)
+  expect_equal(notes_call(app, "POST", "/notes", strrep("x", 70000))$status, 413L)
+  # from elsewhere: no page header, another site's origin, a page opened under another host name
+  expect_equal(notes_call(app, "POST", "/notes", '{"text": "x", "lon": 1, "lat": 1}', page = FALSE)$status, 403L)
+  expect_equal(notes_call(app, "POST", "/notes", '{"text": "x", "lon": 1, "lat": 1}', origin = "http://evil.example")$status, 403L)
+  expect_equal(notes_call(app, "POST", "/notes", '{"text": "x", "lon": 1, "lat": 1}', host = "evil.example:8811")$status, 403L)
+  expect_equal(notes_call(app, "GET", "/notes", host = "evil.example:8811")$status, 403L)
+  expect_equal(notes_call(app, "POST", "/notes", '{"text": "x", "lon": 1, "lat": 1}', origin = "http://localhost:8811")$status, 200L)
+  expect_equal(nrow(rb_map_notes(f)), 4)
+  # a reply deleted alone, a thread's first note with its replies
+  expect_equal(notes_call(app, "DELETE", "/notes/2")$status, 200L)
+  expect_equal(rb_map_notes(f)$id, c(1L, 3L, 4L))
+  expect_equal(notes_call(app, "DELETE", "/notes/1")$status, 200L)
+  expect_equal(rb_map_notes(f)$id, 4L)
+  expect_equal(notes_call(app, "DELETE", "/notes/1")$status, 404L)
+  # a number is never given twice: the last note deleted, the next takes the one after it
+  expect_equal(notes_call(app, "DELETE", "/notes/4")$status, 200L)
+  expect_equal(nrow(rb_map_notes(f)), 0)
+  expect_equal(rb_map_notes_add(f, "after", lon = 1, lat = 1), 5L)
+  expect_equal(jsonlite::fromJSON(f, simplifyVector = FALSE)$last_id, 5L)
+  expect_null(jsonlite::fromJSON(notes_call(app, "GET", "/notes")$body, simplifyVector = FALSE)$last_id)
+  expect_equal(notes_call(app, "DELETE", "/notes/5", page = FALSE)$status, 403L)
+  expect_equal(notes_call(app, "PUT", "/notes")$status, 405L)
+  # a file broken by hand: an error to the page, and left as it is
+  writeLines("{broken", f)
+  r <- notes_call(app, "POST", "/notes", '{"text": "x", "lon": 1, "lat": 1}')
+  expect_equal(r$status, 500L)
+  expect_match(r$body, "not a notes file")
+  expect_equal(readLines(f), "{broken")
+  # a map served without notes has no such route
+  plain <- .rb_map_app(m)
+  expect_equal(notes_call(plain, "GET", "/notes")$status, 404L)
+  expect_equal(notes_call(plain, "POST", "/notes", '{"text": "x", "lon": 1, "lat": 1}')$status, 405L)
+  expect_null(jsonlite::fromJSON(get(plain, "/config.json")$body, simplifyVector = FALSE)$notes)
+})
+
+test_that("a server with notes: the file checked as it starts", {
+  skip_if_not_installed("httpuv")
+  skip_if_not_installed("jsonlite")
+  skip_if_not(isTRUE(l10n_info()[["UTF-8"]]), "notes are written in a UTF-8 locale")
+  a <- rb_map_layer("a", "vector", tiles = function(z, x, y) raw(0), style = list(list(id = "a-line", type = "line")))
+  m <- rb_map(rb_map_group("g", layers = list(a)))
+  g <- tempfile(fileext = ".geojson")
+  writeLines("[]", g)
+  expect_error(rb_map_serve(m, port = httpuv::randomPort(), open = FALSE, notes = g), "not a notes file")
+  expect_error(rb_map_serve(m, port = httpuv::randomPort(), open = FALSE, notes = file.path(tempfile(), "n.geojson")),
+               "does not exist")
+  port <- httpuv::randomPort()
+  rb_map_serve(m, port = port, open = FALSE, notes = tempfile(fileext = ".geojson"))
+  expect_equal(rb_map_stop(port), port)
+})

@@ -1,3 +1,22 @@
+# ramb 2026.11.06.2
+
+- A label on hover in the map viewer, opt-in per layer (fishycode plan 070, at the maintainer's ask: the place-name
+  areas' map is busy, and clicking each area to learn its name is slow): `rb_map_layer(popup = list(hover = ))`, the
+  style ids whose features show their `title` in a light label beside the pointer while it is over them (`TRUE` for
+  those of `click`), and `hover_fields = TRUE` for the `fields` there too. Where features overlap, within a layer or
+  across layers, the topmost speaks, as for a click; a click hides the label until the pointer is over another feature,
+  so it does not sit over the click's popup. Without `hover`, as before.
+- Notes pinned on a served map, opt-in (fishycode plan 070, the maintainer's "a dialogue through you"):
+  `rb_map_serve(notes = <file>.geojson)`. The page then has a Notes group: *Add a note*, a click on the map and a text,
+  and the server writes the note to the file, with its time, the zoom, the page's address and the features under it
+  ("layer: title"). A reply joins a note's thread at its place; a thread's pin is red while its last word is the
+  reader's and blue once answered, and the page asks for the notes again on regaining the focus and every 30 s.
+  `rb_map_notes()` reads them as a data frame and `rb_map_notes_add()` answers from R. The file is plain GeoJSON, a
+  note a line, rewritten whole by a rename, and a note's number is never given to another. The routes (`/notes`) answer
+  only a page opened from this computer and write only for the page itself; a file that is not notes is left as it
+  is, and notes are written only by R in a UTF-8 locale (in C, R and jsonlite write a letter outside ASCII as
+  `<c3><b3>`). Never in a bundle.
+
 # ramb 2026.11.06.1
 
 - `rb_create_port_calls(presence = )` (fishycode plan 048 §7.3): with `TRUE` and `events` carrying `lon`, `lat`, each
