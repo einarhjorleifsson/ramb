@@ -1,3 +1,13 @@
+# ramb 2026.11.06.3
+
+- `rb_create_voyages(method = "dwell")`: every port call cuts the track, whether or not a ping falls in it (fishycode
+  plan 048, decision 291, at the maintainer's word). The track was cut into runs by the port call each ping fell in, so
+  a port call no ping fell in cut nothing, and the sea on either side of it made one voyage. A call's start and end now
+  join the pings as its own rows, counted in no voyage's `n_pings`. In fishycode, once STK's port event rows left the
+  track, 57,389 port calls had no ping in them, and as many voyages ran through a port; on 2012's data the change gives
+  76,079 voyages where 71,555 crossed 5,780 calls, and leaves the 67,279 that crossed none as they were. A call over
+  New Year now also gives the next year's first voyage its port.
+
 # ramb 2026.11.06.2
 
 - A label on hover in the map viewer, opt-in per layer (fishycode plan 070, at the maintainer's ask: the place-name

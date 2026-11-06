@@ -439,6 +439,42 @@ test_that("voyages are labelled short and open, and with min_pings = 1 none is d
   )
 })
 
+test_that("a port call no ping falls in still cuts the track (2026.11.06.3)", {
+  t0 <- as.POSIXct("2024-12-31 00:00:00", tz = "UTC")
+  h <- function(x) t0 + x * 3600
+  # sea pings only: 12 between ports A and B, 12 between B and A, the second leg over New Year
+  sea <- data.frame(vid = 1L, time = h(c(1:12, 15:26)))
+  calls <- data.frame(
+    vid = 1L,
+    port_id = c("A", "B", "A"),
+    T_in = h(c(-5, 13, 27)),
+    T_out = h(c(0.5, 14.5, 40))
+  )
+  v <- rb_create_voyages(sea, calls, min_pings = 1, by_year = FALSE)
+  expect_equal(nrow(v), 2)
+  expect_equal(v$port_from, c("A", "B"))
+  expect_equal(v$port_to, c("B", "A"))
+  expect_equal(v$n_pings, c(12, 12))
+  expect_false(any(v$open_start | v$open_end))
+  vl <- dplyr::collect(rb_create_voyages(
+    as_lazy(sea),
+    as_lazy(calls),
+    min_pings = 1,
+    by_year = FALSE
+  ))
+  expect_equal(as.data.frame(vl), as.data.frame(v), ignore_attr = TRUE)
+  # by year: the second leg is cut at New Year (h(24)); its 2025 part starts at no call
+  y <- rb_create_voyages(sea, calls, min_pings = 1)
+  expect_equal(nrow(y), 3)
+  expect_equal(y$port_from, c("A", "B", NA))
+  expect_equal(y$port_to, c("B", NA, "A"))
+  # a call over New Year gives the next year's first voyage its port
+  calls2 <- data.frame(vid = 1L, port_id = c("A", "B"), T_in = h(c(-5, 13)), T_out = h(c(0.5, 25.5)))
+  y2 <- rb_create_voyages(data.frame(vid = 1L, time = h(c(1:12, 26:30))), calls2, min_pings = 1)
+  expect_equal(y2$port_from, c("A", "B"))
+  expect_equal(y2$year, c(2024, 2025))
+})
+
 test_that("voyages and trip labels agree between a data frame and a lazy table", {
   v <- rb_create_voyages(pings, calls, min_pings = 10)
   vl <- dplyr::collect(rb_create_voyages(

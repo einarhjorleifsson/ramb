@@ -82,6 +82,8 @@ calls (\code{\link[=rb_create_port_calls]{rb_create_port_calls()}}) are the two 
 \item \code{"dwell"}: a voyage is the sea between two port calls (see \code{\link[=rb_create_port_calls]{rb_create_port_calls()}}). A ping takes the port
 call it falls in (the earlier of two that overlap), the track is cut into runs of port call and sea, and each
 sea run becomes a voyage, from the port of the port call before it to the port of the port call after it.
+A port call cuts the track whether or not a ping falls in it (until 2026.11.06.3 one that no ping fell in cut
+nothing, and the sea on either side of it made one voyage).
 \item \code{"runs"}: as \code{"dwell"}, but every run of pings tagged in a port (\code{\link[=rb_flag_ping_port]{rb_flag_ping_port()}}) is a port call,
 however short.
 \item \code{"jepol"}: WKSSFGEO's rule (\code{define_trips_pol()}; see References): a voyage runs from the

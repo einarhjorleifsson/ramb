@@ -879,6 +879,8 @@ SELECT *, %s AS rb_year FROM ps",
 #' * `"dwell"`: a voyage is the sea between two port calls (see [rb_create_port_calls()]). A ping takes the port
 #'   call it falls in (the earlier of two that overlap), the track is cut into runs of port call and sea, and each
 #'   sea run becomes a voyage, from the port of the port call before it to the port of the port call after it.
+#'   A port call cuts the track whether or not a ping falls in it (until 2026.11.06.3 one that no ping fell in cut
+#'   nothing, and the sea on either side of it made one voyage).
 #' * `"runs"`: as `"dwell"`, but every run of pings tagged in a port ([rb_flag_ping_port()]) is a port call,
 #'   however short.
 #' * `"jepol"`: WKSSFGEO's rule (`define_trips_pol()`; see References): a voyage runs from the
@@ -1089,10 +1091,29 @@ rb_create_voyages <- function(
     )))
   }
   ps <- if (method == "dwell") {
-    .rb_ping_call_sql(
-      .rb_sql(dplyr::select(p, vid, time)),
-      .rb_sql(.rb_as_lazy(port_calls, con)),
-      by_year
+    # Every port call cuts the track, whether or not a ping falls in it: its start and end join the pings as the
+    # call's own rows (rb_rid 0), so a call no ping falls in still parts the sea before it from the sea after it,
+    # and a call over New Year gives the next year's first voyage its port. They count in no voyage's n_pings.
+    p_sql <- .rb_sql(dplyr::select(p, vid, time))
+    c_sql <- .rb_sql(.rb_as_lazy(port_calls, con))
+    yr <- function(t) if (by_year) sprintf("year(%s)", t) else "0"
+    sprintf(
+      "SELECT * FROM (%s)
+UNION ALL BY NAME
+SELECT vid, T_in AS time, 0::BIGINT AS rb_rid, port_id AS port_call_port_id, NULL::BIGINT AS port_call_id,
+       %s AS rb_year
+FROM (%s) WHERE T_in IS NOT NULL AND vid IN (SELECT vid FROM (%s))
+UNION ALL BY NAME
+SELECT vid, T_out AS time, 0::BIGINT AS rb_rid, port_id AS port_call_port_id, NULL::BIGINT AS port_call_id,
+       %s AS rb_year
+FROM (%s) WHERE T_out IS NOT NULL AND vid IN (SELECT vid FROM (%s))",
+      .rb_ping_call_sql(p_sql, c_sql, by_year),
+      yr("T_in"),
+      c_sql,
+      p_sql,
+      yr("T_out"),
+      c_sql,
+      p_sql
     )
   } else {
     sprintf(
