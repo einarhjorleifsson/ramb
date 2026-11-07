@@ -164,7 +164,8 @@ rb_flag_port_event <- function(
   ev <- .rb_temp_table(
     con,
     sprintf(
-      "SELECT *, row_number() OVER () AS rb_n, %s AS rb_port, %s AS rb_lon, %s AS rb_lat, %s AS rb_unit FROM (%s)",
+      "SELECT *, row_number() OVER (ORDER BY vid, time, io, rb_port, rb_lon, rb_lat, rb_unit) AS rb_n FROM (
+         SELECT *, %s AS rb_port, %s AS rb_lon, %s AS rb_lat, %s AS rb_unit FROM (%s))",
       if (has_port) "CAST(port_id AS VARCHAR)" else "CAST(NULL AS VARCHAR)",
       if (has_pos) "CAST(lon AS DOUBLE)" else "CAST(NULL AS DOUBLE)",
       if (has_pos) "CAST(lat AS DOUBLE)" else "CAST(NULL AS DOUBLE)",

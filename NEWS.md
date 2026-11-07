@@ -1,3 +1,13 @@
+# ramb 2026.11.07.1
+
+- Rows that share a time are ordered the same way on every run, so a rerun on the same input gives the same result
+  (fishycode TODO 195: 85 of 1,668,404 port calls, and 11 voyages of 169,548 in two years, differed between two runs).
+  - `rb_create_port_calls()` orders a vessel's pings and presence events by time, lon and lat, not by time alone. A
+    good event at a ping's time in another place, or an arrival and departure in one second, fell either side.
+  - `rb_flag_port_event()` numbers the events by vessel, time, io, port, position and unit, not in no order.
+  - `rb_create_voyages()` orders the port calls' boundary rows by port after time, and the runs by their number after
+    their start, so two calls that begin or end in one second give the voyage after them one departure port.
+
 # ramb 2026.11.07
 
 - `rb_create_port_calls(pair_away_m = 10000)`: an event pair makes no port call where a ping between its arrival and

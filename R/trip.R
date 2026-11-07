@@ -440,7 +440,7 @@ spd AS (SELECT v0.vid, CASE WHEN spd0.n >= 20 THEN spd0.v ELSE %f END AS v
   }
   pre <- sprintf(
     "
-WITH seq AS (SELECT vid, time, lon, lat, row_number() OVER (PARTITION BY vid ORDER BY time) AS rn FROM (%s)),
+WITH seq AS (SELECT vid, time, lon, lat, row_number() OVER (PARTITION BY vid ORDER BY time, lon, lat) AS rn FROM (%s)),
 harb AS (SELECT port_id AS pid, ST_GeomFromText(poly) AS g, ST_GeomFromText(near_in) AS gi, ST_GeomFromText(near_out) AS go,
                 ST_GeomFromText(poly_m) AS gm FROM %s),
 hg AS (SELECT port_id AS pid, g_h FROM %s),
@@ -1158,16 +1158,16 @@ FROM (%s) WHERE T_out IS NOT NULL AND vid IN (SELECT vid FROM (%s))",
 WITH ps AS (%s),
 f AS (SELECT *, port_call_port_id IS NOT NULL AS in_h,
              lag(port_call_port_id IS NOT NULL) OVER w AS p_in, lag(port_call_port_id) OVER w AS p_h
-      FROM ps WINDOW w AS (PARTITION BY vid, rb_year ORDER BY time, rb_rid)),
+      FROM ps WINDOW w AS (PARTITION BY vid, rb_year ORDER BY time, rb_rid, port_call_port_id)),
 r AS (SELECT *, sum(CASE WHEN p_in IS NULL OR in_h <> p_in OR (in_h AND port_call_port_id <> p_h) THEN 1 ELSE 0 END)
-                  OVER (PARTITION BY vid, rb_year ORDER BY time, rb_rid) AS run_id FROM f),
+                  OVER (PARTITION BY vid, rb_year ORDER BY time, rb_rid, port_call_port_id) AS run_id FROM f),
 runs AS (SELECT vid, rb_year, run_id, bool_or(in_h) AS in_h, min(port_call_port_id) AS h,
                 min(time) AS T1, max(time) AS T2, count(*) AS n_pings
          FROM r GROUP BY vid, rb_year, run_id),
 t AS (SELECT *, CASE WHEN NOT in_h THEN lag(h) OVER w END AS port_from,
                 CASE WHEN NOT in_h THEN lead(h) OVER w END AS port_to
-      FROM runs WINDOW w AS (PARTITION BY vid, rb_year ORDER BY T1)),
-v AS (SELECT *, row_number() OVER (PARTITION BY vid, rb_year ORDER BY T1) AS voyage_id FROM t WHERE NOT in_h)
+      FROM runs WINDOW w AS (PARTITION BY vid, rb_year ORDER BY T1, run_id)),
+v AS (SELECT *, row_number() OVER (PARTITION BY vid, rb_year ORDER BY T1, run_id) AS voyage_id FROM t WHERE NOT in_h)
 SELECT vid, %s voyage_id, T1, T2, port_from, port_to, n_pings,
        port_from IS NULL AS open_start, port_to IS NULL AS open_end, n_pings < %d AS short
 FROM v WHERE n_pings >= %d",
