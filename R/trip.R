@@ -150,7 +150,8 @@
 #' * `gap_near_port`: the same, neither inside the polygon;
 #' * `tag_span`: a run of pings inside the polygon spanning at least the minimum dwell;
 #' * `event_pair` (with `events`): an arrival then a departure event at the same port, adjacent in the
-#'   vessel's events, both judged good, at least the minimum dwell apart.
+#'   vessel's events, both judged good, at least the minimum dwell apart, and no ping between them farther than
+#'   `pair_away_m` from the port (the track shows the vessel left: a pair whose events between were lost).
 #'
 #' With `speed_kn` (fishycode plan 031 §4.1), two rules scale the minimum with the ping interval, as a time
 #' budget: the time the vessel could have spent in port, given the pings either side and the time to sail from
@@ -201,6 +202,12 @@
 #'   were pings, a port call that stood on them stands on them as judged events, beside the pairs. An event with no
 #'   position, or not good, gives none; one equal to a ping (vessel, time and position) is that ping. `FALSE`, the
 #'   default, as before.
+#' @param pair_away_m For `"dwell"` with `events`: an event pair makes no port call where a ping between its arrival
+#'   and departure, not at its port, lies farther than this from the port's polygon (metres, in `crs_m`): the track
+#'   shows the vessel left, so events between were lost and the pair spans a trip. The ping may be a good event's
+#'   presence. `NULL` for no such test (as before ramb 2026.11.07). The default, 10 km, from fishycode plan 048 step 6:
+#'   on STK's pairs of 2007-2016, the pairs a logbook's fishing day contradicts had such a ping in 65 % (changed
+#'   calls) to 81 % (pairs spanning several calls), those a landing at the port confirms in 0.1-10 %.
 #' @param window Optional `c(from, to)` (POSIXct): keep only the port calls that overlap `[from, to)`
 #'   (`T_out >= from` and `T_in < to`; for `"dwell"`, once the port calls from pings and from events are merged).
 #'   For processing a long series in chunks: pad each chunk's pings with every vessel's last ping before `from`
@@ -232,6 +239,7 @@ rb_create_port_calls <- function(
   radius_in = 2000,
   events = NULL,
   presence = FALSE,
+  pair_away_m = 10000,
   window = NULL,
   crs_m = 3575,
   speed_kn = NULL,
@@ -353,6 +361,10 @@ rb_create_port_calls <- function(
   }
   if (!(is.logical(presence) && length(presence) == 1 && !is.na(presence))) {
     stop("`presence` must be TRUE or FALSE.", call. = FALSE)
+  }
+  if (!is.null(pair_away_m) && !(is.numeric(pair_away_m) && length(pair_away_m) == 1 && !is.na(pair_away_m) &&
+                                 pair_away_m > 0)) {
+    stop("`pair_away_m` must be NULL or a distance in metres above 0.", call. = FALSE)
   }
   if (presence) {
     if (is.null(events)) {
@@ -514,6 +526,24 @@ UNION ALL SELECT epoch(t_e - t_s) / 3600 FROM runs"
   } else {
     ""
   }
+  # The pair guard (pair_away_m): a vessel's pairs never overlap (an arrival and the departure next to it), so each ping
+  # goes to the pair it falls in by an ASOF join; a ping not at the pair's port and farther than pair_away_m from its
+  # polygon drops the pair. Only pings at another port or at sea are measured.
+  guard_sql <- if (is.null(events) || is.null(pair_away_m)) {
+    ",\necall_kept AS (SELECT * FROM ecall)"
+  } else {
+    sprintf(
+      ",
+pa AS (SELECT s.vid, s.time, s.lon, s.lat, t.h FROM seq s LEFT JOIN tg t USING (vid, rn)),
+ej AS (SELECT p.time, p.lon, p.lat, p.h, e.vid, e.t_in, e.t_out, e.pid
+       FROM pa p ASOF JOIN (SELECT vid, pid, t_in, t_out FROM ecall) e ON e.vid = p.vid AND e.t_in < p.time),
+away AS (SELECT DISTINCT ej.vid, ej.t_in FROM ej JOIN harb hm ON hm.pid = ej.pid
+         WHERE ej.time < ej.t_out AND ej.h IS DISTINCT FROM ej.pid AND %s > %f),
+ecall_kept AS (SELECT e.* FROM ecall e ANTI JOIN away a ON a.vid = e.vid AND a.t_in = e.t_in)",
+      dm("ej.lon", "ej.lat"),
+      pair_away_m
+    )
+  }
   sql <- sprintf(
     "%s%s,
 seeds AS (SELECT vid, h, rn AS s, nrn AS e, time AS t_s, nt AS t_e,
@@ -537,9 +567,9 @@ ev AS (SELECT vid, time, io, port_id AS hid_pid, good,
 ecall AS (SELECT vid, hid_pid AS pid, time AS t_in, nt AS t_out, ['event_pair'] AS rules
           FROM ev LEFT JOIN hg ON hg.pid = ev.hid_pid
           WHERE io = 'I' AND nio = 'U' AND good AND ngood AND hid_pid IS NOT NULL AND nh = hid_pid
-            AND epoch(nt - time) >= coalesce(hg.g_h, %f) * 3600),
+            AND epoch(nt - time) >= coalesce(hg.g_h, %f) * 3600)%s,
 u AS (SELECT vid, pid, t_in, t_out, rules, 'ping' AS src FROM pcall
-      UNION ALL SELECT vid, pid, t_in, t_out, rules, 'ev' FROM ecall),
+      UNION ALL SELECT vid, pid, t_in, t_out, rules, 'ev' FROM ecall_kept),
 m2 AS (SELECT *, max(t_out) OVER (PARTITION BY vid, pid ORDER BY t_in, t_out ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS pe FROM u),
 g2 AS (SELECT *, sum(CASE WHEN pe IS NULL OR t_in > pe THEN 1 ELSE 0 END) OVER (PARTITION BY vid, pid ORDER BY t_in, t_out) AS grp FROM m2),
 st AS (SELECT vid, pid, min(t_in) AS T_in, max(t_out) AS T_out,
@@ -564,6 +594,7 @@ FROM st WHERE %s",
     budget_seeds,
     ev_sql,
     G,
+    guard_sql,
     .rb_window_sql(window)
   )
   out <- dplyr::tbl(con, dplyr::sql(sql))

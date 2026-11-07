@@ -13,6 +13,7 @@ rb_create_port_calls(
   radius_in = 2000,
   events = NULL,
   presence = FALSE,
+  pair_away_m = 10000,
   window = NULL,
   crs_m = 3575,
   speed_kn = NULL,
@@ -50,6 +51,13 @@ read, as a report of the vessel at that place at that time (fishycode plan 048 ย
 were pings, a port call that stood on them stands on them as judged events, beside the pairs. An event with no
 position, or not good, gives none; one equal to a ping (vessel, time and position) is that ping. \code{FALSE}, the
 default, as before.}
+
+\item{pair_away_m}{For \code{"dwell"} with \code{events}: an event pair makes no port call where a ping between its arrival
+and departure, not at its port, lies farther than this from the port's polygon (metres, in \code{crs_m}): the track
+shows the vessel left, so events between were lost and the pair spans a trip. The ping may be a good event's
+presence. \code{NULL} for no such test (as before ramb 2026.11.07). The default, 10 km, from fishycode plan 048 step 6:
+on STK's pairs of 2007-2016, the pairs a logbook's fishing day contradicts had such a ping in 65 \% (changed
+calls) to 81 \% (pairs spanning several calls), those a landing at the port confirms in 0.1-10 \%.}
 
 \item{window}{Optional \code{c(from, to)} (POSIXct): keep only the port calls that overlap \verb{[from, to)}
 (\code{T_out >= from} and \code{T_in < to}; for \code{"dwell"}, once the port calls from pings and from events are merged).
@@ -104,7 +112,8 @@ the minimum dwell apart, one of them inside the polygon;
 \item \code{gap_near_port}: the same, neither inside the polygon;
 \item \code{tag_span}: a run of pings inside the polygon spanning at least the minimum dwell;
 \item \code{event_pair} (with \code{events}): an arrival then a departure event at the same port, adjacent in the
-vessel's events, both judged good, at least the minimum dwell apart.
+vessel's events, both judged good, at least the minimum dwell apart, and no ping between them farther than
+\code{pair_away_m} from the port (the track shows the vessel left: a pair whose events between were lost).
 }
 
 With \code{speed_kn} (fishycode plan 031 ยง4.1), two rules scale the minimum with the ping interval, as a time

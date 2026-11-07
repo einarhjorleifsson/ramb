@@ -1,3 +1,13 @@
+# ramb 2026.11.07
+
+- `rb_create_port_calls(pair_away_m = 10000)`: an event pair makes no port call where a ping between its arrival and
+  departure, not at its port, lies farther than this from the port's polygon (metres): the track shows the vessel
+  left, so the events between were lost and the pair spans a trip. A good event's presence counts as a ping. `NULL`
+  gives the old behaviour. The default changes what an event pair makes. On fishycode's STK pairs of 2007-2016 (plan
+  048 step 6), the pairs a logbook's fishing day contradicts had such a ping in 65 % of the calls they changed and 81 %
+  of the calls that spanned several; the pairs a landing at the port confirms had one in 0.1-10 %. Of the 2017 pairs
+  fishycode used, it drops about 0.3 %. A test of its own.
+
 # ramb 2026.11.06.3
 
 - `rb_create_voyages(method = "dwell")`: every port call cuts the track, whether or not a ping falls in it (fishycode
