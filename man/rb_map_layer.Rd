@@ -72,7 +72,9 @@ feature, in the reader's words). An option is a \code{value} (letters, digits, \
 of the map's \code{texts}), optionally a \code{colour} for the feature's mark (the first green by default, the others red),
 and \code{other = TRUE} for an answer that names another feature: a box for its name, the names in view offered.
 \code{skip} names earlier questions and the answers that leave this one out (\code{list(name = "not")}). One question may be
-given as \code{options} alone. The click's popup then holds the questions, a button for each answer; each answer is
+given as \code{options} alone. \code{store}, another layer's id, keeps the answers under that layer's and shows its answers
+(two layers of one kind of feature: a feature's answer the same whichever it is clicked on); the two must ask the
+same questions. The click's popup then holds the questions, a button for each answer; each answer is
 written to the server's file with the feature's place, and a mark drawn on the feature (the first question's
 colour its fill, the second's its ring). A later answer replaces the earlier; \code{\link[=rb_map_verdicts]{rb_map_verdicts()}} reads them.}
 

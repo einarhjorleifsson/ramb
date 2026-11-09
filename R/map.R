@@ -21,7 +21,7 @@
 #                                    given or withdrawn (POST), answered with them; as the notes, from this computer
 #                                    and the page only
 
-.rb_map_engine <- 5L # the page's ENGINE: changed together
+.rb_map_engine <- 6L # the page's ENGINE: changed together
 .rb_maps <- new.env(parent = emptyenv()) # the servers rb_map_serve() started, by port
 .rb_tiles <- new.env(parent = emptyenv())
 .rb_tiles$served <- list() # by port, the temporary tables (connection and name) of the map served there
@@ -78,7 +78,9 @@
 #'   of the map's `texts`), optionally a `colour` for the feature's mark (the first green by default, the others red),
 #'   and `other = TRUE` for an answer that names another feature: a box for its name, the names in view offered.
 #'   `skip` names earlier questions and the answers that leave this one out (`list(name = "not")`). One question may be
-#'   given as `options` alone. The click's popup then holds the questions, a button for each answer; each answer is
+#'   given as `options` alone. `store`, another layer's id, keeps the answers under that layer's and shows its answers
+#'   (two layers of one kind of feature: a feature's answer the same whichever it is clicked on); the two must ask the
+#'   same questions. The click's popup then holds the questions, a button for each answer; each answer is
 #'   written to the server's file with the feature's place, and a mark drawn on the feature (the first question's
 #'   colour its fill, the second's its ring). A later answer replaces the earlier; [rb_map_verdicts()] reads them.
 #' @param legend A list of swatches, each `swatch` (`fill` and `stroke`, or `dot`) and `label`.
@@ -509,7 +511,10 @@ rb_map_layer <- function(
   if (!is.null(v$text) && !(is.logical(v$text) && length(v$text) == 1 && !is.na(v$text))) {
     stop("`popup$verdict$text` is TRUE or FALSE.", call. = FALSE)
   }
-  popup[["verdict"]] <- list(field = v$field, questions = qs, text = isTRUE(v$text))
+  if (!is.null(v$store) && !(is.character(v$store) && length(v$store) == 1 && grepl("^[A-Za-z0-9_-]{1,60}$", v$store))) {
+    stop("`popup$verdict$store` is one id (letters, digits, `_` or `-`): the answers it shares, another layer's.", call. = FALSE)
+  }
+  popup[["verdict"]] <- Filter(Negate(is.null), list(field = v$field, questions = qs, text = isTRUE(v$text), store = v$store))
   popup
 }
 
@@ -1592,11 +1597,23 @@ rb_map_verdicts <- function(path, all = FALSE) {
   invisible(path)
 }
 
-# The layers of a map that take a verdict, by id: their verdicts' specs
+# The layers of a map that take a verdict, by id: their verdicts' specs. Layers that keep their answers under one id
+# (`store`, another layer's, else their own) share them, so they must ask the same questions with the same answers
 .rb_map_verdict_layers <- function(map) {
   specs <- lapply(map$layers, function(l) l$config$popup$verdict)
   names(specs) <- vapply(map$layers, function(l) l$config$id, "")
-  Filter(Negate(is.null), specs)
+  specs <- Filter(Negate(is.null), specs)
+  shape <- function(v) paste(vapply(v$questions, function(q) paste0(q$id, ":", paste(vapply(q$options, `[[`, "", "value"), collapse = ",")), ""),
+                             collapse = ";")
+  store <- vapply(names(specs), function(id) .rb_or(specs[[id]]$store, id), "")
+  for (k in unique(store)) {
+    same <- names(specs)[store == k]
+    if (length(unique(vapply(specs[same], shape, ""))) > 1) {
+      stop(sprintf("The layers %s keep their verdicts as \"%s\" but ask different questions: give them the same.",
+                   paste(same, collapse = ", "), k), call. = FALSE)
+    }
+  }
+  specs
 }
 
 # The routes of the verdicts: GET /verdicts, POST /verdicts (given or withdrawn), each answered with the current ones
@@ -1643,6 +1660,7 @@ rb_map_verdicts <- function(path, all = FALSE) {
           n$question <- specs[[n$layer]]$questions[[1]]$id # a page of one question may leave it out
         }
         .rb_verdicts_read(verdicts) # a file broken by hand stops here, left as it is
+        n$layer <- .rb_or(specs[[n$layer]]$store, n$layer) # kept under the answers it shares
         .rb_verdicts_add(verdicts, n)
         return(answer())
       }

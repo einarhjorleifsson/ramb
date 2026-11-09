@@ -1890,6 +1890,35 @@ test_that("verdicts served by question: an answer naming another, a note, each q
   expect_equal(rb_map_verdicts(g)$id, c("x", "y"))
 })
 
+test_that("a verdict kept under another layer's answers: shared both ways, the same questions asked", {
+  skip_if_not_installed("jsonlite")
+  skip_if_not(isTRUE(l10n_info()[["UTF-8"]]), "verdicts are written in a UTF-8 locale")
+  shared <- function(id, store = NULL, options = list(list(value = "right"), list(value = "not"))) {
+    rb_map_layer(id, "geojson", data = '{"type": "FeatureCollection", "features": []}',
+                 style = list(list(id = paste0(id, "-dot"), type = "circle")),
+                 popup = list(click = paste0(id, "-dot"), title = "name",
+                              verdict = list(field = "key", store = store, options = options)))
+  }
+  expect_equal(shared("b", "a")$config$popup$verdict$store, "a")
+  expect_null(shared("a")$config$popup$verdict$store)
+  expect_error(shared("b", "a b"), "store")
+  f <- tempfile(fileext = ".csv")
+  m <- rb_map(rb_map_group("g", layers = list(shared("a"), shared("b", "a"))))
+  app <- .rb_map_app(m, verdicts = f)
+  # an answer given through b is kept as a's, and read as a's
+  r <- notes_call(app, "POST", "/verdicts", '{"layer": "b", "id": "x", "value": "not", "lon": 1, "lat": 1}')
+  expect_equal(r$status, 200L)
+  expect_equal(jsonlite::fromJSON(r$body, simplifyVector = FALSE)$verdicts[[1]]$layer, "a")
+  notes_call(app, "POST", "/verdicts", '{"layer": "a", "id": "x", "value": "right", "lon": 1, "lat": 1}')
+  v <- rb_map_verdicts(f)
+  expect_equal(paste(v$layer, v$id, v$value), "a x right") # one feature, its latest answer, whichever layer gave it
+  expect_equal(rb_map_verdicts(f, all = TRUE)$layer, c("a", "a"))
+  # layers sharing answers ask the same questions, or the map is refused
+  odd <- rb_map(rb_map_group("g", layers = list(shared("a"), shared("b", "a", list(list(value = "yes"), list(value = "no"))))))
+  expect_error(.rb_map_app(odd, verdicts = f), "different questions")
+  expect_error(rb_map_serve(odd, port = httpuv::randomPort(), open = FALSE, verdicts = tempfile(fileext = ".csv")), "different questions")
+})
+
 test_that("a server with verdicts: the file and the map checked as it starts", {
   skip_if_not_installed("httpuv")
   skip_if_not_installed("jsonlite")

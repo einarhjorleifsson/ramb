@@ -201,7 +201,7 @@
 <script id="bundle" type="application/json">__BUNDLE__</script>
 <script>
 // The engine's version: rb_map_serve() sends its own in /meta, and a server older than the page is named as such
-const ENGINE = 5;
+const ENGINE = 6;
 // The engine's texts, in English; a config adds languages and the texts of its layers ({1}, {2} filled in here)
 const ENGINE_TEXTS = {
   menu: "Layers and filters", close: "Close", copyLink: "Copy a link to this view", copied: "link copied",
@@ -1409,6 +1409,8 @@ function featurePopup(l, e) {
 let verdicts = new Map();
 const V_COLOURS = ["#1a9850", "#d73027"];
 function verdictKey(layer, id, q) { return `${layer}\r${id}\r${q}`; }
+// the id a layer's answers are kept under: another layer's (`store`), shared, else its own
+function verdictStore(l) { return l.popup.verdict.store ?? l.id; }
 function verdictColour(question, value) {
   const o = question.options, i = o.findIndex(x => x.value === value);
   return i < 0 ? null : o[i].colour ?? V_COLOURS[i === 0 ? 0 : 1];
@@ -1424,7 +1426,7 @@ function verdictsFrom(r) {
   verdicts = new Map((r.verdicts ?? []).map(v => [verdictKey(v.layer, String(v.id), v.question), v]));
   const marks = new Map();                                           // a feature's mark: its first two questions' colours
   for (const v of verdicts.values()) {
-    const l = OTHER.find(x => x.id === v.layer), qs = l?.popup?.verdict?.questions ?? [];
+    const l = OTHER.find(x => x.popup?.verdict && verdictStore(x) === v.layer), qs = l?.popup?.verdict?.questions ?? [];
     const qi = qs.findIndex(q => q.id === v.question);
     if (qi < 0 || qi > 1 || !Number.isFinite(v.lon) || !Number.isFinite(v.lat)) continue;
     const k = `${v.layer}\r${v.id}`, m = marks.get(k) ?? { lon: v.lon, lat: v.lat };
@@ -1452,7 +1454,7 @@ function verdictBlock(l, f, at) {
   div.className = "verdict";
   if (id === undefined || id === null || id === "") return div;      // a feature with no name takes no verdict
   const pt = f.geometry?.type === "Point" ? f.geometry.coordinates : [at.lng, at.lat];
-  const now = q => verdicts.get(verdictKey(l.id, String(id), q));
+  const now = q => verdicts.get(verdictKey(verdictStore(l), String(id), q));
   const list = `rb-vnames-${++vListN}`;
   let asking = null, msg = "";                                       // a question whose answer waits for a name
   const skipped = q => Object.entries(q.skip ?? {}).some(([k, vals]) => vals.includes(now(k)?.value));

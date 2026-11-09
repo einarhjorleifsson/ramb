@@ -1,3 +1,11 @@
+# ramb 2026.11.09.2
+
+- A verdict may keep its answers under another layer's: `rb_map_layer(popup = list(verdict = list(..., store = "names")))`.
+  Two layers of one kind of feature then share them: a feature's answer is the same whichever layer it is clicked on,
+  shown in both popups and drawn as one mark. Asked for by fishycode's review (plan 071), where names moved from the
+  names layer into a layer of names to sort lost their earlier answers. Layers that share answers must ask the same
+  questions with the same answers, or the map is refused as it is served. The page's engine is 6.
+
 # ramb 2026.11.09.1
 
 - A verdict asks questions: `rb_map_layer(popup = list(verdict = list(field, questions, text)))`, one to four, each an
