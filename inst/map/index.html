@@ -77,7 +77,8 @@
   #n-list li span { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   .note { width: min(300px, 70vw); }
   /* a feature's verdict (rb_map_serve(verdicts = )): a button an option, the answer given filled in its colour */
-  .verdict { margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--line); }
+  .rb-verdict-popup { max-height: min(65vh, 560px); overflow-y: auto; }
+  .verdict { margin: 6px 0 7px; padding: 6px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
   .verdict .v-opts { display: flex; flex-wrap: wrap; gap: 4px; }
   .verdict button { border: 1.5px solid var(--vc); background: #fff; color: #222; border-radius: 4px; padding: 2px 8px;
                     font: inherit; font-size: 12px; cursor: pointer; }
@@ -85,6 +86,10 @@
   .verdict button.v-clear { --vc: #888; padding: 2px 6px; }
   .verdict input { width: 100%; box-sizing: border-box; margin-top: 5px; font: inherit; font-size: 12px; padding: 2px 4px; }
   .verdict .v-msg { font-size: 11px; color: #666; min-height: 1em; margin-top: 2px; }
+  .verdict .v-q + .v-q { margin-top: 6px; }
+  .verdict .v-ql { font-size: 11px; color: #555; margin-bottom: 2px; }
+  .verdict .v-other { display: flex; gap: 4px; margin-top: 4px; align-items: center; }
+  .verdict .v-other input { margin-top: 0; }
   .note .entry + .entry { border-top: 1px solid var(--line); margin-top: 5px; padding-top: 4px; }
   .note .who { color: var(--muted); font-size: 11px; display: flex; gap: 6px; }
   .note .who { padding-right: 14px; }   /* clear of the popup's close button */
@@ -196,7 +201,7 @@
 <script id="bundle" type="application/json">__BUNDLE__</script>
 <script>
 // The engine's version: rb_map_serve() sends its own in /meta, and a server older than the page is named as such
-const ENGINE = 4;
+const ENGINE = 5;
 // The engine's texts, in English; a config adds languages and the texts of its layers ({1}, {2} filled in here)
 const ENGINE_TEXTS = {
   menu: "Layers and filters", close: "Close", copyLink: "Copy a link to this view", copied: "link copied",
@@ -228,8 +233,8 @@ const ENGINE_TEXTS = {
   nReplyPlaceholder: "A reply", nSave: "Save", nReply: "Reply", nCancel: "Cancel", nDelete: "delete",
   nDeleteThread: "Delete note {1} and its replies?", nDeleteOne: "Delete this reply?", nOn: "On: {1}",
   nFailed: "not saved: {1}", nReader: "you", nReplies: "{1} replies", nReply1: "1 reply",
-  vClear: "Withdraw the verdict", vNote: "A line of your own (Enter saves it with the answer)", vSaved: "saved",
-  vFailed: "not saved: {1}"
+  vClear: "Withdraw this answer", vNote: "A note on it (Enter or ✓ saves it)", vSaved: "saved",
+  vFailed: "not saved: {1}", vOther: "Which? (Enter or ✓)", vOtherNeeded: "give the name first"
 };
 let CONFIG;
 try { CONFIG = JSON.parse(document.getElementById("config").textContent); }
@@ -1382,24 +1387,31 @@ function featureHtml(l, p, fields = true) {
 // A click on a feature: its title and fields. Registered top layer first, so the topmost feature under the click speaks
 function featurePopup(l, e) {
   popup?.remove();
-  const box = document.createElement("div");
-  box.innerHTML = featureHtml(l, e.features[0].properties);
-  if (VERDICTS && l.popup.verdict) box.append(verdictBlock(l, e.features[0], e.lngLat));
+  const box = document.createElement("div"), p = e.features[0].properties;
+  if (VERDICTS && l.popup.verdict) {                                 // the questions under the title, the fields after
+    const title = featureHtml(l, p, false), rest = document.createElement("div");
+    box.className = "rb-verdict-popup";
+    box.innerHTML = title;
+    rest.innerHTML = featureHtml(l, p).slice(title.length).replace(/^<br>/, "");
+    box.append(verdictBlock(l, e.features[0], e.lngLat), rest);
+  } else box.innerHTML = featureHtml(l, p);
   popup = new maplibregl.Popup({ closeButton: false, maxWidth: l.popup.maxWidth ?? "300px" }).setLngLat(e.lngLat)
     .setDOMContent(box)
     .addTo(map);
 }
 
-// The verdicts (rb_map_serve(verdicts = )): in a feature's popup a button for each of its layer's options, the answer
-// given filled in its colour; a click sends it, with the reader's line where the verdict asks for one, and the
-// feature's title and place (its own for a point, else where it was clicked). A mark in the answer's colour is drawn
-// on each feature judged. Asked for again when the page regains the focus, so an answer from another page shows
+// The verdicts (rb_map_serve(verdicts = )): in a feature's popup its layer's questions, a button for each answer, the
+// answer given filled in its colour; an answer that names another feature (`other`) opens a box for the name, the
+// names in view offered, sent with Enter or ✓; a question an earlier answer skips is left out; the note last, sent
+// with Enter or ✓. Each is sent with the feature's title and place (its own for a point, else where it was clicked). A
+// mark on each feature judged: the first question's answer its fill, the second's its ring. Asked for again when the
+// page regains the focus, so an answer from another page shows
 let verdicts = new Map();
 const V_COLOURS = ["#1a9850", "#d73027"];
-function verdictKey(layer, id) { return `${layer}\r${id}`; }
-function verdictColour(l, value) {
-  const o = l.popup.verdict.options, i = o.findIndex(x => x.value === value);
-  return o[i]?.colour ?? V_COLOURS[i === 0 ? 0 : 1];
+function verdictKey(layer, id, q) { return `${layer}\r${id}\r${q}`; }
+function verdictColour(question, value) {
+  const o = question.options, i = o.findIndex(x => x.value === value);
+  return i < 0 ? null : o[i].colour ?? V_COLOURS[i === 0 ? 0 : 1];
 }
 async function verdictsCall(method, body = null) {
   const r = await fetch("/verdicts", { method, cache: "no-store", body: body ? JSON.stringify(body) : undefined,
@@ -1409,48 +1421,94 @@ async function verdictsCall(method, body = null) {
   return JSON.parse(t);
 }
 function verdictsFrom(r) {
-  verdicts = new Map((r.verdicts ?? []).map(v => [verdictKey(v.layer, String(v.id)), v]));
-  map.getSource("rb-verdicts")?.setData({ type: "FeatureCollection", features: [...verdicts.values()]
-    .map(v => ({ v, l: OTHER.find(x => x.id === v.layer) }))
-    .filter(({ v, l }) => l?.popup?.verdict && Number.isFinite(v.lon) && Number.isFinite(v.lat))
-    .map(({ v, l }) => ({ type: "Feature", properties: { colour: verdictColour(l, v.value) },
-                          geometry: { type: "Point", coordinates: [v.lon, v.lat] } })) });
+  verdicts = new Map((r.verdicts ?? []).map(v => [verdictKey(v.layer, String(v.id), v.question), v]));
+  const marks = new Map();                                           // a feature's mark: its first two questions' colours
+  for (const v of verdicts.values()) {
+    const l = OTHER.find(x => x.id === v.layer), qs = l?.popup?.verdict?.questions ?? [];
+    const qi = qs.findIndex(q => q.id === v.question);
+    if (qi < 0 || qi > 1 || !Number.isFinite(v.lon) || !Number.isFinite(v.lat)) continue;
+    const k = `${v.layer}\r${v.id}`, m = marks.get(k) ?? { lon: v.lon, lat: v.lat };
+    m[qi === 0 ? "fill" : "ring"] = verdictColour(qs[qi], v.value);
+    marks.set(k, m);
+  }
+  map.getSource("rb-verdicts")?.setData({ type: "FeatureCollection", features: [...marks.values()]
+    .map(m => ({ type: "Feature", properties: { fill: m.fill ?? "#ffffff", ring: m.ring ?? "#ffffff" },
+                 geometry: { type: "Point", coordinates: [m.lon, m.lat] } })) });
 }
 function verdictsLoad() { return verdictsCall("GET").then(verdictsFrom).catch(() => {}); }
+// the names in view, offered in a box that names another feature: the titles of the features drawn now
+function namesInView() {
+  const ids = OTHER.filter(l => l.popup?.title).flatMap(l => (l.style ?? []).map(x => x.id)).filter(id => map.getLayer(id));
+  const t = new Set();
+  for (const f of map.queryRenderedFeatures({ layers: ids })) {
+    const l = OTHER.find(x => x.style?.some(y => y.id === f.layer.id)), v = f.properties[l?.popup?.title];
+    if (v !== undefined && v !== null && v !== "") t.add(String(v));
+  }
+  return [...t].sort((a, b) => a.localeCompare(b, loc())).slice(0, 500);
+}
+let vListN = 0;
 function verdictBlock(l, f, at) {
   const v = l.popup.verdict, id = f.properties[v.field], div = document.createElement("div");
   div.className = "verdict";
   if (id === undefined || id === null || id === "") return div;      // a feature with no name takes no verdict
   const pt = f.geometry?.type === "Point" ? f.geometry.coordinates : [at.lng, at.lat];
-  const now = () => verdicts.get(verdictKey(l.id, String(id)));
-  const draw = msg => {
-    const cur = now();
-    div.innerHTML = `<div class="v-opts">${v.options.map(o =>
-        `<button data-v="${esc(o.value)}" class="${cur?.value === o.value ? "on" : ""}" style="--vc:${verdictColour(l, o.value)}">` +
-        `${esc(tr(o.label))}</button>`).join("")}` +
-      `${cur ? `<button data-v="" class="v-clear" title="${esc(tr("vClear"))}">×</button>` : ""}</div>` +
-      (v.text ? `<input class="v-text" maxlength="1000" placeholder="${esc(tr("vNote"))}" value="${esc(cur?.text ?? "")}">` : "") +
-      `<div class="v-msg">${esc(msg ?? "")}</div>`;
+  const now = q => verdicts.get(verdictKey(l.id, String(id), q));
+  const list = `rb-vnames-${++vListN}`;
+  let asking = null, msg = "";                                       // a question whose answer waits for a name
+  const skipped = q => Object.entries(q.skip ?? {}).some(([k, vals]) => vals.includes(now(k)?.value));
+  const draw = () => {
+    const parts = v.questions.filter(q => !skipped(q)).map(q => {
+      const cur = now(q.id), wait = asking?.q === q.id ? asking.value : null;
+      const named = cur && q.options.find(o => o.value === cur.value)?.other ? ` <em>${esc(cur.other)}</em>` : "";
+      const opts = q.options.map(o => `<button data-q="${esc(q.id)}" data-v="${esc(o.value)}" class="${(wait ?? cur?.value) === o.value ? "on" : ""}" ` +
+                                       `style="--vc:${verdictColour(q, o.value)}">${esc(tr(o.label))}</button>`).join("");
+      const clear = cur ? `<button data-q="${esc(q.id)}" data-v="" class="v-clear" title="${esc(tr("vClear"))}">×</button>` : "";
+      const box = wait ? `<div class="v-other"><input data-other="${esc(q.id)}" list="${list}" maxlength="200" ` +
+                         `placeholder="${esc(tr("vOther"))}" value="${esc(cur?.value === wait ? cur.other : "")}">` +
+                         `<button data-send="${esc(q.id)}" style="--vc:${verdictColour(q, wait)}">✓</button></div>` : "";
+      return `<div class="v-q">${q.label ? `<div class="v-ql">${esc(tr(q.label))}${named}</div>` : named ? `<div class="v-ql">${named}</div>` : ""}` +
+             `<div class="v-opts">${opts}${clear}</div>${box}</div>`;
+    }).join("");
+    const note = v.text ? `<div class="v-other"><input class="v-text" maxlength="1000" placeholder="${esc(tr("vNote"))}" ` +
+                          `value="${esc(now("note")?.text ?? "")}"><button data-note="1" style="--vc:#666">✓</button></div>` : "";
+    div.innerHTML = parts + note + `<datalist id="${list}">${namesInView().map(n => `<option value="${esc(n)}">`).join("")}</datalist>` +
+                    `<div class="v-msg">${esc(msg)}</div>`;
+    div.querySelector("input[data-other]")?.focus();
   };
-  const send = async value => {
-    const text = div.querySelector(".v-text")?.value ?? "";
+  const send = async body => {
     try {
-      verdictsFrom(await verdictsCall("POST", { layer: l.id, id: String(id), value, text,
-                                                 title: String(f.properties[l.popup.title] ?? ""),
-                                                 lon: pt[0], lat: pt[1], zoom: map.getZoom() }));
-      draw(tr("vSaved"));
-    } catch (err) { div.querySelector(".v-msg").textContent = tr("vFailed", err.message); }
+      verdictsFrom(await verdictsCall("POST", { layer: l.id, id: String(id), title: String(f.properties[l.popup.title] ?? ""),
+                                                 lon: pt[0], lat: pt[1], zoom: map.getZoom(), ...body }));
+      asking = null; msg = tr("vSaved");
+    } catch (err) { msg = tr("vFailed", err.message); }
+    draw();
+  };
+  const sendOther = q => {
+    const name = div.querySelector(`input[data-other="${q}"]`)?.value.trim() ?? "";
+    if (!name) { msg = tr("vOtherNeeded"); draw(); return; }
+    send({ question: q, value: asking.value, other: name });
   };
   draw();
-  div.addEventListener("click", e => { const b = e.target.closest("button[data-v]"); if (b) send(b.dataset.v); });
-  div.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.classList.contains("v-text") && now()) send(now().value); });
+  div.addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.note) return send({ question: "note", value: "", text: div.querySelector(".v-text")?.value ?? "" });
+    if (b.dataset.send) return sendOther(b.dataset.send);
+    const q = v.questions.find(x => x.id === b.dataset.q); if (!q) return;
+    if (b.dataset.v && q.options.find(o => o.value === b.dataset.v)?.other) { asking = { q: q.id, value: b.dataset.v }; msg = ""; draw(); return; }
+    send({ question: q.id, value: b.dataset.v });
+  });
+  div.addEventListener("keydown", e => {
+    if (e.key !== "Enter") return;
+    if (e.target.dataset.other) { e.preventDefault(); sendOther(e.target.dataset.other); }
+    else if (e.target.classList.contains("v-text")) { e.preventDefault(); send({ question: "note", value: "", text: e.target.value }); }
+  });
   return div;
 }
 function verdictsSetup() {
   map.addSource("rb-verdicts", { type: "geojson", data: EMPTY });
   map.addLayer({ id: "rb-verdict-mark", type: "circle", source: "rb-verdicts",
-                 paint: { "circle-radius": 4.5, "circle-color": ["get", "colour"], "circle-stroke-color": "#fff",
-                          "circle-stroke-width": 1.5 } },
+                 paint: { "circle-radius": 5, "circle-color": ["get", "fill"], "circle-stroke-color": ["get", "ring"],
+                          "circle-stroke-width": 2.2 } },
                map.getLayer("rb-notes-dot") ? "rb-notes-dot" : undefined);
   verdictsLoad();
   window.addEventListener("focus", verdictsLoad);

@@ -1716,14 +1716,16 @@ test_that("a popup's verdict: checked, its options an array in the config", {
   v <- a$config$popup$verdict
   expect_equal(v$field, "key")
   expect_true(v$text)
-  expect_equal(vapply(v$options, `[[`, "", "value"), c("right", "place", "name"))
-  expect_equal(v$options[[2]]$colour, "#fdae61")
+  expect_equal(v$questions[[1]]$id, "verdict") # one question given as `options`
+  expect_equal(vapply(v$questions[[1]]$options, `[[`, "", "value"), c("right", "place", "name"))
+  expect_equal(v$questions[[1]]$options[[2]]$colour, "#fdae61")
+  expect_false(v$questions[[1]]$options[[1]]$other)
   cfg <- jsonlite::fromJSON(.rb_map_json(rb_map(rb_map_group("g", layers = list(a)))$config), simplifyVector = FALSE)
-  expect_length(cfg$layers[[1]]$popup$verdict$options, 3)
+  expect_length(cfg$layers[[1]]$popup$verdict$questions[[1]]$options, 3)
   # a label defaults to its value; text defaults to FALSE
   b <- rb_map_layer("b", "geojson", data = "{}", style = list(list(id = "b-dot", type = "circle")),
                     popup = list(click = "b-dot", verdict = list(field = "k", options = list(list(value = "y"), list(value = "n")))))
-  expect_equal(b$config$popup$verdict$options[[1]]$label, "y")
+  expect_equal(b$config$popup$verdict$questions[[1]]$options[[1]]$label, "y")
   expect_false(b$config$popup$verdict$text)
   bad <- function(verdict, click = "b-dot", kind = "geojson") {
     rb_map_layer("b", kind, data = if (kind == "geojson") "{}", tiles = if (kind == "vector") function(z, x, y) raw(0),
@@ -1774,7 +1776,8 @@ test_that("verdicts served: given, replaced, withdrawn, read back; from the page
   expect_length(jsonlite::fromJSON(r$body, simplifyVector = FALSE)$verdicts, 1)
   all <- rb_map_verdicts(f, all = TRUE)
   expect_equal(all$value, c("place", "right", "name", ""))
-  expect_equal(names(all), c("time", "layer", "id", "value", "text", "title", "lon", "lat", "zoom"))
+  expect_equal(names(all), c("time", "layer", "id", "question", "value", "other", "text", "title", "lon", "lat", "zoom"))
+  expect_equal(unique(all$question), "verdict") # a page of one question may leave it out
   expect_equal(all$title[1], "Eldeyjarboði")
   expect_equal(all$zoom[1], 9.12)
   expect_true(is.na(all$zoom[2]))
@@ -1805,6 +1808,86 @@ test_that("verdicts served: given, replaced, withdrawn, read back; from the page
   # a map served without verdicts has no such route
   expect_equal(notes_call(.rb_map_app(m), "GET", "/verdicts")$status, 404L)
   expect_null(jsonlite::fromJSON(get(.rb_map_app(m), "/config.json")$body, simplifyVector = FALSE)$verdicts)
+})
+
+# a layer whose features take two questions, one skipped by an answer to the first, an answer naming another, a note
+two_questions <- function() {
+  rb_map_layer("n", "geojson", data = '{"type": "FeatureCollection", "features": []}',
+               style = list(list(id = "n-dot", type = "circle")),
+               popup = list(click = "n-dot", title = "name", verdict = list(field = "key", text = TRUE, questions = list(
+                 list(id = "name", label = "qName", options = list(
+                   list(value = "right", label = "nRight"), list(value = "form", label = "nForm", other = TRUE),
+                   list(value = "not", label = "nNot"), list(value = "unsure", label = "nUnsure", colour = "#999999"))),
+                 list(id = "place", label = "qPlace", skip = list(name = "not"), options = list(
+                   list(value = "right", label = "pRight"), list(value = "wrong", label = "pWrong")))))))
+}
+
+test_that("a verdict's questions: checked, an answer naming another, a question skipped by an earlier answer", {
+  q <- two_questions()$config$popup$verdict$questions
+  expect_equal(vapply(q, `[[`, "", "id"), c("name", "place"))
+  expect_true(q[[1]]$options[[2]]$other)
+  expect_equal(q[[2]]$skip, list(name = list("not")))
+  cfg <- jsonlite::fromJSON(.rb_map_json(rb_map(rb_map_group("g", layers = list(two_questions())))$config), simplifyVector = FALSE)
+  expect_equal(cfg$layers[[1]]$popup$verdict$questions[[2]]$skip$name, list("not")) # an array, one answer or several
+  bad <- function(verdict) {
+    rb_map_layer("b", "geojson", data = "{}", style = list(list(id = "b-dot", type = "circle")),
+                 popup = list(click = "b-dot", verdict = verdict))
+  }
+  ok <- list(list(value = "y"), list(value = "n"))
+  expect_error(bad(list(field = "k", options = ok, questions = list(list(id = "a", options = ok)))), "not both")
+  expect_error(bad(list(field = "k", questions = rep(list(list(id = "a", options = ok)), 5))), "one to four")
+  expect_error(bad(list(field = "k", questions = list(list(id = "a", options = ok), list(id = "a", options = ok)))), "ids of their own")
+  expect_error(bad(list(field = "k", questions = list(list(id = "note", options = ok)))), "note")
+  expect_error(bad(list(field = "k", questions = list(list(id = "a", options = ok), list(id = "b", options = ok, skip = list(c = "y"))))),
+               "earlier questions")
+  expect_error(bad(list(field = "k", questions = list(list(id = "a", options = ok), list(id = "b", options = ok, skip = list(a = "z"))))),
+               "answers of the question")
+  expect_error(bad(list(field = "k", questions = list(list(id = "b", options = ok, skip = list(b = "y"))))), "earlier questions")
+  expect_error(bad(list(field = "k", options = list(list(value = "y", other = "yes"), list(value = "n")))), "other")
+})
+
+test_that("verdicts served by question: an answer naming another, a note, each question's latest; a file of one question read", {
+  skip_if_not_installed("jsonlite")
+  skip_if_not(isTRUE(l10n_info()[["UTF-8"]]), "verdicts are written in a UTF-8 locale")
+  f <- tempfile(fileext = ".csv")
+  m <- rb_map(rb_map_group("g", layers = list(two_questions())))
+  app <- .rb_map_app(m, verdicts = f)
+  post <- function(body) notes_call(app, "POST", "/verdicts", body)
+  expect_equal(post('{"layer": "n", "id": "bodi", "question": "name", "value": "form", "other": "Eldeyjarboði", "lon": -23.7, "lat": 63.4}')$status, 200L)
+  expect_equal(post('{"layer": "n", "id": "bodi", "question": "place", "value": "wrong", "lon": -23.7, "lat": 63.4}')$status, 200L)
+  expect_equal(post('{"layer": "n", "id": "bodi", "question": "note", "text": "Austan við", "lon": -23.7, "lat": 63.4}')$status, 200L)
+  expect_equal(post('{"layer": "n", "id": "sker", "question": "name", "value": "not", "lon": -23.1, "lat": 63.6}')$status, 200L)
+  v <- rb_map_verdicts(f)
+  expect_equal(paste(v$id, v$question, v$value, v$other), c("bodi name form Eldeyjarboði", "bodi place wrong ", "bodi note  ", "sker name not "))
+  expect_equal(v$text[v$question == "note"], "Austan við")
+  # each question's latest: the place withdrawn, the note cleared, the name kept
+  post('{"layer": "n", "id": "bodi", "question": "place", "value": "", "lon": -23.7, "lat": 63.4}')
+  post('{"layer": "n", "id": "bodi", "question": "note", "text": "", "lon": -23.7, "lat": 63.4}')
+  v <- rb_map_verdicts(f)
+  expect_equal(paste(v$id, v$question), c("bodi name", "sker name"))
+  expect_equal(nrow(rb_map_verdicts(f, all = TRUE)), 6)
+  r <- jsonlite::fromJSON(notes_call(app, "GET", "/verdicts")$body, simplifyVector = FALSE)$verdicts
+  expect_equal(r[[1]]$other, "Eldeyjarboði")
+  # refused: no name where the answer names one, a name where it does not, no question, a question not there,
+  # a note with a value; nothing written
+  before <- readLines(f, encoding = "UTF-8")
+  expect_equal(post('{"layer": "n", "id": "x", "question": "name", "value": "form", "lon": 1, "lat": 1}')$status, 400L)
+  expect_equal(post('{"layer": "n", "id": "x", "question": "name", "value": "form", "other": " ", "lon": 1, "lat": 1}')$status, 400L)
+  expect_equal(post('{"layer": "n", "id": "x", "question": "name", "value": "right", "other": "B", "lon": 1, "lat": 1}')$status, 400L)
+  expect_equal(post('{"layer": "n", "id": "x", "value": "right", "lon": 1, "lat": 1}')$status, 400L)
+  expect_equal(post('{"layer": "n", "id": "x", "question": "depth", "value": "right", "lon": 1, "lat": 1}')$status, 400L)
+  expect_equal(post('{"layer": "n", "id": "x", "question": "note", "value": "right", "text": "t", "lon": 1, "lat": 1}')$status, 400L)
+  expect_equal(readLines(f, encoding = "UTF-8"), before)
+  # a file of 2026.11.09, one question with no question column: read as "verdict", and written on in the new form
+  g <- tempfile(fileext = ".csv")
+  writeLines(c('"time","layer","id","value","text","title","lon","lat","zoom"',
+               '"2026-11-09T09:19:03Z","a","x","place","Hér","X",-22.78,63.78,10'), g, useBytes = TRUE)
+  old <- rb_map_verdicts(g)
+  expect_equal(c(old$question, old$value, old$other, old$text), c("verdict", "place", "", "Hér"))
+  app1 <- .rb_map_app(rb_map(rb_map_group("g", layers = list(verdict_layer()))), verdicts = g)
+  expect_equal(notes_call(app1, "POST", "/verdicts", '{"layer": "a", "id": "y", "value": "name", "lon": 1, "lat": 1}')$status, 200L)
+  expect_equal(names(utils::read.csv(g)), c("time", "layer", "id", "question", "value", "other", "text", "title", "lon", "lat", "zoom"))
+  expect_equal(rb_map_verdicts(g)$id, c("x", "y"))
 })
 
 test_that("a server with verdicts: the file and the map checked as it starts", {

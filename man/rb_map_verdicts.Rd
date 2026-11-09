@@ -9,21 +9,24 @@ rb_map_verdicts(path, all = FALSE)
 \arguments{
 \item{path}{The verdicts' file (\code{.csv}).}
 
-\item{all}{\code{FALSE}, each feature's current verdict (the last answer, none where it was withdrawn); \code{TRUE}, every
-answer given, in the order given.}
+\item{all}{\code{FALSE}, each feature's current answer to each question (the last, none where it was withdrawn; a note
+where it has a text); \code{TRUE}, every answer given, in the order given.}
 }
 \value{
-A data frame: \code{time} (UTC, as text), \code{layer}, \code{id}, \code{value}, \code{text}, \code{title}, \code{lon}, \code{lat}, \code{zoom}; no rows
-when there is no file.
+A data frame: \code{time} (UTC, as text), \code{layer}, \code{id}, \code{question}, \code{value}, \code{other}, \code{text}, \code{title}, \code{lon},
+\code{lat}, \code{zoom}; no rows when there is no file.
 }
 \description{
 A map served with \code{rb_map_serve(verdicts = )} takes the reader's verdict on the features of a layer whose popup has
-a \code{verdict} (\code{\link[=rb_map_layer]{rb_map_layer()}}): a button for each option in a feature's popup, and a line of the reader's own where
-the verdict asks for one. Each answer is a row added to a \code{.csv} file, never a row changed: when, the layer, the
-feature (its value of the verdict's \code{field}), the option, the line, the feature's title, its place (the feature's
-own for a point, else where it was clicked) and the zoom. A later answer for the feature replaces the earlier, and
-an empty one withdraws it. The page draws a mark on each feature judged, in its option's colour. A review written
-down where it is made, and read back as data: what a map shows can be checked by hand, and the checks counted.
+a \code{verdict} (\code{\link[=rb_map_layer]{rb_map_layer()}}): its questions in a feature's popup, a button for each answer, a box for the name an
+answer points at (\code{other}, with the names in view offered), and the feature's note where the verdict asks for one.
+Each answer is a row added to a \code{.csv} file, never a row changed: when, the layer, the feature (its value of the
+verdict's \code{field}), the question, the answer, the other feature's name, the note, the feature's title, its place
+(the feature's own for a point, else where it was clicked) and the zoom. The note is a question of its own, "note",
+its text the answer. A later answer to a question replaces the earlier, and an empty one withdraws it. The page draws
+a mark on each feature judged: the first question's answer its fill, the second's its ring. A review written down
+where it is made, and read back as data: what a map shows can be checked by hand, and the checks counted. A file of
+2026.11.09, before the questions, reads as the question "verdict" with no other names.
 }
 \examples{
 # a map whose harbours take a verdict each:

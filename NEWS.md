@@ -1,3 +1,20 @@
+# ramb 2026.11.09.1
+
+- A verdict asks questions: `rb_map_layer(popup = list(verdict = list(field, questions, text)))`, one to four, each an
+  `id`, a `label` and two to six options (fishycode plan 071, at the maintainer's word: "The answers may also not be
+  consistent - possibly need to adjust the "questionare" within the popup"). The first verdicts asked one question,
+  so a form of a name was answered as right, wrong place or not a name alike, and the name and its place were judged
+  together.
+  - An option with `other = TRUE` names another feature: a box for its name, the names in view offered, sent with
+    Enter or ✓.
+  - `skip` leaves a question out after an earlier answer (`skip = list(name = "not")`).
+  - The note (`text = TRUE`) is the feature's, a question of its own, "note", sent with Enter or ✓.
+  - The file gains `question` and `other`; `rb_map_verdicts()` gives each feature's latest answer to each question. A
+    file of 2026.11.09 reads as the question "verdict" and is written on in the new form. One question may still be
+    given as `options`.
+  - The mark on a feature: the first question's answer its fill, the second's its ring.
+  - The page's engine is 5.
+
 # ramb 2026.11.09
 
 - A reader's verdict on a map's features, kept by the server, for a review made where it is seen (fishycode plan 071,

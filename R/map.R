@@ -21,7 +21,7 @@
 #                                    given or withdrawn (POST), answered with them; as the notes, from this computer
 #                                    and the page only
 
-.rb_map_engine <- 4L # the page's ENGINE: changed together
+.rb_map_engine <- 5L # the page's ENGINE: changed together
 .rb_maps <- new.env(parent = emptyenv()) # the servers rb_map_serve() started, by port
 .rb_tiles <- new.env(parent = emptyenv())
 .rb_tiles$served <- list() # by port, the temporary tables (connection and name) of the map served there
@@ -72,12 +72,15 @@
 #'   while it is over them (`TRUE` for those of `click`), and `hover_fields`, `TRUE` to show the `fields` there too.
 #'   Over features of several layers, the topmost speaks, as for a click; a click hides the label until the pointer is
 #'   over another feature. Opt-in, a verdict on each feature, kept by a server started with `rb_map_serve(verdicts = )`:
-#'   `verdict`, a list of `field` (the field naming a feature: a verdict belongs to its value), `options` (two to six,
-#'   each a `value`, letters, digits, `_` or `-`, a `label`, a text or a key of the map's `texts`, and optionally a
-#'   `colour` for the feature's mark; the first is green by default, the others red), and `text` (`TRUE` for a line
-#'   of the reader's own beside the answer). The click's popup then holds a button for each option; the answer is
-#'   written to the server's file with the feature's place, and a mark in its colour drawn on the feature. A later
-#'   answer replaces it; [rb_map_verdicts()] reads them.
+#'   `verdict`, a list of `field` (the field naming a feature: a verdict belongs to its value), `questions` (one to
+#'   four, each an `id`, a `label`, two to six `options` and optionally `skip`), and `text` (`TRUE` for a note on the
+#'   feature, in the reader's words). An option is a `value` (letters, digits, `_` or `-`), a `label` (a text or a key
+#'   of the map's `texts`), optionally a `colour` for the feature's mark (the first green by default, the others red),
+#'   and `other = TRUE` for an answer that names another feature: a box for its name, the names in view offered.
+#'   `skip` names earlier questions and the answers that leave this one out (`list(name = "not")`). One question may be
+#'   given as `options` alone. The click's popup then holds the questions, a button for each answer; each answer is
+#'   written to the server's file with the feature's place, and a mark drawn on the feature (the first question's
+#'   colour its fill, the second's its ring). A later answer replaces the earlier; [rb_map_verdicts()] reads them.
 #' @param legend A list of swatches, each `swatch` (`fill` and `stroke`, or `dot`) and `label`.
 #' @param variants For a vector, geojson or dem layer, styles to choose between in the page, such as the column the
 #'   points are coloured by: `label` (the control's text) and `options`, each a `value`, a `label`, `paint` (by the
@@ -426,8 +429,10 @@ rb_map_layer <- function(
   )
 }
 
-# A popup's verdict, checked: a field naming the feature, two to six options of a value and a label (a colour
-# optional), and whether a line of text goes with the answer; the options stay an array in the config's JSON
+# A popup's verdict, checked: a field naming the feature; one to four questions, each an id, a label, two to six
+# options (a value, a label, a colour, and `other` for an answer that names another feature) and the answers of
+# earlier questions that skip it; and whether a note goes with the feature. The single question of 2026.11.09
+# (`options` with no `questions`) is the question "verdict". Lists stay arrays in the config's JSON
 .rb_map_verdict_spec <- function(popup, kind) {
   if (!kind %in% c("vector", "geojson")) {
     stop("`popup$verdict` is for a vector or geojson layer.", call. = FALSE)
@@ -439,33 +444,72 @@ rb_map_layer <- function(
   if (!is.list(v) || !is.character(v$field) || length(v$field) != 1 || !nzchar(v$field)) {
     stop("`popup$verdict$field` is the field that names a feature.", call. = FALSE)
   }
-  o <- v$options
-  if (!is.list(o) || length(o) < 2 || length(o) > 6) {
-    stop("`popup$verdict$options` is two to six options, each a list of `value` and `label`.", call. = FALSE)
+  if (!is.null(v$questions) && !is.null(v$options)) {
+    stop("`popup$verdict` has `options` (one question) or `questions`, not both.", call. = FALSE)
   }
-  o <- lapply(o, function(x) {
-    if (!is.list(x) || !is.character(x$value) || length(x$value) != 1 || !grepl("^[A-Za-z0-9_-]{1,40}$", x$value)) {
-      stop("A verdict's option has a `value`: 1-40 letters, digits, `_` or `-`.", call. = FALSE)
+  qs <- if (is.null(v$questions)) list(list(id = "verdict", options = v$options)) else v$questions
+  if (!is.list(qs) || length(qs) < 1 || length(qs) > 4) {
+    stop("`popup$verdict$questions` is one to four questions, each a list of `id`, `label` and `options`.", call. = FALSE)
+  }
+  ok_id <- function(x) is.character(x) && length(x) == 1 && grepl("^[A-Za-z0-9_-]{1,40}$", x)
+  seen <- list()
+  qs <- lapply(qs, function(q) {
+    if (!is.list(q) || !ok_id(q$id) || q$id == "note") {
+      stop("A verdict's question has an `id`: 1-40 letters, digits, `_` or `-`, not \"note\" (the note's).", call. = FALSE)
     }
-    if (is.null(x$label)) {
-      x$label <- x$value
+    if (q$id %in% names(seen)) {
+      stop("A verdict's questions have ids of their own.", call. = FALSE)
     }
-    if (!is.character(x$label) || length(x$label) != 1) {
-      stop("A verdict's option's `label` is one text (or a key of the map's texts).", call. = FALSE)
+    if (!is.null(q$label) && !(is.character(q$label) && length(q$label) == 1)) {
+      stop("A verdict's question's `label` is one text (or a key of the map's texts).", call. = FALSE)
     }
-    if (!is.null(x$colour) && !(is.character(x$colour) && length(x$colour) == 1 && grepl("^#[0-9A-Fa-f]{6}$", x$colour))) {
-      stop("A verdict's option's `colour` is one colour, as \"#1a9850\".", call. = FALSE)
+    o <- q$options
+    if (!is.list(o) || length(o) < 2 || length(o) > 6) {
+      stop("A verdict's question has two to six `options`, each a list of `value` and `label`.", call. = FALSE)
     }
-    x
+    o <- lapply(o, function(x) {
+      if (!is.list(x) || !ok_id(x$value)) {
+        stop("A verdict's option has a `value`: 1-40 letters, digits, `_` or `-`.", call. = FALSE)
+      }
+      if (is.null(x$label)) {
+        x$label <- x$value
+      }
+      if (!is.character(x$label) || length(x$label) != 1) {
+        stop("A verdict's option's `label` is one text (or a key of the map's texts).", call. = FALSE)
+      }
+      if (!is.null(x$colour) && !(is.character(x$colour) && length(x$colour) == 1 && grepl("^#[0-9A-Fa-f]{6}$", x$colour))) {
+        stop("A verdict's option's `colour` is one colour, as \"#1a9850\".", call. = FALSE)
+      }
+      if (!is.null(x$other) && !(is.logical(x$other) && length(x$other) == 1 && !is.na(x$other))) {
+        stop("A verdict's option's `other` is TRUE or FALSE: whether the answer names another feature.", call. = FALSE)
+      }
+      x$other <- isTRUE(x$other)
+      x
+    })
+    values <- vapply(o, `[[`, "", "value")
+    if (anyDuplicated(values)) {
+      stop("A verdict's options have values of their own.", call. = FALSE)
+    }
+    skip <- q$skip
+    if (!is.null(skip)) {
+      if (!is.list(skip) || is.null(names(skip)) || any(!names(skip) %in% names(seen))) {
+        stop("A verdict's question's `skip` names earlier questions, each with the answers that skip it.", call. = FALSE)
+      }
+      for (k in names(skip)) {
+        if (!is.character(unlist(skip[[k]])) || !all(unlist(skip[[k]]) %in% seen[[k]])) {
+          stop(sprintf("A verdict's question's `skip` gives answers of the question \"%s\": %s.", k,
+                       paste(seen[[k]], collapse = ", ")), call. = FALSE)
+        }
+      }
+      skip <- lapply(skip, function(x) as.list(unlist(x)))
+    }
+    seen[[q$id]] <<- values
+    Filter(Negate(is.null), list(id = q$id, label = q$label, options = o, skip = skip))
   })
-  values <- vapply(o, `[[`, "", "value")
-  if (anyDuplicated(values)) {
-    stop("A verdict's options have values of their own.", call. = FALSE)
-  }
   if (!is.null(v$text) && !(is.logical(v$text) && length(v$text) == 1 && !is.na(v$text))) {
     stop("`popup$verdict$text` is TRUE or FALSE.", call. = FALSE)
   }
-  popup[["verdict"]] <- list(field = v$field, options = o, text = isTRUE(v$text))
+  popup[["verdict"]] <- list(field = v$field, questions = qs, text = isTRUE(v$text))
   popup
 }
 
@@ -1396,18 +1440,21 @@ rb_map_notes_add <- function(path, text, lon = NULL, lat = NULL, author = "analy
 #' Verdicts given on a served map
 #'
 #' A map served with `rb_map_serve(verdicts = )` takes the reader's verdict on the features of a layer whose popup has
-#' a `verdict` ([rb_map_layer()]): a button for each option in a feature's popup, and a line of the reader's own where
-#' the verdict asks for one. Each answer is a row added to a `.csv` file, never a row changed: when, the layer, the
-#' feature (its value of the verdict's `field`), the option, the line, the feature's title, its place (the feature's
-#' own for a point, else where it was clicked) and the zoom. A later answer for the feature replaces the earlier, and
-#' an empty one withdraws it. The page draws a mark on each feature judged, in its option's colour. A review written
-#' down where it is made, and read back as data: what a map shows can be checked by hand, and the checks counted.
+#' a `verdict` ([rb_map_layer()]): its questions in a feature's popup, a button for each answer, a box for the name an
+#' answer points at (`other`, with the names in view offered), and the feature's note where the verdict asks for one.
+#' Each answer is a row added to a `.csv` file, never a row changed: when, the layer, the feature (its value of the
+#' verdict's `field`), the question, the answer, the other feature's name, the note, the feature's title, its place
+#' (the feature's own for a point, else where it was clicked) and the zoom. The note is a question of its own, "note",
+#' its text the answer. A later answer to a question replaces the earlier, and an empty one withdraws it. The page draws
+#' a mark on each feature judged: the first question's answer its fill, the second's its ring. A review written down
+#' where it is made, and read back as data: what a map shows can be checked by hand, and the checks counted. A file of
+#' 2026.11.09, before the questions, reads as the question "verdict" with no other names.
 #'
 #' @param path The verdicts' file (`.csv`).
-#' @param all `FALSE`, each feature's current verdict (the last answer, none where it was withdrawn); `TRUE`, every
-#'   answer given, in the order given.
-#' @return A data frame: `time` (UTC, as text), `layer`, `id`, `value`, `text`, `title`, `lon`, `lat`, `zoom`; no rows
-#'   when there is no file.
+#' @param all `FALSE`, each feature's current answer to each question (the last, none where it was withdrawn; a note
+#'   where it has a text); `TRUE`, every answer given, in the order given.
+#' @return A data frame: `time` (UTC, as text), `layer`, `id`, `question`, `value`, `other`, `text`, `title`, `lon`,
+#'   `lat`, `zoom`; no rows when there is no file.
 #' @export
 #' @examples
 #' # a map whose harbours take a verdict each:
@@ -1423,13 +1470,15 @@ rb_map_verdicts <- function(path, all = FALSE) {
   if (isTRUE(all) || !nrow(v)) {
     return(v)
   }
-  last <- !duplicated(paste(v$layer, v$id, sep = "\r"), fromLast = TRUE)
-  v <- v[last & nzchar(v$value), , drop = FALSE]
+  last <- !duplicated(paste(v$layer, v$id, v$question, sep = "\r"), fromLast = TRUE)
+  given <- ifelse(v$question == "note", nzchar(v$text), nzchar(v$value))
+  v <- v[last & given, , drop = FALSE]
   rownames(v) <- NULL
   v
 }
 
-.rb_verdict_cols <- c("time", "layer", "id", "value", "text", "title", "lon", "lat", "zoom")
+.rb_verdict_cols <- c("time", "layer", "id", "question", "value", "other", "text", "title", "lon", "lat", "zoom")
+.rb_verdict_cols_v1 <- c("time", "layer", "id", "value", "text", "title", "lon", "lat", "zoom") # 2026.11.09
 
 # The verdicts' file: one path, a .csv file whose folder exists (when it is to be written)
 .rb_verdicts_path <- function(path, folder = TRUE) {
@@ -1458,6 +1507,11 @@ rb_map_verdicts <- function(path, all = FALSE) {
   v <- tryCatch(utils::read.csv(path, colClasses = "character", na.strings = character(), encoding = "UTF-8",
                                 check.names = FALSE),
                 error = function(e) NULL)
+  if (is.data.frame(v) && identical(names(v), .rb_verdict_cols_v1)) { # one question, before the questions
+    v$question <- rep("verdict", nrow(v))
+    v$other <- rep("", nrow(v))
+    v <- v[, .rb_verdict_cols]
+  }
   if (!is.data.frame(v) || !identical(names(v), .rb_verdict_cols)) {
     stop(sprintf("%s is not a verdicts file (a .csv with the columns %s): left as it is.", path,
                  paste(.rb_verdict_cols, collapse = ", ")), call. = FALSE)
@@ -1465,7 +1519,9 @@ rb_map_verdicts <- function(path, all = FALSE) {
   num(v)
 }
 
-# A verdict's fields checked against the layers that take one: NULL, or why it is refused
+# A verdict's fields checked against the layers that take one: NULL, or why it is refused. An answer to a question is
+# one of its options, with the other feature's name where the option names one and none where it does not, or empty
+# to withdraw it; a note ("note") has a text, empty to clear it
 .rb_verdicts_check <- function(n, specs) {
   one <- function(x) is.character(x) && length(x) == 1 && !is.na(x)
   one_num <- function(x) is.numeric(x) && length(x) == 1 && is.finite(x)
@@ -1475,12 +1531,32 @@ rb_map_verdicts <- function(path, all = FALSE) {
   if (!(one(n$id) || one_num(n$id)) || !nzchar(as.character(n$id)) || nchar(as.character(n$id)) > 300) {
     return("A verdict's `id` names its feature: a text of 1-300 characters.")
   }
-  values <- vapply(specs[[n$layer]]$options, `[[`, "", "value")
-  if (!one(n$value) || !(n$value %in% c(values, ""))) {
-    return(sprintf("A verdict's `value` is one of %s, or empty to withdraw it.", paste(values, collapse = ", ")))
+  qs <- specs[[n$layer]]$questions
+  ids <- vapply(qs, `[[`, "", "id")
+  question <- .rb_or(n$question, if (length(qs) == 1) ids[1])
+  if (!one(question) || !question %in% c(ids, if (specs[[n$layer]]$text) "note")) {
+    return(sprintf("A verdict's `question` is one of %s.", paste(c(ids, if (specs[[n$layer]]$text) "note"), collapse = ", ")))
   }
   if (!is.null(n$text) && !(one(n$text) && nchar(n$text) <= 1000)) {
     return("A verdict's `text` is at most 1,000 characters.")
+  }
+  if (question == "note") {
+    if (!is.null(n$value) && !identical(n$value, "")) {
+      return("A note has a `text`, no `value`.")
+    }
+  } else {
+    o <- qs[[match(question, ids)]]$options
+    values <- vapply(o, `[[`, "", "value")
+    if (!one(n$value) || !(n$value %in% c(values, ""))) {
+      return(sprintf("An answer to \"%s\" is one of %s, or empty to withdraw it.", question, paste(values, collapse = ", ")))
+    }
+    asks <- nzchar(n$value) && isTRUE(o[[match(n$value, values)]]$other)
+    if (asks && !(one(n$other) && nzchar(trimws(n$other)) && nchar(n$other) <= 200)) {
+      return(sprintf("The answer \"%s\" names another feature: `other`, a name of 1-200 characters.", n$value))
+    }
+    if (!asks && !is.null(n$other) && !identical(n$other, "")) {
+      return(sprintf("The answer \"%s\" names no other feature: no `other`.", n$value))
+    }
   }
   if (!is.null(n$title) && !(one(n$title) && nchar(n$title) <= 300)) {
     return("A verdict's `title` is at most 300 characters.")
@@ -1499,7 +1575,8 @@ rb_map_verdicts <- function(path, all = FALSE) {
   v <- .rb_verdicts_read(path)
   row <- data.frame(
     time = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"), layer = n$layer, id = as.character(n$id),
-    value = n$value, text = trimws(.rb_or(n$text, "")), title = .rb_or(n$title, ""),
+    question = n$question, value = .rb_or(n$value, ""), other = trimws(.rb_or(n$other, "")),
+    text = trimws(.rb_or(n$text, "")), title = .rb_or(n$title, ""),
     lon = round(n$lon, 6), lat = round(n$lat, 6), zoom = if (is.null(n$zoom)) NA_real_ else round(n$zoom, 2),
     stringsAsFactors = FALSE
   )
@@ -1530,7 +1607,9 @@ rb_map_verdicts <- function(path, all = FALSE) {
   }
   answer <- function() {
     v <- rb_map_verdicts(verdicts)
-    rows <- lapply(seq_len(nrow(v)), function(i) as.list(v[i, c("layer", "id", "value", "text", "lon", "lat", "time")]))
+    rows <- lapply(seq_len(nrow(v)), function(i) {
+      as.list(v[i, c("layer", "id", "question", "value", "other", "text", "lon", "lat", "time")])
+    })
     reply(200L, json(list(verdicts = rows)), "application/json; charset=utf-8", list(`Cache-Control` = "no-store"))
   }
   method <- req$REQUEST_METHOD
@@ -1559,6 +1638,9 @@ rb_map_verdicts <- function(path, all = FALSE) {
         why <- .rb_verdicts_check(n, specs)
         if (!is.null(why)) {
           return(reply(400L, why))
+        }
+        if (is.null(n$question)) {
+          n$question <- specs[[n$layer]]$questions[[1]]$id # a page of one question may leave it out
         }
         .rb_verdicts_read(verdicts) # a file broken by hand stops here, left as it is
         .rb_verdicts_add(verdicts, n)

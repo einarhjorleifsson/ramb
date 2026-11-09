@@ -66,12 +66,15 @@ a label on hover: \code{hover}, the style ids whose features show their \code{ti
 while it is over them (\code{TRUE} for those of \code{click}), and \code{hover_fields}, \code{TRUE} to show the \code{fields} there too.
 Over features of several layers, the topmost speaks, as for a click; a click hides the label until the pointer is
 over another feature. Opt-in, a verdict on each feature, kept by a server started with \code{rb_map_serve(verdicts = )}:
-\code{verdict}, a list of \code{field} (the field naming a feature: a verdict belongs to its value), \code{options} (two to six,
-each a \code{value}, letters, digits, \verb{_} or \code{-}, a \code{label}, a text or a key of the map's \code{texts}, and optionally a
-\code{colour} for the feature's mark; the first is green by default, the others red), and \code{text} (\code{TRUE} for a line
-of the reader's own beside the answer). The click's popup then holds a button for each option; the answer is
-written to the server's file with the feature's place, and a mark in its colour drawn on the feature. A later
-answer replaces it; \code{\link[=rb_map_verdicts]{rb_map_verdicts()}} reads them.}
+\code{verdict}, a list of \code{field} (the field naming a feature: a verdict belongs to its value), \code{questions} (one to
+four, each an \code{id}, a \code{label}, two to six \code{options} and optionally \code{skip}), and \code{text} (\code{TRUE} for a note on the
+feature, in the reader's words). An option is a \code{value} (letters, digits, \verb{_} or \code{-}), a \code{label} (a text or a key
+of the map's \code{texts}), optionally a \code{colour} for the feature's mark (the first green by default, the others red),
+and \code{other = TRUE} for an answer that names another feature: a box for its name, the names in view offered.
+\code{skip} names earlier questions and the answers that leave this one out (\code{list(name = "not")}). One question may be
+given as \code{options} alone. The click's popup then holds the questions, a button for each answer; each answer is
+written to the server's file with the feature's place, and a mark drawn on the feature (the first question's
+colour its fill, the second's its ring). A later answer replaces the earlier; \code{\link[=rb_map_verdicts]{rb_map_verdicts()}} reads them.}
 
 \item{legend}{A list of swatches, each \code{swatch} (\code{fill} and \code{stroke}, or \code{dot}) and \code{label}.}
 
