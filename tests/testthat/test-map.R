@@ -1700,6 +1700,132 @@ test_that("notes served: the page's notes, replies and deletions through /notes,
   expect_null(jsonlite::fromJSON(get(plain, "/config.json")$body, simplifyVector = FALSE)$notes)
 })
 
+# a layer whose features take a verdict
+verdict_layer <- function(id = "a", ...) {
+  rb_map_layer(id, "geojson", data = '{"type": "FeatureCollection", "features": []}',
+               style = list(list(id = paste0(id, "-dot"), type = "circle")),
+               popup = list(click = paste0(id, "-dot"), title = "name",
+                            verdict = list(field = "key", text = TRUE,
+                                           options = list(list(value = "right", label = "vRight"),
+                                                          list(value = "place", label = "vPlace", colour = "#fdae61"),
+                                                          list(value = "name", label = "vName")))), ...)
+}
+
+test_that("a popup's verdict: checked, its options an array in the config", {
+  a <- verdict_layer()
+  v <- a$config$popup$verdict
+  expect_equal(v$field, "key")
+  expect_true(v$text)
+  expect_equal(vapply(v$options, `[[`, "", "value"), c("right", "place", "name"))
+  expect_equal(v$options[[2]]$colour, "#fdae61")
+  cfg <- jsonlite::fromJSON(.rb_map_json(rb_map(rb_map_group("g", layers = list(a)))$config), simplifyVector = FALSE)
+  expect_length(cfg$layers[[1]]$popup$verdict$options, 3)
+  # a label defaults to its value; text defaults to FALSE
+  b <- rb_map_layer("b", "geojson", data = "{}", style = list(list(id = "b-dot", type = "circle")),
+                    popup = list(click = "b-dot", verdict = list(field = "k", options = list(list(value = "y"), list(value = "n")))))
+  expect_equal(b$config$popup$verdict$options[[1]]$label, "y")
+  expect_false(b$config$popup$verdict$text)
+  bad <- function(verdict, click = "b-dot", kind = "geojson") {
+    rb_map_layer("b", kind, data = if (kind == "geojson") "{}", tiles = if (kind == "vector") function(z, x, y) raw(0),
+                 style = list(list(id = "b-dot", type = "circle")), popup = list(click = click, verdict = verdict))
+  }
+  ok <- list(list(value = "y"), list(value = "n"))
+  expect_error(bad(list(field = "k", options = ok), click = NULL), "click")
+  expect_error(bad(list(options = ok)), "field")
+  expect_error(bad(list(field = "k", options = ok[1])), "two to six")
+  expect_error(bad(list(field = "k", options = rep(ok, 4))), "two to six")
+  expect_error(bad(list(field = "k", options = list(list(value = "a b"), list(value = "n")))), "letters")
+  expect_error(bad(list(field = "k", options = list(list(value = "y"), list(value = "y")))), "of their own")
+  expect_error(bad(list(field = "k", options = list(list(value = "y", colour = "red"), list(value = "n")))), "colour")
+  expect_error(bad(list(field = "k", options = ok, text = "yes")), "TRUE or FALSE")
+  expect_no_error(bad(list(field = "k", options = ok), kind = "vector"))
+})
+
+test_that("verdicts served: given, replaced, withdrawn, read back; from the page only; a file broken by hand left", {
+  skip_if_not_installed("jsonlite")
+  skip_if_not(isTRUE(l10n_info()[["UTF-8"]]), "verdicts are written in a UTF-8 locale")
+  f <- tempfile(fileext = ".csv")
+  plain <- rb_map_layer("p", "geojson", data = '{"type": "FeatureCollection", "features": []}',
+                        style = list(list(id = "p-fill", type = "fill")))
+  m <- rb_map(rb_map_group("g", layers = list(verdict_layer(), plain)))
+  app <- .rb_map_app(m, verdicts = f)
+  cfg <- jsonlite::fromJSON(get(app, "/config.json")$body, simplifyVector = FALSE)
+  expect_equal(cfg$verdicts$file, basename(f))
+  expect_null(m$config$verdicts) # the map itself is left as it was: a bundle of it has no verdicts
+  r <- notes_call(app, "GET", "/verdicts")
+  expect_equal(r$status, 200L)
+  expect_equal(r$headers$`Cache-Control`, "no-store")
+  expect_length(jsonlite::fromJSON(r$body, simplifyVector = FALSE)$verdicts, 0)
+  expect_false(file.exists(f)) # made at the first verdict
+  r <- notes_call(app, "POST", "/verdicts", '{"layer": "a", "id": "eldeyjarbodi", "value": "place", "text": "Hér er það ekki",
+                                              "title": "Eldeyjarboði", "lon": -23.7, "lat": 63.45, "zoom": 9.123}')
+  expect_equal(r$status, 200L)
+  v <- jsonlite::fromJSON(r$body, simplifyVector = FALSE)$verdicts
+  expect_length(v, 1)
+  expect_equal(v[[1]]$value, "place")
+  expect_equal(v[[1]]$text, "Hér er það ekki")
+  notes_call(app, "POST", "/verdicts", '{"layer": "a", "id": 7, "value": "right", "lon": 1, "lat": 2}')
+  # a later answer replaces the earlier; an empty one withdraws it; every answer kept in the file
+  notes_call(app, "POST", "/verdicts", '{"layer": "a", "id": "eldeyjarbodi", "value": "name", "lon": -23.7, "lat": 63.45}')
+  expect_equal(rb_map_verdicts(f)$value, c("right", "name"))
+  expect_equal(rb_map_verdicts(f)$id, c("7", "eldeyjarbodi"))
+  r <- notes_call(app, "POST", "/verdicts", '{"layer": "a", "id": "7", "value": "", "lon": 1, "lat": 2}')
+  expect_equal(r$status, 200L)
+  expect_length(jsonlite::fromJSON(r$body, simplifyVector = FALSE)$verdicts, 1)
+  all <- rb_map_verdicts(f, all = TRUE)
+  expect_equal(all$value, c("place", "right", "name", ""))
+  expect_equal(names(all), c("time", "layer", "id", "value", "text", "title", "lon", "lat", "zoom"))
+  expect_equal(all$title[1], "Eldeyjarboði")
+  expect_equal(all$zoom[1], 9.12)
+  expect_true(is.na(all$zoom[2]))
+  expect_equal(all$text[2], "")
+  # refused: another layer, a value not offered, no id, no place, too long, not JSON, too big; nothing written
+  before <- readLines(f, encoding = "UTF-8")
+  expect_equal(notes_call(app, "POST", "/verdicts", '{"layer": "p", "id": "x", "value": "right", "lon": 1, "lat": 1}')$status, 400L)
+  expect_equal(notes_call(app, "POST", "/verdicts", '{"layer": "a", "id": "x", "value": "maybe", "lon": 1, "lat": 1}')$status, 400L)
+  expect_equal(notes_call(app, "POST", "/verdicts", '{"layer": "a", "id": "", "value": "right", "lon": 1, "lat": 1}')$status, 400L)
+  expect_equal(notes_call(app, "POST", "/verdicts", '{"layer": "a", "id": "x", "value": "right"}')$status, 400L)
+  expect_equal(notes_call(app, "POST", "/verdicts", sprintf('{"layer": "a", "id": "x", "value": "right", "lon": 1, "lat": 1, "text": "%s"}',
+                                                              strrep("x", 1001)))$status, 400L)
+  expect_equal(notes_call(app, "POST", "/verdicts", "not json")$status, 400L)
+  expect_equal(notes_call(app, "POST", "/verdicts", strrep("x", 20000))$status, 413L)
+  # from elsewhere: no page header, another site's origin, a page opened under another host name
+  expect_equal(notes_call(app, "POST", "/verdicts", '{"layer": "a", "id": "x", "value": "right", "lon": 1, "lat": 1}', page = FALSE)$status, 403L)
+  expect_equal(notes_call(app, "POST", "/verdicts", '{"layer": "a", "id": "x", "value": "right", "lon": 1, "lat": 1}',
+                          origin = "http://evil.example")$status, 403L)
+  expect_equal(notes_call(app, "GET", "/verdicts", host = "evil.example:8811")$status, 403L)
+  expect_equal(readLines(f, encoding = "UTF-8"), before)
+  expect_equal(notes_call(app, "PUT", "/verdicts")$status, 405L)
+  # a file broken by hand: an error to the page, and left as it is
+  writeLines("a,b\n1,2", f)
+  r <- notes_call(app, "POST", "/verdicts", '{"layer": "a", "id": "x", "value": "right", "lon": 1, "lat": 1}')
+  expect_equal(r$status, 500L)
+  expect_match(r$body, "not a verdicts file")
+  expect_equal(readLines(f), c("a,b", "1,2"))
+  # a map served without verdicts has no such route
+  expect_equal(notes_call(.rb_map_app(m), "GET", "/verdicts")$status, 404L)
+  expect_null(jsonlite::fromJSON(get(.rb_map_app(m), "/config.json")$body, simplifyVector = FALSE)$verdicts)
+})
+
+test_that("a server with verdicts: the file and the map checked as it starts", {
+  skip_if_not_installed("httpuv")
+  skip_if_not_installed("jsonlite")
+  skip_if_not(isTRUE(l10n_info()[["UTF-8"]]), "verdicts are written in a UTF-8 locale")
+  m <- rb_map(rb_map_group("g", layers = list(verdict_layer())))
+  g <- tempfile(fileext = ".csv")
+  writeLines("x,y", g)
+  expect_error(rb_map_serve(m, port = httpuv::randomPort(), open = FALSE, verdicts = g), "not a verdicts file")
+  expect_error(rb_map_serve(m, port = httpuv::randomPort(), open = FALSE, verdicts = tempfile(fileext = ".json")), "csv")
+  expect_error(rb_map_serve(m, port = httpuv::randomPort(), open = FALSE, verdicts = file.path(tempfile(), "v.csv")),
+               "does not exist")
+  a <- rb_map_layer("a", "vector", tiles = function(z, x, y) raw(0), style = list(list(id = "a-line", type = "line")))
+  expect_error(rb_map_serve(rb_map(rb_map_group("g", layers = list(a))), port = httpuv::randomPort(), open = FALSE,
+                            verdicts = tempfile(fileext = ".csv")), "has none")
+  port <- httpuv::randomPort()
+  rb_map_serve(m, port = port, open = FALSE, verdicts = tempfile(fileext = ".csv"))
+  expect_equal(rb_map_stop(port), port)
+})
+
 test_that("a server with notes: the file checked as it starts", {
   skip_if_not_installed("httpuv")
   skip_if_not_installed("jsonlite")

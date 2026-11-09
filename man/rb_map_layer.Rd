@@ -65,7 +65,13 @@ is one; and \code{format}, \code{"value"} or \code{"count"}), \code{maxWidth}. F
 a label on hover: \code{hover}, the style ids whose features show their \code{title} in a light label beside the pointer
 while it is over them (\code{TRUE} for those of \code{click}), and \code{hover_fields}, \code{TRUE} to show the \code{fields} there too.
 Over features of several layers, the topmost speaks, as for a click; a click hides the label until the pointer is
-over another feature.}
+over another feature. Opt-in, a verdict on each feature, kept by a server started with \code{rb_map_serve(verdicts = )}:
+\code{verdict}, a list of \code{field} (the field naming a feature: a verdict belongs to its value), \code{options} (two to six,
+each a \code{value}, letters, digits, \verb{_} or \code{-}, a \code{label}, a text or a key of the map's \code{texts}, and optionally a
+\code{colour} for the feature's mark; the first is green by default, the others red), and \code{text} (\code{TRUE} for a line
+of the reader's own beside the answer). The click's popup then holds a button for each option; the answer is
+written to the server's file with the feature's place, and a mark in its colour drawn on the feature. A later
+answer replaces it; \code{\link[=rb_map_verdicts]{rb_map_verdicts()}} reads them.}
 
 \item{legend}{A list of swatches, each \code{swatch} (\code{fill} and \code{stroke}, or \code{dot}) and \code{label}.}
 

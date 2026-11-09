@@ -11,7 +11,8 @@ rb_map_serve(
   host = "127.0.0.1",
   open = interactive(),
   query = NULL,
-  notes = NULL
+  notes = NULL,
+  verdicts = NULL
 )
 
 rb_map_stop(port = NULL)
@@ -30,6 +31,13 @@ server keeps them, made at the first note; \code{NULL}, none. The page then has 
 on the map, a text, and the note is written to the file with the features under it; a reply joins a note's
 thread. \code{\link[=rb_map_notes]{rb_map_notes()}} reads them in R and \code{\link[=rb_map_notes_add]{rb_map_notes_add()}} answers. They are answered only for a page
 opened from this computer (as \code{localhost}, \verb{127.0.0.1} or \code{host}), and never in a bundle.}
+
+\item{verdicts}{Opt-in, the readers' verdicts on features: the path of a \code{.csv} file (in a folder that exists) where
+the server keeps them, made at the first verdict; \code{NULL}, none. A layer whose popup has a \code{verdict}
+(\code{\link[=rb_map_layer]{rb_map_layer()}}) then shows a button for each option in a feature's popup. Each answer is a row added to the
+file (when, the layer, the feature's value of the verdict's \code{field}, the option, the reader's line, the feature's
+title and place); a later one for the feature replaces it, and an empty answer withdraws it. \code{\link[=rb_map_verdicts]{rb_map_verdicts()}}
+reads them. As the notes, answered only for a page opened from this computer, and never in a bundle.}
 }
 \value{
 The page's address, invisibly.

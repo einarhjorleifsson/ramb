@@ -1,3 +1,21 @@
+# ramb 2026.11.09
+
+- A reader's verdict on a map's features, kept by the server, for a review made where it is seen (fishycode plan 071,
+  the place names not on the charts, at the maintainer's word: "a yes/no marker in the popups ... these answers would
+  then be gathered").
+  - `rb_map_layer(popup = list(verdict = list(field, options, text)))` gives a vector or geojson layer's features a
+    verdict: two to six options, each a value, a label and optionally a colour for the feature's mark, and a line of
+    the reader's own where `text = TRUE`.
+  - `rb_map_serve(verdicts = "file.csv")` keeps them. The popup holds a button for each option, the answer filled in
+    its colour; a click writes a row to the file (when, the layer, the feature's value of `field`, the option, the
+    line, the title, the place, the zoom), never changing one. A later answer replaces the feature's verdict and an
+    empty one withdraws it. A mark in the answer's colour is drawn on each feature judged.
+  - `rb_map_verdicts()` reads them: each feature's current verdict, or with `all = TRUE` every answer in the order given.
+  - As the notes, the verdicts are answered only for a page opened from this computer and written only from the page
+    itself, never in a bundle; a file that is not a verdicts file is left as it is. The notes and the verdicts share
+    that guard.
+  - The page's engine is 4: a page and a server of different versions say so.
+
 # ramb 2026.11.07.2
 
 - `rb_flag_ping_impossible()` with one column as both `feed` and `stream` (each feed a stream of its own) judges each

@@ -17,8 +17,11 @@
 #   /notes                           with rb_map_serve(notes = ): the notes (GET), a note or a reply added (POST),
 #   /notes/<id>                      a note deleted (DELETE), each answered with the notes; only for a page opened
 #                                    from this computer, a write only from the page itself
+#   /verdicts                        with rb_map_serve(verdicts = ): the features' current verdicts (GET), a verdict
+#                                    given or withdrawn (POST), answered with them; as the notes, from this computer
+#                                    and the page only
 
-.rb_map_engine <- 3L # the page's ENGINE: changed together
+.rb_map_engine <- 4L # the page's ENGINE: changed together
 .rb_maps <- new.env(parent = emptyenv()) # the servers rb_map_serve() started, by port
 .rb_tiles <- new.env(parent = emptyenv())
 .rb_tiles$served <- list() # by port, the temporary tables (connection and name) of the map served there
@@ -68,7 +71,13 @@
 #'   a label on hover: `hover`, the style ids whose features show their `title` in a light label beside the pointer
 #'   while it is over them (`TRUE` for those of `click`), and `hover_fields`, `TRUE` to show the `fields` there too.
 #'   Over features of several layers, the topmost speaks, as for a click; a click hides the label until the pointer is
-#'   over another feature.
+#'   over another feature. Opt-in, a verdict on each feature, kept by a server started with `rb_map_serve(verdicts = )`:
+#'   `verdict`, a list of `field` (the field naming a feature: a verdict belongs to its value), `options` (two to six,
+#'   each a `value`, letters, digits, `_` or `-`, a `label`, a text or a key of the map's `texts`, and optionally a
+#'   `colour` for the feature's mark; the first is green by default, the others red), and `text` (`TRUE` for a line
+#'   of the reader's own beside the answer). The click's popup then holds a button for each option; the answer is
+#'   written to the server's file with the feature's place, and a mark in its colour drawn on the feature. A later
+#'   answer replaces it; [rb_map_verdicts()] reads them.
 #' @param legend A list of swatches, each `swatch` (`fill` and `stroke`, or `dot`) and `label`.
 #' @param variants For a vector, geojson or dem layer, styles to choose between in the page, such as the column the
 #'   points are coloured by: `label` (the control's text) and `options`, each a `value`, a `label`, `paint` (by the
@@ -283,6 +292,9 @@ rb_map_layer <- function(
   if (!is.null(popup[["hover"]]) || !is.null(popup[["hover_fields"]])) {
     popup <- .rb_map_hover(popup, kind, style)
   }
+  if (!is.null(popup[["verdict"]])) {
+    popup <- .rb_map_verdict_spec(popup, kind)
+  }
   # one-element arrays stay arrays in the config's JSON
   if (!is.null(popup$click)) {
     popup$click <- as.list(popup$click)
@@ -412,6 +424,49 @@ rb_map_layer <- function(
     ),
     class = "rb_map_layer"
   )
+}
+
+# A popup's verdict, checked: a field naming the feature, two to six options of a value and a label (a colour
+# optional), and whether a line of text goes with the answer; the options stay an array in the config's JSON
+.rb_map_verdict_spec <- function(popup, kind) {
+  if (!kind %in% c("vector", "geojson")) {
+    stop("`popup$verdict` is for a vector or geojson layer.", call. = FALSE)
+  }
+  if (is.null(popup[["click"]])) {
+    stop("`popup$verdict` is given in a click's popup: give `popup$click`.", call. = FALSE)
+  }
+  v <- popup[["verdict"]]
+  if (!is.list(v) || !is.character(v$field) || length(v$field) != 1 || !nzchar(v$field)) {
+    stop("`popup$verdict$field` is the field that names a feature.", call. = FALSE)
+  }
+  o <- v$options
+  if (!is.list(o) || length(o) < 2 || length(o) > 6) {
+    stop("`popup$verdict$options` is two to six options, each a list of `value` and `label`.", call. = FALSE)
+  }
+  o <- lapply(o, function(x) {
+    if (!is.list(x) || !is.character(x$value) || length(x$value) != 1 || !grepl("^[A-Za-z0-9_-]{1,40}$", x$value)) {
+      stop("A verdict's option has a `value`: 1-40 letters, digits, `_` or `-`.", call. = FALSE)
+    }
+    if (is.null(x$label)) {
+      x$label <- x$value
+    }
+    if (!is.character(x$label) || length(x$label) != 1) {
+      stop("A verdict's option's `label` is one text (or a key of the map's texts).", call. = FALSE)
+    }
+    if (!is.null(x$colour) && !(is.character(x$colour) && length(x$colour) == 1 && grepl("^#[0-9A-Fa-f]{6}$", x$colour))) {
+      stop("A verdict's option's `colour` is one colour, as \"#1a9850\".", call. = FALSE)
+    }
+    x
+  })
+  values <- vapply(o, `[[`, "", "value")
+  if (anyDuplicated(values)) {
+    stop("A verdict's options have values of their own.", call. = FALSE)
+  }
+  if (!is.null(v$text) && !(is.logical(v$text) && length(v$text) == 1 && !is.na(v$text))) {
+    stop("`popup$verdict$text` is TRUE or FALSE.", call. = FALSE)
+  }
+  popup[["verdict"]] <- list(field = v$field, options = o, text = isTRUE(v$text))
+  popup
 }
 
 # A popup's hover, checked: style ids of the layer's own (TRUE for the click's), a title to show, hover_fields a flag
@@ -933,6 +988,12 @@ rb_map_basemaps <- function() {
 #'   on the map, a text, and the note is written to the file with the features under it; a reply joins a note's
 #'   thread. [rb_map_notes()] reads them in R and [rb_map_notes_add()] answers. They are answered only for a page
 #'   opened from this computer (as `localhost`, `127.0.0.1` or `host`), and never in a bundle.
+#' @param verdicts Opt-in, the readers' verdicts on features: the path of a `.csv` file (in a folder that exists) where
+#'   the server keeps them, made at the first verdict; `NULL`, none. A layer whose popup has a `verdict`
+#'   ([rb_map_layer()]) then shows a button for each option in a feature's popup. Each answer is a row added to the
+#'   file (when, the layer, the feature's value of the verdict's `field`, the option, the reader's line, the feature's
+#'   title and place); a later one for the feature replaces it, and an empty answer withdraws it. [rb_map_verdicts()]
+#'   reads them. As the notes, answered only for a page opened from this computer, and never in a bundle.
 #' @return The page's address, invisibly.
 #' @export
 #' @examples
@@ -960,7 +1021,8 @@ rb_map_serve <- function(
   host = "127.0.0.1",
   open = interactive(),
   query = NULL,
-  notes = NULL
+  notes = NULL,
+  verdicts = NULL
 ) {
   .rb_need("httpuv")
   .rb_need("jsonlite")
@@ -972,9 +1034,17 @@ rb_map_serve <- function(
     .rb_notes_utf8()
     .rb_notes_read(notes) # a file that is there must be notes: it is never overwritten otherwise
   }
+  if (!is.null(verdicts)) {
+    if (!length(.rb_map_verdict_layers(map))) {
+      stop("`verdicts` serves the verdicts of a layer whose popup has a `verdict`: the map has none.", call. = FALSE)
+    }
+    verdicts <- .rb_verdicts_path(verdicts)
+    .rb_notes_utf8()
+    .rb_verdicts_read(verdicts) # a file that is there must be verdicts: it is never overwritten otherwise
+  }
   port <- as.integer(port)
   rb_map_stop(port)
-  app <- .rb_map_app(map, notes = notes, host = host)
+  app <- .rb_map_app(map, notes = notes, host = host, verdicts = verdicts)
   .rb_tiles$served[[as.character(port)]] <- attr(map, "tables")
   .rb_maps[[as.character(port)]] <- tryCatch(
     httpuv::startServer(host, port, app),
@@ -1254,15 +1324,11 @@ rb_map_notes_add <- function(path, text, lon = NULL, lat = NULL, author = "analy
 # (a new note's id in `added`). Only for a page opened from this computer (its Host, against DNS rebinding); a write
 # only from the page itself (its header, which a page elsewhere may not send without the server's leave, and its Origin)
 .rb_map_notes_reply <- function(req, notes, hosts, reply, json) {
-  host <- tolower(sub(":[0-9]+$", "", .rb_or(req$HTTP_HOST, "")))
-  if (!host %in% hosts) {
-    return(reply(403L, "the notes are kept for a page opened from this computer"))
+  refused <- .rb_map_local_only(req, hosts, reply, "the notes", "a note")
+  if (!is.null(refused)) {
+    return(refused)
   }
   method <- req$REQUEST_METHOD
-  if (method != "GET" && (!identical(req$HTTP_X_RB_NOTES, "1") ||
-                            (!is.null(req$HTTP_ORIGIN) && !identical(req$HTTP_ORIGIN, paste0("http://", req$HTTP_HOST))))) {
-    return(reply(403L, "a note comes from the map's page"))
-  }
   answer <- function(added = NULL) {
     force(added) # a note added before the notes are read
     fc <- list(type = "FeatureCollection", features = .rb_notes_read(notes))
@@ -1306,6 +1372,199 @@ rb_map_notes_add <- function(path, text, lon = NULL, lat = NULL, author = "analy
         return(answer())
       }
       reply(405L, "GET /notes, POST /notes or DELETE /notes/<id>")
+    },
+    error = function(e) reply(500L, sub("\n.*", "", conditionMessage(e)))
+  )
+}
+
+# A request for what the server keeps (the notes, the verdicts), checked: only from a page opened from this computer
+# (its Host, against DNS rebinding), and a write only from the page itself (its header, which a page elsewhere may not
+# send without the server's leave, and its Origin). NULL, or the refusal
+.rb_map_local_only <- function(req, hosts, reply, what, one) {
+  host <- tolower(sub(":[0-9]+$", "", .rb_or(req$HTTP_HOST, "")))
+  if (!host %in% hosts) {
+    return(reply(403L, sprintf("%s are kept for a page opened from this computer", what)))
+  }
+  if (req$REQUEST_METHOD != "GET" && (!identical(req$HTTP_X_RB_NOTES, "1") ||
+                                        (!is.null(req$HTTP_ORIGIN) &&
+                                           !identical(req$HTTP_ORIGIN, paste0("http://", req$HTTP_HOST))))) {
+    return(reply(403L, sprintf("%s comes from the map's page", one)))
+  }
+  NULL
+}
+
+#' Verdicts given on a served map
+#'
+#' A map served with `rb_map_serve(verdicts = )` takes the reader's verdict on the features of a layer whose popup has
+#' a `verdict` ([rb_map_layer()]): a button for each option in a feature's popup, and a line of the reader's own where
+#' the verdict asks for one. Each answer is a row added to a `.csv` file, never a row changed: when, the layer, the
+#' feature (its value of the verdict's `field`), the option, the line, the feature's title, its place (the feature's
+#' own for a point, else where it was clicked) and the zoom. A later answer for the feature replaces the earlier, and
+#' an empty one withdraws it. The page draws a mark on each feature judged, in its option's colour. A review written
+#' down where it is made, and read back as data: what a map shows can be checked by hand, and the checks counted.
+#'
+#' @param path The verdicts' file (`.csv`).
+#' @param all `FALSE`, each feature's current verdict (the last answer, none where it was withdrawn); `TRUE`, every
+#'   answer given, in the order given.
+#' @return A data frame: `time` (UTC, as text), `layer`, `id`, `value`, `text`, `title`, `lon`, `lat`, `zoom`; no rows
+#'   when there is no file.
+#' @export
+#' @examples
+#' # a map whose harbours take a verdict each:
+#' # popup = list(click = "harbours-fill", title = "SI_HARB",
+#' #              verdict = list(field = "SI_HARB", text = TRUE,
+#' #                             options = list(list(value = "right", label = "right"),
+#' #                                            list(value = "wrong", label = "wrong"))))
+#' # rb_map_serve(m, verdicts = "harbour_verdicts.csv")
+#' f <- tempfile(fileext = ".csv")
+#' rb_map_verdicts(f) # none yet
+rb_map_verdicts <- function(path, all = FALSE) {
+  v <- .rb_verdicts_read(.rb_verdicts_path(path, folder = FALSE))
+  if (isTRUE(all) || !nrow(v)) {
+    return(v)
+  }
+  last <- !duplicated(paste(v$layer, v$id, sep = "\r"), fromLast = TRUE)
+  v <- v[last & nzchar(v$value), , drop = FALSE]
+  rownames(v) <- NULL
+  v
+}
+
+.rb_verdict_cols <- c("time", "layer", "id", "value", "text", "title", "lon", "lat", "zoom")
+
+# The verdicts' file: one path, a .csv file whose folder exists (when it is to be written)
+.rb_verdicts_path <- function(path, folder = TRUE) {
+  if (!is.character(path) || length(path) != 1 || is.na(path) || !grepl("[.]csv$", path, ignore.case = TRUE)) {
+    stop("The verdicts' file is one path to a .csv file.", call. = FALSE)
+  }
+  path <- normalizePath(path, mustWork = FALSE)
+  if (folder && !dir.exists(dirname(path))) {
+    stop(sprintf("The verdicts' folder %s does not exist.", dirname(path)), call. = FALSE)
+  }
+  path
+}
+
+# The verdicts as rows, none when there is no file; a file without the verdicts' columns stops whatever would read or
+# write it, so it is never overwritten
+.rb_verdicts_read <- function(path) {
+  empty <- as.data.frame(stats::setNames(replicate(length(.rb_verdict_cols), character(), simplify = FALSE),
+                                         .rb_verdict_cols), stringsAsFactors = FALSE)
+  num <- function(v) {
+    for (k in c("lon", "lat", "zoom")) v[[k]] <- suppressWarnings(as.numeric(v[[k]]))
+    v
+  }
+  if (!file.exists(path)) {
+    return(num(empty))
+  }
+  v <- tryCatch(utils::read.csv(path, colClasses = "character", na.strings = character(), encoding = "UTF-8",
+                                check.names = FALSE),
+                error = function(e) NULL)
+  if (!is.data.frame(v) || !identical(names(v), .rb_verdict_cols)) {
+    stop(sprintf("%s is not a verdicts file (a .csv with the columns %s): left as it is.", path,
+                 paste(.rb_verdict_cols, collapse = ", ")), call. = FALSE)
+  }
+  num(v)
+}
+
+# A verdict's fields checked against the layers that take one: NULL, or why it is refused
+.rb_verdicts_check <- function(n, specs) {
+  one <- function(x) is.character(x) && length(x) == 1 && !is.na(x)
+  one_num <- function(x) is.numeric(x) && length(x) == 1 && is.finite(x)
+  if (!one(n$layer) || is.null(specs[[n$layer]])) {
+    return(sprintf("`layer` is one of the layers that take a verdict: %s.", paste(names(specs), collapse = ", ")))
+  }
+  if (!(one(n$id) || one_num(n$id)) || !nzchar(as.character(n$id)) || nchar(as.character(n$id)) > 300) {
+    return("A verdict's `id` names its feature: a text of 1-300 characters.")
+  }
+  values <- vapply(specs[[n$layer]]$options, `[[`, "", "value")
+  if (!one(n$value) || !(n$value %in% c(values, ""))) {
+    return(sprintf("A verdict's `value` is one of %s, or empty to withdraw it.", paste(values, collapse = ", ")))
+  }
+  if (!is.null(n$text) && !(one(n$text) && nchar(n$text) <= 1000)) {
+    return("A verdict's `text` is at most 1,000 characters.")
+  }
+  if (!is.null(n$title) && !(one(n$title) && nchar(n$title) <= 300)) {
+    return("A verdict's `title` is at most 300 characters.")
+  }
+  if (!one_num(n$lon) || !one_num(n$lat) || abs(n$lon) > 180 || abs(n$lat) > 90) {
+    return("A verdict has its feature's place, `lon` and `lat` in degrees.")
+  }
+  if (!is.null(n$zoom) && !(one_num(n$zoom) && n$zoom >= 0 && n$zoom <= 24)) {
+    return("A verdict's `zoom` is a number from 0 to 24.")
+  }
+  NULL
+}
+
+# A verdict added, checked before: the file written beside itself and renamed over it
+.rb_verdicts_add <- function(path, n) {
+  v <- .rb_verdicts_read(path)
+  row <- data.frame(
+    time = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"), layer = n$layer, id = as.character(n$id),
+    value = n$value, text = trimws(.rb_or(n$text, "")), title = .rb_or(n$title, ""),
+    lon = round(n$lon, 6), lat = round(n$lat, 6), zoom = if (is.null(n$zoom)) NA_real_ else round(n$zoom, 2),
+    stringsAsFactors = FALSE
+  )
+  v <- rbind(v, row)
+  tmp <- paste0(path, ".tmp")
+  con <- file(tmp, open = "w", encoding = "UTF-8")
+  utils::write.csv(v, con, row.names = FALSE, na = "")
+  close(con)
+  if (!file.rename(tmp, path)) {
+    unlink(tmp)
+    stop(sprintf("The verdicts could not be written to %s.", path), call. = FALSE)
+  }
+  invisible(path)
+}
+
+# The layers of a map that take a verdict, by id: their verdicts' specs
+.rb_map_verdict_layers <- function(map) {
+  specs <- lapply(map$layers, function(l) l$config$popup$verdict)
+  names(specs) <- vapply(map$layers, function(l) l$config$id, "")
+  Filter(Negate(is.null), specs)
+}
+
+# The routes of the verdicts: GET /verdicts, POST /verdicts (given or withdrawn), each answered with the current ones
+.rb_map_verdicts_reply <- function(req, verdicts, specs, hosts, reply, json) {
+  refused <- .rb_map_local_only(req, hosts, reply, "the verdicts", "a verdict")
+  if (!is.null(refused)) {
+    return(refused)
+  }
+  answer <- function() {
+    v <- rb_map_verdicts(verdicts)
+    rows <- lapply(seq_len(nrow(v)), function(i) as.list(v[i, c("layer", "id", "value", "text", "lon", "lat", "time")]))
+    reply(200L, json(list(verdicts = rows)), "application/json; charset=utf-8", list(`Cache-Control` = "no-store"))
+  }
+  method <- req$REQUEST_METHOD
+  tryCatch(
+    {
+      if (req$PATH_INFO != "/verdicts") {
+        return(reply(404L, "no such route"))
+      }
+      if (method == "GET") {
+        return(answer())
+      }
+      if (method == "POST") {
+        if (suppressWarnings(as.numeric(.rb_or(req$CONTENT_LENGTH, "0"))) > 16384) {
+          return(reply(413L, "a verdict is at most 16 kB"))
+        }
+        b <- req$rook.input$read()
+        if (length(b) > 16384) {
+          return(reply(413L, "a verdict is at most 16 kB"))
+        }
+        b <- rawToChar(b)
+        Encoding(b) <- "UTF-8"
+        n <- tryCatch(jsonlite::fromJSON(b, simplifyVector = FALSE), error = function(e) NULL)
+        if (!is.list(n) || is.null(names(n))) {
+          return(reply(400L, "a verdict is a JSON object"))
+        }
+        why <- .rb_verdicts_check(n, specs)
+        if (!is.null(why)) {
+          return(reply(400L, why))
+        }
+        .rb_verdicts_read(verdicts) # a file broken by hand stops here, left as it is
+        .rb_verdicts_add(verdicts, n)
+        return(answer())
+      }
+      reply(405L, "GET /verdicts or POST /verdicts")
     },
     error = function(e) reply(500L, sub("\n.*", "", conditionMessage(e)))
   )
@@ -3991,10 +4250,14 @@ format.rb_map <- function(x, ...) {
 }
 
 # The app behind rb_map_serve(), a list with `call(req)` for httpuv: its routes in the header of this file
-.rb_map_app <- function(map, notes = NULL, host = "127.0.0.1") {
+.rb_map_app <- function(map, notes = NULL, host = "127.0.0.1", verdicts = NULL) {
   json <- .rb_map_json
   if (!is.null(notes)) {
     map$config$notes <- list(file = basename(notes))
+  }
+  specs <- .rb_map_verdict_layers(map)
+  if (!is.null(verdicts)) {
+    map$config$verdicts <- list(file = basename(verdicts))
   }
   hosts <- unique(tolower(c("localhost", "127.0.0.1", "[::1]", host)))
   config <- json(map$config)
@@ -4027,6 +4290,9 @@ format.rb_map <- function(x, ...) {
     path <- req$PATH_INFO
     if (!is.null(notes) && (path == "/notes" || startsWith(path, "/notes/"))) {
       return(.rb_map_notes_reply(req, notes, hosts, reply, json))
+    }
+    if (!is.null(verdicts) && path == "/verdicts") {
+      return(.rb_map_verdicts_reply(req, verdicts, specs, hosts, reply, json))
     }
     if (req$REQUEST_METHOD != "GET") {
       return(reply(405L, "GET only"))

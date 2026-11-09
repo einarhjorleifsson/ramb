@@ -76,6 +76,15 @@
                  box-shadow: 0 0 0 .5px #666; }
   #n-list li span { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   .note { width: min(300px, 70vw); }
+  /* a feature's verdict (rb_map_serve(verdicts = )): a button an option, the answer given filled in its colour */
+  .verdict { margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--line); }
+  .verdict .v-opts { display: flex; flex-wrap: wrap; gap: 4px; }
+  .verdict button { border: 1.5px solid var(--vc); background: #fff; color: #222; border-radius: 4px; padding: 2px 8px;
+                    font: inherit; font-size: 12px; cursor: pointer; }
+  .verdict button.on { background: var(--vc); color: #fff; }
+  .verdict button.v-clear { --vc: #888; padding: 2px 6px; }
+  .verdict input { width: 100%; box-sizing: border-box; margin-top: 5px; font: inherit; font-size: 12px; padding: 2px 4px; }
+  .verdict .v-msg { font-size: 11px; color: #666; min-height: 1em; margin-top: 2px; }
   .note .entry + .entry { border-top: 1px solid var(--line); margin-top: 5px; padding-top: 4px; }
   .note .who { color: var(--muted); font-size: 11px; display: flex; gap: 6px; }
   .note .who { padding-right: 14px; }   /* clear of the popup's close button */
@@ -187,7 +196,7 @@
 <script id="bundle" type="application/json">__BUNDLE__</script>
 <script>
 // The engine's version: rb_map_serve() sends its own in /meta, and a server older than the page is named as such
-const ENGINE = 3;
+const ENGINE = 4;
 // The engine's texts, in English; a config adds languages and the texts of its layers ({1}, {2} filled in here)
 const ENGINE_TEXTS = {
   menu: "Layers and filters", close: "Close", copyLink: "Copy a link to this view", copied: "link copied",
@@ -218,7 +227,9 @@ const ENGINE_TEXTS = {
   nFile: "Saved by the server to {1}.", nNone: "No notes yet.", nPlaceholder: "A note on this place",
   nReplyPlaceholder: "A reply", nSave: "Save", nReply: "Reply", nCancel: "Cancel", nDelete: "delete",
   nDeleteThread: "Delete note {1} and its replies?", nDeleteOne: "Delete this reply?", nOn: "On: {1}",
-  nFailed: "not saved: {1}", nReader: "you", nReplies: "{1} replies", nReply1: "1 reply"
+  nFailed: "not saved: {1}", nReader: "you", nReplies: "{1} replies", nReply1: "1 reply",
+  vClear: "Withdraw the verdict", vNote: "A line of your own (Enter saves it with the answer)", vSaved: "saved",
+  vFailed: "not saved: {1}"
 };
 let CONFIG;
 try { CONFIG = JSON.parse(document.getElementById("config").textContent); }
@@ -271,6 +282,7 @@ if (BUNDLE) maplibregl.addProtocol("bundle", async p => ({ data: fromBase64(awai
 // The notes (rb_map_serve(notes = )): only from a server that keeps them, never in a bundle. A thread's pin is red while
 // its last word is the reader's, blue once answered
 const NOTES = !BUNDLE && CONFIG.notes ? CONFIG.notes : null;
+const VERDICTS = !BUNDLE && CONFIG.verdicts ? CONFIG.verdicts : null;
 if (NOTES) SOURCES.add("rb-notes");
 const N_WAIT = "#d7301f", N_DONE = "#2c5d87";
 let noting = false, notes = [], notePopup = null, noteShown = null;   // placing a note; the notes; the thread shown
@@ -1092,6 +1104,7 @@ Promise.all([BUNDLE ? BUNDLE.meta : fetch("/meta").then(r => r.json()), styleLoa
   for (const l of OTHER) addLayer(l, meta);
   if (TP) timeSetup(q);
   if (NOTES) notesSetup();
+  if (VERDICTS) verdictsSetup();
   const base =BASEMAPS.find(b => b.id === q.get("base"));
   if (base && base !== BASEMAPS[0]) { document.querySelector(`#bases input[value="${base.id}"]`).checked = true; setBase(base.id); }
   addressRead = true;
@@ -1170,9 +1183,10 @@ function addLayer(l, meta) {
   const draw = () => {
     // elevations go under a grid, or under the base's labels; contours over both, under the labels
     const firstSymbol = () => map.getStyle().layers.find(x => x.type === "symbol" && !SOURCES.has(x.source))?.id;
-    // the notes' pins stay over every layer, one whose data come after them included
+    // the verdicts' marks and the notes' pins stay over every layer, one whose data come after them included
     const before = DEM.has(l.id) ? (G && map.getLayer(G.id) ? G.id : firstSymbol())
-                 : CONTOUR.has(l.id) ? firstSymbol() : map.getLayer("rb-notes-dot") ? "rb-notes-dot" : undefined;
+                 : CONTOUR.has(l.id) ? firstSymbol()
+                 : map.getLayer("rb-verdict-mark") ? "rb-verdict-mark" : map.getLayer("rb-notes-dot") ? "rb-notes-dot" : undefined;
     applyState(l);   // before the styles that read it
     for (const st of l.style) {
       const spec = { ...st, source: l.id };
@@ -1368,9 +1382,78 @@ function featureHtml(l, p, fields = true) {
 // A click on a feature: its title and fields. Registered top layer first, so the topmost feature under the click speaks
 function featurePopup(l, e) {
   popup?.remove();
+  const box = document.createElement("div");
+  box.innerHTML = featureHtml(l, e.features[0].properties);
+  if (VERDICTS && l.popup.verdict) box.append(verdictBlock(l, e.features[0], e.lngLat));
   popup = new maplibregl.Popup({ closeButton: false, maxWidth: l.popup.maxWidth ?? "300px" }).setLngLat(e.lngLat)
-    .setHTML(featureHtml(l, e.features[0].properties))
+    .setDOMContent(box)
     .addTo(map);
+}
+
+// The verdicts (rb_map_serve(verdicts = )): in a feature's popup a button for each of its layer's options, the answer
+// given filled in its colour; a click sends it, with the reader's line where the verdict asks for one, and the
+// feature's title and place (its own for a point, else where it was clicked). A mark in the answer's colour is drawn
+// on each feature judged. Asked for again when the page regains the focus, so an answer from another page shows
+let verdicts = new Map();
+const V_COLOURS = ["#1a9850", "#d73027"];
+function verdictKey(layer, id) { return `${layer}\r${id}`; }
+function verdictColour(l, value) {
+  const o = l.popup.verdict.options, i = o.findIndex(x => x.value === value);
+  return o[i]?.colour ?? V_COLOURS[i === 0 ? 0 : 1];
+}
+async function verdictsCall(method, body = null) {
+  const r = await fetch("/verdicts", { method, cache: "no-store", body: body ? JSON.stringify(body) : undefined,
+                                       headers: { "X-RB-Notes": "1", ...(body ? { "Content-Type": "application/json" } : {}) } });
+  const t = await r.text();
+  if (!r.ok) throw new Error(t || `HTTP ${r.status}`);
+  return JSON.parse(t);
+}
+function verdictsFrom(r) {
+  verdicts = new Map((r.verdicts ?? []).map(v => [verdictKey(v.layer, String(v.id)), v]));
+  map.getSource("rb-verdicts")?.setData({ type: "FeatureCollection", features: [...verdicts.values()]
+    .map(v => ({ v, l: OTHER.find(x => x.id === v.layer) }))
+    .filter(({ v, l }) => l?.popup?.verdict && Number.isFinite(v.lon) && Number.isFinite(v.lat))
+    .map(({ v, l }) => ({ type: "Feature", properties: { colour: verdictColour(l, v.value) },
+                          geometry: { type: "Point", coordinates: [v.lon, v.lat] } })) });
+}
+function verdictsLoad() { return verdictsCall("GET").then(verdictsFrom).catch(() => {}); }
+function verdictBlock(l, f, at) {
+  const v = l.popup.verdict, id = f.properties[v.field], div = document.createElement("div");
+  div.className = "verdict";
+  if (id === undefined || id === null || id === "") return div;      // a feature with no name takes no verdict
+  const pt = f.geometry?.type === "Point" ? f.geometry.coordinates : [at.lng, at.lat];
+  const now = () => verdicts.get(verdictKey(l.id, String(id)));
+  const draw = msg => {
+    const cur = now();
+    div.innerHTML = `<div class="v-opts">${v.options.map(o =>
+        `<button data-v="${esc(o.value)}" class="${cur?.value === o.value ? "on" : ""}" style="--vc:${verdictColour(l, o.value)}">` +
+        `${esc(tr(o.label))}</button>`).join("")}` +
+      `${cur ? `<button data-v="" class="v-clear" title="${esc(tr("vClear"))}">×</button>` : ""}</div>` +
+      (v.text ? `<input class="v-text" maxlength="1000" placeholder="${esc(tr("vNote"))}" value="${esc(cur?.text ?? "")}">` : "") +
+      `<div class="v-msg">${esc(msg ?? "")}</div>`;
+  };
+  const send = async value => {
+    const text = div.querySelector(".v-text")?.value ?? "";
+    try {
+      verdictsFrom(await verdictsCall("POST", { layer: l.id, id: String(id), value, text,
+                                                 title: String(f.properties[l.popup.title] ?? ""),
+                                                 lon: pt[0], lat: pt[1], zoom: map.getZoom() }));
+      draw(tr("vSaved"));
+    } catch (err) { div.querySelector(".v-msg").textContent = tr("vFailed", err.message); }
+  };
+  draw();
+  div.addEventListener("click", e => { const b = e.target.closest("button[data-v]"); if (b) send(b.dataset.v); });
+  div.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.classList.contains("v-text") && now()) send(now().value); });
+  return div;
+}
+function verdictsSetup() {
+  map.addSource("rb-verdicts", { type: "geojson", data: EMPTY });
+  map.addLayer({ id: "rb-verdict-mark", type: "circle", source: "rb-verdicts",
+                 paint: { "circle-radius": 4.5, "circle-color": ["get", "colour"], "circle-stroke-color": "#fff",
+                          "circle-stroke-width": 1.5 } },
+               map.getLayer("rb-notes-dot") ? "rb-notes-dot" : undefined);
+  verdictsLoad();
+  window.addEventListener("focus", verdictsLoad);
 }
 // The notes' clicks first (rb_map_serve(notes = )): a click that places a note, or on a note's pin, opens no feature
 if (NOTES) map.on("click", noteClick);
