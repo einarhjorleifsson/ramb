@@ -21,7 +21,7 @@
 #                                    given or withdrawn (POST), answered with them; as the notes, from this computer
 #                                    and the page only
 
-.rb_map_engine <- 6L # the page's ENGINE: changed together
+.rb_map_engine <- 7L # the page's ENGINE: changed together
 .rb_maps <- new.env(parent = emptyenv()) # the servers rb_map_serve() started, by port
 .rb_tiles <- new.env(parent = emptyenv())
 .rb_tiles$served <- list() # by port, the temporary tables (connection and name) of the map served there
@@ -108,18 +108,26 @@
 #'   opens, a list of any of `method` (`"standard"`, `"basic"`, `"combined"`, `"igor"` or `"multidirectional"`, three
 #'   lights 45 degrees apart), `direction` (the light's azimuth, 0-359), `altitude` (0-90), `exaggeration` (the
 #'   intensity, 0-1), `opacity` (0-100: the alpha of the shading's colours, which has no opacity of its own),
-#'   `shadow` and `highlight` (colours as `"#rrggbb"`); MapLibre's own defaults for those not given. `TRUE` takes
+#'   `shadow` and `highlight` (colours as `"#rrggbb"`); MapLibre's own defaults for those not given, but an intensity of
+#'   0.6 and a dark blue-grey shadow, `"#1b2a3a"`, as fishycode's bathymetry map settled on. `TRUE` takes
 #'   every default. Each control applies as it moves, and goes into the page's address as `<id>_method`, `<id>_dir`,
 #'   `<id>_alt`, `<id>_ex`, `<id>_op`, `<id>_shadow` and `<id>_light`. With `fit`, a function of the view's box as a
 #'   colour's `fit` returning a list with `exaggeration` (0-1), the intensity can follow the view (`auto`, `TRUE` by
-#'   default; `<id>_auto` in the address, which leaves out `<id>_ex` while it follows), until it is set by hand.
+#'   default; `<id>_auto` in the address, which leaves out `<id>_ex` while it follows), until it is set by hand. Tiles
+#'   from [rb_map_tiles_dem()] carry a fit, taken when none is given.
 #' @param colour For a dem layer with a `color-relief` style: its values in colour, with their controls in the page, a
-#'   list of any of `of` (`"depth"`, the elevation's negative, or `"elevation"`; what is 0 or less is clear), `palette`
-#'   (an id of the map's palettes; the map's own when not given), `floor` and `cap` (the values the palette's ends
-#'   stand at, 1-10,000), `scale` (`"log"` or `"linear"`), `mode` (`"ramp"` or `"bands"`), `bands` (the bands' breaks,
-#'   rising), `cuts` (the cuts offered, 0 for none) and `cut` (one of them: values under it are drawn as `cut_as`,
-#'   `"clear"` or `"grey"`), `opacity` (0-100). Defaults: depth, floor 10, cap 2,000, log, a ramp, bands at 10, 20, 50,
-#'   100, 200, 500, 1,000 and 2,000, cuts 0, 10, 20 and 50, no cut, clear, 100. `TRUE` takes them all. Each control
+#'   list of any of `of` (`"depth"`, the elevation's negative, or `"elevation"`; what is 0 or less is clear),
+#'   `palettes` (the ids of the palettes its control offers, of the map's palettes) and `palette` (the one it opens
+#'   on), `floor` and `cap` (the values the palette's ends stand at, 1-10,000, set on one slider of two handles),
+#'   `scale` (`"log"`, `"linear"` or, with a fit, `"equal"`), `mode` (`"ramp"` or `"bands"`), `bands` (the bands'
+#'   breaks, rising), `cuts` (the cuts offered, 0 for none) and `cut` (one of them: values under it are drawn as
+#'   `cut_as`, `"clear"` or `"grey"`), `opacity` (0-100). Defaults: depth; for a depth the seven looks of
+#'   [rb_map_palettes()] (quiet, seabed, deep, chart, grey, drained and haxby), for an elevation every palette of the
+#'   map; the first of them; floor 10, cap 2,000; in equal shares with a fit, else log; a ramp; bands at 10, 20, 50,
+#'   100, 200, 500, 1,000 and 2,000; cuts 0, 10, 20 and 50, no cut, clear; 100. `TRUE` takes them all. Another
+#'   palette, such as `"magma"`, is offered by naming it, `colour = list(palettes = c("quiet", "magma"))` (a `palette`
+#'   not among `palettes` is put first in them), and one of your own by adding it to the map's,
+#'   `rb_map(palettes = c(rb_map_palettes(), list(list(id = "mine", label = "mine", colors = <colours>))))`. Each control
 #'   applies as it moves, and goes into the page's address as `<id>_pal`, `<id>_lo`, `<id>_hi`, `<id>_scale`,
 #'   `<id>_mode`, `<id>_cut`, `<id>_cutas` and `<id>_cop`. With `fit`, a function of the view's `west`, `south`, `east`
 #'   and `north` returning the floor and the cap for the values there (or `NULL` where there are none; or a list of
@@ -127,14 +135,16 @@
 #'   equal share of the values in view between the floor and the cap), the page has a
 #'   "Fit to view" button, answered by the server at `/fit/<id>?bbox=w,s,e,n`, and follows the view: it fits again each
 #'   time the map settles, until a floor or cap is set by hand (`auto`, `TRUE` by default; `<id>_auto` in the address,
-#'   where the floor and cap are left out while it follows).
+#'   where the floor and cap are left out while it follows). Tiles from [rb_map_tiles_dem()] carry a fit, taken when
+#'   none is given.
 #' @param contours For a contour layer: `thresholds`, a named list by zoom of the minor and the major interval from that
 #'   zoom on (`list("6" = c(500, 1000), "9" = c(50, 200))`; a major line has `level` 1), and `multiplier`, by which the
 #'   elevations are multiplied before the lines are drawn (-1 for depths, 1 by default). With `fit`, a function as a
 #'   colour's `fit` returning a list with the `quantiles` of the values in view, the lines can follow the view (`auto`,
 #'   `TRUE` by default; `<id>_auto` in the address): about a dozen levels at round values near the view's quantiles,
 #'   so the lines fall where the area is, drawn at a step of 1, 2 or 5 times a power of ten that makes some 40 of the
-#'   view's range; unticked, the `thresholds` and the style's filters.
+#'   view's range; unticked, the `thresholds` and the style's filters. Tiles from [rb_map_tiles_dem()] carry a fit,
+#'   taken when none is given (by depth with a negative `multiplier`, else by elevation).
 #' @param state For a vector, geojson, dem or contour layer: values in the reader's hands that its `style` reads, in
 #'   a filter, a paint or a layout property, as `list("global-state", "<id>_<name>")` (MapLibre's global state), such
 #'   as whether a style is drawn, its colour, or a shift of the zoom it starts at. A list of controls, each with `id`
@@ -342,7 +352,13 @@ rb_map_layer <- function(
   } else if (!is.null(encoding) || !is.null(tile_size) || !is.null(bounds)) {
     stop("`encoding`, `tile_size` and `bounds` are for a dem or contour layer.", call. = FALSE)
   }
-  fit <- NULL # a colour's or the contours' fit: kept on the server, the page told only that there is one
+  fit <- NULL # a colour's, the shading's or the contours' fit: kept on the server, the page told only that there is one
+  # the tiles' own fit (rb_map_tiles_dem()), taken where the layer gives none, by a depth's values or an elevation's
+  tiles_fit <- if (kind %in% c("dem", "contour") && is.function(attr(tiles, "fit"))) attr(tiles, "fit")
+  from_tiles <- function(of) {
+    force(of)
+    function(west, south, east, north) tiles_fit(west, south, east, north, of = of)
+  }
   if (kind == "contour") {
     if (is.list(contours) && !is.null(contours$fit)) {
       if (!is.function(contours$fit)) {
@@ -352,37 +368,43 @@ rb_map_layer <- function(
       contours$fit <- NULL
     }
     contours <- .rb_map_contours(contours)
+    if (is.null(fit) && !is.null(tiles_fit)) {
+      fit <- from_tiles(if (contours$multiplier < 0) "depth" else "elevation")
+    }
     if (!is.null(fit)) {
       contours$fit <- TRUE
     }
   } else if (!is.null(contours)) {
     stop("`contours` is for a contour layer.", call. = FALSE)
   }
-  if (!is.null(shade)) {
-    if (is.list(shade) && !is.null(shade$fit)) {
-      if (!is.function(shade$fit)) {
-        stop("`shade$fit` is a function of west, south, east and north.", call. = FALSE)
-      }
-      fit <- shade$fit
-      shade$fit <- NULL
+  if (is.list(shade) && !is.null(shade$fit)) {
+    if (!is.function(shade$fit)) {
+      stop("`shade$fit` is a function of west, south, east and north.", call. = FALSE)
     }
+    fit <- shade$fit
+    shade$fit <- NULL
+  }
+  if (is.list(colour) && !is.null(colour$fit)) {
+    if (!is.function(colour$fit)) {
+      stop("`colour$fit` is a function of west, south, east and north.", call. = FALSE)
+    }
+    if (!is.null(fit)) {
+      stop("A layer has one fit: give the colour's and the shading's to two layers on the same tiles.", call. = FALSE)
+    }
+    fit <- colour$fit
+    colour$fit <- NULL
+  }
+  if (is.null(fit) && !is.null(tiles_fit) && kind == "dem" && (!is.null(shade) || !is.null(colour))) {
+    fit <- from_tiles(if (is.list(colour) && identical(colour$of, "elevation")) "elevation" else "depth")
+  }
+  if (!is.null(shade)) {
     shade <- .rb_map_shade(shade, kind, style)
     if (!is.null(fit)) {
       shade$fit <- TRUE
     }
   }
   if (!is.null(colour)) {
-    if (is.list(colour) && !is.null(colour$fit)) {
-      if (!is.function(colour$fit)) {
-        stop("`colour$fit` is a function of west, south, east and north.", call. = FALSE)
-      }
-      if (!is.null(fit)) {
-        stop("A layer has one fit: give the colour's and the shading's to two layers on the same tiles.", call. = FALSE)
-      }
-      fit <- colour$fit
-      colour$fit <- NULL
-    }
-    colour <- .rb_map_colour(colour, kind, style)
+    colour <- .rb_map_colour(colour, kind, style, fitted = !is.null(fit))
     if (!is.null(fit)) {
       colour$fit <- TRUE
     } else if (identical(colour$scale, "equal")) {
@@ -613,7 +635,10 @@ rb_map_group <- function(id, title = id, layers, open = TRUE) {
 #'   from the data's groups. A choice goes into the address under the field's name, several values separated by
 #'   commas, and nothing is fetched again.
 #' @param palette The grid's palette when the page opens: an `id` of `palettes`.
-#' @param palettes,basemaps The palettes and base maps to choose from: [rb_map_palettes()], [rb_map_basemaps()].
+#' @param palettes,basemaps The palettes and base maps to choose from: [rb_map_palettes()], [rb_map_basemaps()]. The
+#'   grid offers the palettes for its use (`use` holding `"grid"`, or no `use`); a dem layer's colour offers its own
+#'   list (`colour$palettes` of [rb_map_layer()]), by default the seven looks for a depth. A palette given again under
+#'   an id replaces the earlier in its place, so `c(rb_map_palettes(), mine)` may redefine one.
 #' @return An `rb_map`: `config` (what the page is sent) and `layers`.
 #' @export
 #' @examples
@@ -671,14 +696,53 @@ rb_map <- function(
     stop(sprintf("A layer is named as another layer's state, %s: rename one.", paste(clash, collapse = ", ")),
          call. = FALSE)
   }
-  if (!is.null(palette) && !palette %in% vapply(palettes, `[[`, "", "id")) {
+  # a palette given again under an id replaces the earlier, in its place: c(rb_map_palettes(), mine) redefines a look
+  palette_ids <- vapply(palettes, `[[`, "", "id")
+  if (anyDuplicated(palette_ids)) {
+    last <- !duplicated(palette_ids, fromLast = TRUE)
+    palettes <- lapply(which(!duplicated(palette_ids)), function(i) {
+      palettes[[which(palette_ids == palette_ids[i] & last)]]
+    })
+    palette_ids <- vapply(palettes, `[[`, "", "id")
+  }
+  if (!is.null(palette) && !palette %in% palette_ids) {
     stop("`palette` is an id of `palettes`.", call. = FALSE)
   }
-  for (l in layers) {
-    p <- l$config$colour$palette
-    if (!is.null(p) && !p %in% vapply(palettes, `[[`, "", "id")) {
-      stop(sprintf("Layer %s: its colour's `palette` is an id of `palettes`.", l$config$id), call. = FALSE)
+  # a dem layer's colours: the palettes its control offers, by default the depth's looks (every palette for an
+  # elevation), with the one it opens on first if it is not among them
+  for (i in seq_along(layers)) {
+    co <- layers[[i]]$config$colour
+    if (is.null(co)) {
+      next
     }
+    offered <- unlist(co$palettes)
+    if (is.null(offered)) {
+      offered <- if (identical(co$of, "elevation")) palette_ids else intersect(.rb_map_depth_looks, palette_ids)
+      if (!length(offered)) {
+        offered <- palette_ids
+      }
+    }
+    if (!is.null(co[["palette"]]) && !co[["palette"]] %in% offered) {
+      offered <- c(co[["palette"]], offered)
+    }
+    if (length(bad <- setdiff(offered, palette_ids))) {
+      stop(
+        sprintf(
+          "Layer %s: its colour's palette%s %s %s not among the map's `palettes`: add %s to rb_map(palettes = ).",
+          layers[[i]]$config$id,
+          if (length(bad) > 1) "s" else "",
+          paste(bad, collapse = ", "),
+          if (length(bad) > 1) "are" else "is",
+          if (length(bad) > 1) "them" else "it"
+        ),
+        call. = FALSE
+      )
+    }
+    co$palettes <- as.list(offered)
+    if (is.null(co[["palette"]])) {
+      co[["palette"]] <- offered[[1]]
+    }
+    layers[[i]]$config$colour <- co
   }
   if (!is.null(choose)) {
     one <- function(f) {
@@ -770,6 +834,9 @@ rb_map <- function(
     basemaps = basemaps,
     palettes = lapply(palettes, function(p) {
       p$colors <- as.list(p$colors)
+      if (!is.null(p$use)) {
+        p$use <- as.list(p$use)
+      }
       p
     }),
     texts = texts
@@ -782,21 +849,36 @@ rb_map <- function(
 
 #' The palettes and base maps of a map
 #'
-#' `rb_map_palettes()`: twelve palettes of nine colours, light (low) to dark (high). The first ten change in lightness
-#' steadily (OKLab), from viridisLite (magma, viridis, plasma) and tidyterra (deep, scotland, population_dens,
-#' etopo1_bathy, colombia_bathy, gn_yl, blues); the last two, terrain palettes, rise and fall in lightness.
+#' `rb_map_palettes()`: eighteen palettes, each marked by `use` for the grid's colours, a depth's or both.
+#'
+#' * For the grid, twelve of nine colours, light (low) to dark (high). The first ten change in lightness steadily
+#'   (OKLab), from viridisLite (magma, viridis, plasma) and tidyterra (deep, scotland, population_dens, etopo1_bathy,
+#'   colombia_bathy, gn_yl, blues); the last two, terrain palettes, rise and fall in lightness.
+#' * For a depth, seven looks, the colours a dem layer offers by default (its `colour$palettes`), shallow to deep:
+#'   `quiet`, pale cyan-grey to mid grey-blue, low in chroma and stopping at mid lightness, so the relief's shading
+#'   reads through it (the default); `seabed`, sand shading into mud seen through the water, a look and not a
+#'   substrate; `deep`, the grid's too; `chart`, the nautical chart's convention, the shallows blue and the deeps near
+#'   white; `grey`, a ground for other layers, pulling no overlay's hue; and two daring ones, `drained`, the seabed as
+#'   if the sea were drained (GMT's globe hypsometry, the deeps green lowland, the banks brown hills), and `haxby`,
+#'   marine geology's multibeam palette, orange shallows through green to deep blue. Each ends at least 0.03 in OKLab
+#'   from the light base maps' land, so the shallowest water does not read as land. They were made for fishycode's
+#'   bathymetry map (2026-11-09): quiet, seabed, chart and grey designed in OKLCh, drained and haxby resampled from
+#'   tidyterra to 17 stops at even steps in OKLab, their whitest stops dropped.
+#'
 #' `rb_map_basemaps()`: Carto's Positron, Voyager and Dark Matter (vector), Esri's ocean and satellite tiles
 #' (raster), and none.
 #'
-#' @return A list, each element with `id` and `label`: a palette with `source` and `colors`; a base map with `style`
-#'   (a MapLibre style's address) or `tiles` (a raster address) with `maxzoom` and `attribution`, or neither (none).
+#' @return A list, each element with `id` and `label`: a palette with `source`, `colors` and `use` (`"grid"`,
+#'   `"depth"` or both); a base map with `style` (a MapLibre style's address) or `tiles` (a raster address) with
+#'   `maxzoom` and `attribution`, or neither (none). A palette of your own, given to [rb_map()]'s `palettes`, needs
+#'   `id`, `label` and `colors`; with no `use` it is offered to the grid.
 #' @export
 #' @examples
 #' vapply(rb_map_palettes(), `[[`, "", "id")
 #' vapply(rb_map_basemaps(), `[[`, "", "id")
 rb_map_palettes <- function() {
-  p <- function(id, source, colors, label = id) {
-    list(id = id, label = label, source = source, colors = colors)
+  p <- function(id, source, colors, label = id, use = "grid") {
+    list(id = id, label = label, source = source, colors = colors, use = use)
   }
   list(
     p(
@@ -857,7 +939,8 @@ rb_map_palettes <- function() {
         "#215DA7",
         "#243493",
         "#081C57"
-      )
+      ),
+      use = c("grid", "depth")
     ),
     p(
       "scotland",
@@ -980,9 +1063,60 @@ rb_map_palettes <- function() {
         "#FF0000"
       ),
       label = "bcyr (lightness not steady)"
+    ),
+    # a depth's looks (fishycode's bathymetry map, 2026-11-09)
+    p(
+      "quiet",
+      "OKLCh",
+      c("#DFECEE", "#CBE0E3", "#B9D2D8", "#A9C4CE", "#99B7C4", "#8AA9BB", "#7D9BB0", "#708DA7", "#657E9E"),
+      use = "depth"
+    ),
+    p(
+      "seabed",
+      "OKLCh, sand and mud through water",
+      c("#D8CAA2", "#B2BEA9", "#9AADA1", "#869D96", "#738C8B", "#5F7D81", "#4B6D78", "#3C5C6D", "#2E4C61"),
+      label = "seabed (sand to deep water)",
+      use = "depth"
+    ),
+    p(
+      "chart",
+      "OKLCh, after the nautical chart",
+      c("#60A7D6", "#75B0D9", "#87B9DC", "#99C2DF", "#AACBE3", "#BAD4E7", "#CADDEB", "#D8E6F1", "#E5F0F8"),
+      label = "chart (shallow blue, deep white)",
+      use = "depth"
+    ),
+    p(
+      "grey",
+      "OKLCh",
+      c("#E7EAED", "#D8DBDE", "#CACDD0", "#BBBFC2", "#ADB1B5", "#9FA3A7", "#91959A", "#84888C", "#767B80"),
+      label = "grey (under other layers)",
+      use = "depth"
+    ),
+    p(
+      "drained",
+      "tidyterra gmt_globe_hypso, resampled",
+      c(
+        "#CCCCCC", "#C1ACAC", "#B68C8C", "#AC6B6B", "#9F5E45", "#9B6F05", "#A48F18", "#C7A224", "#E6B858",
+        "#F7D09A", "#E7E0AA", "#B0E28D", "#6DD474", "#35BF5B", "#37A041", "#378325", "#336600"
+      ),
+      label = "drained (the seabed as land)",
+      use = "depth"
+    ),
+    p(
+      "haxby",
+      "tidyterra grass haxby, resampled",
+      c(
+        "#FFBA85", "#FFA44C", "#FFB955", "#F9D568", "#ECEF7F", "#C6FDA4", "#99F0AC", "#7EECD0", "#6BEBFD",
+        "#52D7FF", "#37C1FF", "#2CAAFE", "#2893FD", "#287BF6", "#2865DE", "#274FC6", "#2539AF"
+      ),
+      label = "haxby (multibeam)",
+      use = "depth"
     )
   )
 }
+
+# The looks a dem layer's colour offers by default, in this order, the first opening (rb_map_palettes())
+.rb_map_depth_looks <- c("quiet", "seabed", "deep", "chart", "grey", "drained", "haxby")
 
 #' @rdname rb_map_palettes
 #' @export
@@ -2372,7 +2506,8 @@ rb_map_tiles_table <- function(
   state
 }
 
-# A dem layer's relief controls: MapLibre's hillshade defaults for what is not given, each value checked
+# A dem layer's relief controls: MapLibre's hillshade defaults for what is not given, but for the intensity and the
+# shadow's colour, as fishycode's bathymetry map settled on (0.6 and a dark blue-grey); each value checked
 .rb_map_shade <- function(shade, kind, style) {
   if (kind != "dem" || !any(vapply(style, function(s) identical(s$type, "hillshade"), logical(1)))) {
     stop("`shade` is for a dem layer with a `hillshade` style.", call. = FALSE)
@@ -2383,8 +2518,8 @@ rb_map_tiles_table <- function(
     stop(sprintf("`shade` is TRUE or a list of any of %s.", paste(known, collapse = ", ")), call. = FALSE)
   }
   v <- utils::modifyList(
-    list(method = "standard", direction = 335, altitude = 45, exaggeration = 0.5, opacity = 100,
-         shadow = "#000000", highlight = "#ffffff", auto = TRUE),
+    list(method = "standard", direction = 335, altitude = 45, exaggeration = 0.6, opacity = 100,
+         shadow = "#1b2a3a", highlight = "#ffffff", auto = TRUE),
     given
   )
   num <- function(x, lo, hi) is.numeric(x) && length(x) == 1 && !is.na(x) && x >= lo && x <= hi
@@ -2440,27 +2575,36 @@ rb_map_tiles_table <- function(
 }
 
 # A dem layer's colour controls: the defaults for what is not given, each value checked
-.rb_map_colour <- function(colour, kind, style) {
+.rb_map_colour <- function(colour, kind, style, fitted = FALSE) {
   if (kind != "dem" || !any(vapply(style, function(s) identical(s$type, "color-relief"), logical(1)))) {
     stop("`colour` is for a dem layer with a `color-relief` style.", call. = FALSE)
   }
   given <- if (isTRUE(colour)) list() else colour
-  known <- c("of", "palette", "floor", "cap", "scale", "mode", "bands", "cuts", "cut", "cut_as", "opacity", "auto")
+  known <- c("of", "palette", "palettes", "floor", "cap", "scale", "mode", "bands", "cuts", "cut", "cut_as",
+             "opacity", "auto")
   if (!is.list(given) || (length(given) && (is.null(names(given)) || !all(names(given) %in% known)))) {
     stop(sprintf("`colour` is TRUE or a list of any of %s.", paste(known, collapse = ", ")), call. = FALSE)
   }
+  p <- given$palettes
+  if (!is.null(p) && !(is.character(p) && length(p) > 0 && !anyNA(p) && !anyDuplicated(p))) {
+    stop("`colour$palettes` is the ids of the palettes the colour offers, each once.", call. = FALSE)
+  }
+  # in equal shares where the view's quantiles are at hand (a fit), as fishycode's bathymetry map settled on
   v <- utils::modifyList(
-    list(of = "depth", palette = NULL, floor = 10, cap = 2000, scale = "log", mode = "ramp",
+    list(of = "depth", palette = NULL, floor = 10, cap = 2000, scale = if (fitted) "equal" else "log", mode = "ramp",
          bands = c(10, 20, 50, 100, 200, 500, 1000, 2000), cuts = c(0, 10, 20, 50), cut = 0, cut_as = "clear",
          opacity = 100, auto = TRUE),
     given
   )
+  if (!is.null(v$palettes)) {
+    v$palettes <- as.list(v$palettes)
+  }
   one_of <- function(x, ok) is.character(x) && length(x) == 1 && x %in% ok
   num <- function(x, lo, hi) is.numeric(x) && length(x) == 1 && !is.na(x) && x >= lo && x <= hi
   rising <- function(x) is.numeric(x) && length(x) > 0 && !anyNA(x) && all(x >= 0) && !is.unsorted(x, strictly = TRUE)
   ok <- c(
     of = one_of(v$of, c("depth", "elevation")),
-    palette = is.null(v$palette) || (is.character(v$palette) && length(v$palette) == 1),
+    palette = is.null(v[["palette"]]) || (is.character(v[["palette"]]) && length(v[["palette"]]) == 1),
     floor = num(v$floor, 1, 10000),
     cap = num(v$cap, 1, 10000),
     scale = one_of(v$scale, c("log", "linear", "equal")),
@@ -2568,7 +2712,12 @@ rb_map_tiles_mbtiles <- function(file) {
 #'   tile wholly outside the grid is level at `nodata`, for maplibre-contour draws no lines in a tile one of whose eight
 #'   neighbours is missing. With the attributes [rb_map_layer()] takes for a dem or contour layer
 #'   (`format`, `encoding`, `tile_size`, `bounds`, `minzoom` and `maxzoom`), `source`, by which [rb_map_bundle()] writes
-#'   the tiles of layers on one grid once, `table`, the temporary table's name, and `count`, the number of cells.
+#'   the tiles of layers on one grid once, `table`, the temporary table's name, `count`, the number of cells, and
+#'   `fit`, a function of a view's `west`, `south`, `east` and `north` (and `of`, `"depth"` or `"elevation"`), which a
+#'   layer on these tiles takes when it is given no fit of its own: the floor and the cap at the 2nd and 98th
+#'   percentiles of the values in view, 25 quantiles between them, and the shading's intensity, 2 over the 90th
+#'   percentile of the slope in degrees, between 0.3 and 1 (the rules [rb_map_bundle()] applies in the browser). So
+#'   the colours, the contours and the shading follow the view with no more code.
 #' @seealso [rb_map_tiles_mbtiles()], for tiles already made; [rb_map_layer()]
 #' @export
 #' @examples
@@ -2845,6 +2994,57 @@ rb_map_tiles_dem <- function(
     con,
     sprintf("SELECT count(*)::INTEGER AS n FROM %s", nm)
   )$n
+  # A view's fit, by the rules rb_map_bundle() applies in the browser (its `fit`), which fishycode's bathymetry map
+  # settled on: the floor and the cap at the 2nd and 98th percentiles of the values in the box, to two figures, with 25
+  # quantiles from one to the other (colours in equal shares, contour levels); the values a depth's (the elevation's
+  # negative, the sea only) or an elevation's (above sea level); and the shading's intensity, 2 over the 90th
+  # percentile of the slope there in degrees, kept between 0.3 and 1. From at most about a million cells, every k-th
+  attr(tile, "fit") <- function(west, south, east, north, of = c("depth", "elevation")) {
+    of <- match.arg(of)
+    i0 <- max(0, floor((west - lon0) / dx))
+    i1 <- min(nx - 1, ceiling((east - lon0) / dx))
+    j0 <- max(0, floor((south - lat0) / dy))
+    j1 <- min(ny - 1, ceiling((north - lat0) / dy))
+    if (i0 > i1 || j0 > j1) {
+      return(NULL)
+    }
+    k <- max(1L, as.integer(ceiling(sqrt((i1 - i0 + 1) * (j1 - j0 + 1) / 1e6))))
+    v <- if (of == "depth") "-e" else "e"
+    where <- sprintf(
+      "ix BETWEEN %.0f AND %.0f AND iy BETWEEN %.0f AND %.0f AND ix %% %d = 0 AND iy %% %d = 0 AND %s > 0",
+      i0, i1, j0, j1, k, k, v
+    )
+    run <- function(sql) {
+      tryCatch(DBI::dbGetQuery(con, sql), error = function(err) {
+        if (DBI::dbExistsTable(con, nm)) {
+          stop(err)
+        }
+        make()
+        DBI::dbGetQuery(con, sql)
+      })
+    }
+    probs <- seq(0.02, 0.98, length.out = 25)
+    q <- run(sprintf(
+      "SELECT quantile_cont(%s, [%s]) AS q FROM %s WHERE %s",
+      v, paste(probs, collapse = ", "), nm, where
+    ))$q[[1]]
+    out <- list()
+    if (length(q) && !anyNA(q)) {
+      lo <- max(1, signif(q[1], 2))
+      out <- list(floor = lo, cap = min(10000, max(lo * 1.5, signif(q[length(q)], 2))), quantiles = round(q, 1))
+    }
+    mid <- (lat0 + (j0 + j1) / 2 * dy) * pi / 180
+    p90 <- run(sprintf(
+      "WITH c AS (SELECT ix, iy, e FROM %1$s WHERE %2$s)
+       SELECT quantile_cont(degrees(atan(sqrt(pow((r.e - c.e) / %3$.6f, 2) + pow((u.e - c.e) / %4$.6f, 2)))), 0.9) AS p
+       FROM c JOIN c r ON r.ix = c.ix + %5$d AND r.iy = c.iy JOIN c u ON u.ix = c.ix AND u.iy = c.iy + %5$d",
+      nm, where, k * dx * 111320 * cos(mid), k * dy * 110574, k
+    ))$p
+    if (length(p90) && !is.na(p90) && p90 > 0) {
+      out$exaggeration <- min(1, max(0.3, 2 / p90))
+    }
+    if (length(out)) out else NULL
+  }
   .rb_hold(tile)
 }
 

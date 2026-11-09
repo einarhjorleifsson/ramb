@@ -10,13 +10,31 @@ rb_map_palettes()
 rb_map_basemaps()
 }
 \value{
-A list, each element with \code{id} and \code{label}: a palette with \code{source} and \code{colors}; a base map with \code{style}
-(a MapLibre style's address) or \code{tiles} (a raster address) with \code{maxzoom} and \code{attribution}, or neither (none).
+A list, each element with \code{id} and \code{label}: a palette with \code{source}, \code{colors} and \code{use} (\code{"grid"},
+\code{"depth"} or both); a base map with \code{style} (a MapLibre style's address) or \code{tiles} (a raster address) with
+\code{maxzoom} and \code{attribution}, or neither (none). A palette of your own, given to \code{\link[=rb_map]{rb_map()}}'s \code{palettes}, needs
+\code{id}, \code{label} and \code{colors}; with no \code{use} it is offered to the grid.
 }
 \description{
-\code{rb_map_palettes()}: twelve palettes of nine colours, light (low) to dark (high). The first ten change in lightness
-steadily (OKLab), from viridisLite (magma, viridis, plasma) and tidyterra (deep, scotland, population_dens,
-etopo1_bathy, colombia_bathy, gn_yl, blues); the last two, terrain palettes, rise and fall in lightness.
+\code{rb_map_palettes()}: eighteen palettes, each marked by \code{use} for the grid's colours, a depth's or both.
+}
+\details{
+\itemize{
+\item For the grid, twelve of nine colours, light (low) to dark (high). The first ten change in lightness steadily
+(OKLab), from viridisLite (magma, viridis, plasma) and tidyterra (deep, scotland, population_dens, etopo1_bathy,
+colombia_bathy, gn_yl, blues); the last two, terrain palettes, rise and fall in lightness.
+\item For a depth, seven looks, the colours a dem layer offers by default (its \code{colour$palettes}), shallow to deep:
+\code{quiet}, pale cyan-grey to mid grey-blue, low in chroma and stopping at mid lightness, so the relief's shading
+reads through it (the default); \code{seabed}, sand shading into mud seen through the water, a look and not a
+substrate; \code{deep}, the grid's too; \code{chart}, the nautical chart's convention, the shallows blue and the deeps near
+white; \code{grey}, a ground for other layers, pulling no overlay's hue; and two daring ones, \code{drained}, the seabed as
+if the sea were drained (GMT's globe hypsometry, the deeps green lowland, the banks brown hills), and \code{haxby},
+marine geology's multibeam palette, orange shallows through green to deep blue. Each ends at least 0.03 in OKLab
+from the light base maps' land, so the shallowest water does not read as land. They were made for fishycode's
+bathymetry map (2026-11-09): quiet, seabed, chart and grey designed in OKLCh, drained and haxby resampled from
+tidyterra to 17 stops at even steps in OKLab, their whitest stops dropped.
+}
+
 \code{rb_map_basemaps()}: Carto's Positron, Voyager and Dark Matter (vector), Esri's ocean and satellite tiles
 (raster), and none.
 }

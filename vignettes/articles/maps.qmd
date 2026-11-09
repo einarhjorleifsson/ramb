@@ -498,28 +498,8 @@ relief_tiles <- rb_map_tiles_dem(rb_read_example("dansk_relief"))
 attributes(relief_tiles)[c("bounds", "maxzoom", "count")]
 ```
 
-The depth's colours can follow the view: as the map settles, the page
-asks a function of the view's box for the floor and the cap of the
-palette. Given the depths' quantiles in view too, it offers colours in
-equal shares, each colour as many cells as the next. This one reads the
-grid, held in R:
-
-```{r}
-grid <- dplyr::collect(rb_read_example("dansk_relief"))
-depth_in_view <- function(west, south, east, north) {
-  inside <- grid$lon >= west & grid$lon <= east & grid$lat >= south & grid$lat <= north
-  d <- -grid$elevation[inside & grid$elevation < 0]
-  if (length(d) < 25) {
-    return(NULL) # no sea in view
-  }
-  q <- unname(stats::quantile(d, seq(0.02, 0.98, length.out = 25)))
-  floor <- max(1, signif(q[1], 2))
-  list(floor = floor, cap = max(floor * 1.5, signif(q[25], 2)), quantiles = q)
-}
-depth_in_view(10.5, 56, 12.9, 57.8)[c("floor", "cap")] # the Kattegat
-```
-
-The three layers, all on the same tiles:
+The three layers, all on the same tiles. `colour = TRUE` and
+`shade = TRUE` take every default:
 
 ```{r}
 depth <- rb_map_layer(
@@ -527,7 +507,7 @@ depth <- rb_map_layer(
   label = "Depth",
   tiles = relief_tiles,
   style = list(list(id = "depth-colour", type = "color-relief")),
-  colour = list(palette = "deep", scale = "equal", fit = depth_in_view)
+  colour = TRUE
 )
 
 relief <- rb_map_layer(
@@ -535,7 +515,7 @@ relief <- rb_map_layer(
   label = "Relief",
   tiles = relief_tiles,
   style = list(list(id = "relief-shade", type = "hillshade")),
-  shade = list(exaggeration = 0.6, shadow = "#1b2a3a")
+  shade = TRUE
 )
 
 major <- list("==", list("get", "level"), 1)
@@ -546,26 +526,26 @@ contours <- rb_map_layer(
   tiles = relief_tiles,
   contours = list(
     multiplier = -1, # depths, not elevations
-    thresholds = list("5" = c(50, 100), "8" = c(10, 50), "10" = c(5, 25)),
-    fit = depth_in_view
+    thresholds = list("5" = c(50, 100), "8" = c(10, 50), "10" = c(5, 25))
   ),
   style = list(
     list(
       id = "contours-line", type = "line", "source-layer" = "contours",
       filter = at_sea,
-      paint = list("line-color" = "#1b2a3a", "line-width" = list("case", major, 1.2, 0.5))
+      paint = list("line-color" = "rgba(27,42,58,0.55)", "line-width" = list("case", major, 1.2, 0.5))
     ),
     list(
       id = "contours-label", type = "symbol", "source-layer" = "contours",
       filter = list("all", at_sea, major),
       layout = list(
-        "symbol-placement" = "line", "text-size" = 13,
+        "symbol-placement" = "line", "text-size" = 13, "text-max-angle" = 180, "symbol-spacing" = 200,
         "text-field" = list("concat", list("to-string", list("get", "ele")), " m")
       ),
-      paint = list("text-color" = "#1b2a3a")
+      paint = list("text-color" = "#1b2a3a", "text-halo-color" = "#ffffff", "text-halo-width" = 1.5)
     )
   ),
   legend = list(
+    list(swatch = list(fill = "rgba(27,42,58,0.55)"), label = "contour"),
     list(swatch = list(fill = "#1b2a3a"), label = "contour, labelled")
   )
 )
@@ -583,12 +563,43 @@ m_seabed <- rb_map(
 rb_map_serve(m_seabed)
 ```
 
-Each layer's controls appear under it when it is ticked: the depth's
-palette, floor and cap, scale (log, linear or equal shares), ramp or
-bands, a cut of the shallow end and opacity, with *Fit to view*; the
-relief's light, its direction and height, intensity, opacity and
-colours; and whether the contours follow the view. Some things to
-know:
+The map opens as the bathymetry map settled on, the depth quiet so the
+relief carries the reading:
+
+- **The depth in `quiet`**, pale cyan-grey to mid grey-blue, low in
+  colour and stopping at mid lightness, so the shading reads through it.
+  The control offers seven looks: quiet; `seabed`, sand shading into mud
+  seen through the water (a look, not a map of the bottom); `deep`;
+  `chart`, the nautical chart's shallow blue and deep white; `grey`, a
+  ground for other layers; and two daring ones, `drained`, the seabed as
+  land, and `haxby`, marine geology's multibeam palette.
+- **In equal shares**: each colour covers as many cells in view as the
+  next. On a log scale a wide plateau at 40-75 m takes one or two of the
+  palette's steps and reads as one tone; in equal shares its channels
+  and rim stand apart.
+- **The floor and the cap follow the view**, one slider of two handles:
+  as the map settles they are set at the 2nd and 98th percentiles of the
+  depths in view, until you move a handle (*Fit to view* sets them
+  again).
+- **The relief shaded** with a dark blue-grey shadow, its intensity
+  following the view: stronger where the seabed is gentle.
+- **The contours at round depths** near the view's quantiles, about a
+  dozen of them.
+
+The view's floor, cap, quantiles and intensity come from the tiles
+themselves: `rb_map_tiles_dem()` reads them from the grid in DuckDB
+(`attr(relief_tiles, "fit")`), and a layer on its tiles takes them
+unless it is given a `fit` of its own:
+
+```{r}
+attr(relief_tiles, "fit")(10.5, 56, 12.9, 57.8)[c("floor", "cap", "exaggeration")] # the Kattegat
+```
+
+Each layer's other controls appear under it when it is ticked: the
+depth's scale (log, linear or equal shares), ramp or bands, a cut of the
+shallow end and opacity; the relief's light, its direction and height,
+intensity, opacity and colours; and whether the contours follow the
+view. Some things to know:
 
 - **One grid, three layers.** The relief, the colours and the contours
   are drawn in the page from the same images, and a bundle writes them
@@ -597,20 +608,12 @@ know:
   left clear, so the land shows the base map. Turn `colour$of` to
   `"elevation"` for a map of the land. The relief is shaded on land and
   sea alike.
-- **Equal shares part a plateau.** On a log scale a wide plateau at
-  40-75 m takes one or two of the palette's steps and reads as one tone;
-  in equal shares its channels and rim stand apart. `scale = "equal"`
-  needs a `fit` that gives the quantiles.
 - **The contours' `ele` is the depth** (`multiplier = -1`), and `level`
   is 1 on the major lines. The `thresholds` are the minor and major
-  intervals from each zoom on; while the contours follow the view
-  (the `fit`), the page puts about a dozen levels at round depths near
-  the view's quantiles instead. The lines are made in the browser by
+  intervals from each zoom on, used when the contours do not follow the
+  view. The lines are made in the browser by
   [maplibre-contour](https://github.com/onthegomap/maplibre-contour),
   loaded only for a map that has a contour layer.
-- **The shading's intensity can follow the view too:**
-  `shade = list(fit = f)`, with `f` returning
-  `list(exaggeration = )`, from 0 to 1.
 - **Your own grid.** Any regular grid of longitude, latitude and
   elevation will do, as a data frame or a lazy table. marmap reads
   NOAA's:
@@ -625,7 +628,9 @@ know:
   cell from their centres; `data-raw/dansk_relief.R` in ramb's
   repository places them at their centres. A tile file you already have
   (MBTiles) is read with
-  [rb_map_tiles_mbtiles()](../reference/rb_map_tiles_mbtiles.html).
+  [rb_map_tiles_mbtiles()](../reference/rb_map_tiles_mbtiles.html); its
+  tiles carry no fit, so the colours open on a log scale unless you give
+  one (see *Other colours*, below).
 - **Tiles are made as the page asks**, in a tenth of a second or two.
   Beyond `maxzoom` the map draws the deepest tiles enlarged.
 - **The grid's edge reads as a coast.** Beyond its edge the tiles hold
@@ -897,6 +902,58 @@ Some things to know:
 - **The deeper the zooms, the bigger the folder.** Past `maxzoom` the
   map draws the deepest tiles enlarged.
 - No notes and no verdicts: they need the server.
+
+## Other colours
+
+A depth offers its seven looks and no more, and the grid ramb's twelve
+palettes for effort and counts (`rb_map_palettes()`, each marked for
+its `use`). To offer another of ramb's palettes for a depth, name it in
+the layer's list; a `palette` given that is not in the list is put first
+in it:
+
+```{r}
+#| eval: false
+colour = list(palettes = c("quiet", "magma"))   # offered beside quiet
+colour = list(palette = "magma")                 # opens on magma, before the seven looks
+```
+
+A palette of your own joins the map's palettes first, then the layer's
+list:
+
+```{r}
+rainbow9 <- list(id = "rainbow", label = "rainbow", colors = grDevices::rainbow(9))
+loud <- rb_map_layer(
+  "depth", "dem",
+  label = "Depth",
+  tiles = relief_tiles,
+  style = list(list(id = "depth-colour", type = "color-relief")),
+  colour = list(palette = "rainbow")
+)
+m_loud <- rb_map(
+  rb_map_group("seabed", "Seabed", list(loud)),
+  palettes = c(rb_map_palettes(), list(rainbow9)),
+  view = list(center = c(10.5, 56.8), zoom = 6)
+)
+```
+
+A palette given again under an id replaces ramb's in its place, so
+`c(rb_map_palettes(), list(my_quiet))` changes `quiet` itself. Bear in
+mind that a palette whose lightness does not rise steadily, such as a
+rainbow, draws edges the seabed does not have: its bands of yellow and
+cyan read as steps.
+
+A layer on tiles from a file (`rb_map_tiles_mbtiles()`) has no fit from
+its tiles. Give it one, a function of the view's `west`, `south`, `east`
+and `north` returning the `floor`, the `cap` and the `quantiles` of the
+values in view (or `NULL` where there are none), and its colours follow
+the view in equal shares as above:
+
+```{r}
+#| eval: false
+colour = list(fit = function(west, south, east, north) {
+  list(floor = 5, cap = 200, quantiles = c(5, 20, 40, 80, 200))
+})
+```
 
 ## When a layer stays empty
 

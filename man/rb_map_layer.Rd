@@ -113,19 +113,27 @@ sets them); else \code{"terrarium"} and 512. The image format (\code{"png"} or \
 opens, a list of any of \code{method} (\code{"standard"}, \code{"basic"}, \code{"combined"}, \code{"igor"} or \code{"multidirectional"}, three
 lights 45 degrees apart), \code{direction} (the light's azimuth, 0-359), \code{altitude} (0-90), \code{exaggeration} (the
 intensity, 0-1), \code{opacity} (0-100: the alpha of the shading's colours, which has no opacity of its own),
-\code{shadow} and \code{highlight} (colours as \code{"#rrggbb"}); MapLibre's own defaults for those not given. \code{TRUE} takes
+\code{shadow} and \code{highlight} (colours as \code{"#rrggbb"}); MapLibre's own defaults for those not given, but an intensity of
+0.6 and a dark blue-grey shadow, \code{"#1b2a3a"}, as fishycode's bathymetry map settled on. \code{TRUE} takes
 every default. Each control applies as it moves, and goes into the page's address as \verb{<id>_method}, \verb{<id>_dir},
 \verb{<id>_alt}, \verb{<id>_ex}, \verb{<id>_op}, \verb{<id>_shadow} and \verb{<id>_light}. With \code{fit}, a function of the view's box as a
 colour's \code{fit} returning a list with \code{exaggeration} (0-1), the intensity can follow the view (\code{auto}, \code{TRUE} by
-default; \verb{<id>_auto} in the address, which leaves out \verb{<id>_ex} while it follows), until it is set by hand.}
+default; \verb{<id>_auto} in the address, which leaves out \verb{<id>_ex} while it follows), until it is set by hand. Tiles
+from \code{\link[=rb_map_tiles_dem]{rb_map_tiles_dem()}} carry a fit, taken when none is given.}
 
 \item{colour}{For a dem layer with a \code{color-relief} style: its values in colour, with their controls in the page, a
-list of any of \code{of} (\code{"depth"}, the elevation's negative, or \code{"elevation"}; what is 0 or less is clear), \code{palette}
-(an id of the map's palettes; the map's own when not given), \code{floor} and \code{cap} (the values the palette's ends
-stand at, 1-10,000), \code{scale} (\code{"log"} or \code{"linear"}), \code{mode} (\code{"ramp"} or \code{"bands"}), \code{bands} (the bands' breaks,
-rising), \code{cuts} (the cuts offered, 0 for none) and \code{cut} (one of them: values under it are drawn as \code{cut_as},
-\code{"clear"} or \code{"grey"}), \code{opacity} (0-100). Defaults: depth, floor 10, cap 2,000, log, a ramp, bands at 10, 20, 50,
-100, 200, 500, 1,000 and 2,000, cuts 0, 10, 20 and 50, no cut, clear, 100. \code{TRUE} takes them all. Each control
+list of any of \code{of} (\code{"depth"}, the elevation's negative, or \code{"elevation"}; what is 0 or less is clear),
+\code{palettes} (the ids of the palettes its control offers, of the map's palettes) and \code{palette} (the one it opens
+on), \code{floor} and \code{cap} (the values the palette's ends stand at, 1-10,000, set on one slider of two handles),
+\code{scale} (\code{"log"}, \code{"linear"} or, with a fit, \code{"equal"}), \code{mode} (\code{"ramp"} or \code{"bands"}), \code{bands} (the bands'
+breaks, rising), \code{cuts} (the cuts offered, 0 for none) and \code{cut} (one of them: values under it are drawn as
+\code{cut_as}, \code{"clear"} or \code{"grey"}), \code{opacity} (0-100). Defaults: depth; for a depth the seven looks of
+\code{\link[=rb_map_palettes]{rb_map_palettes()}} (quiet, seabed, deep, chart, grey, drained and haxby), for an elevation every palette of the
+map; the first of them; floor 10, cap 2,000; in equal shares with a fit, else log; a ramp; bands at 10, 20, 50,
+100, 200, 500, 1,000 and 2,000; cuts 0, 10, 20 and 50, no cut, clear; 100. \code{TRUE} takes them all. Another
+palette, such as \code{"magma"}, is offered by naming it, \code{colour = list(palettes = c("quiet", "magma"))} (a \code{palette}
+not among \code{palettes} is put first in them), and one of your own by adding it to the map's,
+\verb{rb_map(palettes = c(rb_map_palettes(), list(list(id = "mine", label = "mine", colors = <colours>))))}. Each control
 applies as it moves, and goes into the page's address as \verb{<id>_pal}, \verb{<id>_lo}, \verb{<id>_hi}, \verb{<id>_scale},
 \verb{<id>_mode}, \verb{<id>_cut}, \verb{<id>_cutas} and \verb{<id>_cop}. With \code{fit}, a function of the view's \code{west}, \code{south}, \code{east}
 and \code{north} returning the floor and the cap for the values there (or \code{NULL} where there are none; or a list of
@@ -133,7 +141,8 @@ and \code{north} returning the floor and the cap for the values there (or \code{
 equal share of the values in view between the floor and the cap), the page has a
 "Fit to view" button, answered by the server at \verb{/fit/<id>?bbox=w,s,e,n}, and follows the view: it fits again each
 time the map settles, until a floor or cap is set by hand (\code{auto}, \code{TRUE} by default; \verb{<id>_auto} in the address,
-where the floor and cap are left out while it follows).}
+where the floor and cap are left out while it follows). Tiles from \code{\link[=rb_map_tiles_dem]{rb_map_tiles_dem()}} carry a fit, taken when
+none is given.}
 
 \item{contours}{For a contour layer: \code{thresholds}, a named list by zoom of the minor and the major interval from that
 zoom on (\code{list("6" = c(500, 1000), "9" = c(50, 200))}; a major line has \code{level} 1), and \code{multiplier}, by which the
@@ -141,7 +150,8 @@ elevations are multiplied before the lines are drawn (-1 for depths, 1 by defaul
 colour's \code{fit} returning a list with the \code{quantiles} of the values in view, the lines can follow the view (\code{auto},
 \code{TRUE} by default; \verb{<id>_auto} in the address): about a dozen levels at round values near the view's quantiles,
 so the lines fall where the area is, drawn at a step of 1, 2 or 5 times a power of ten that makes some 40 of the
-view's range; unticked, the \code{thresholds} and the style's filters.}
+view's range; unticked, the \code{thresholds} and the style's filters. Tiles from \code{\link[=rb_map_tiles_dem]{rb_map_tiles_dem()}} carry a fit,
+taken when none is given (by depth with a negative \code{multiplier}, else by elevation).}
 
 \item{state}{For a vector, geojson, dem or contour layer: values in the reader's hands that its \code{style} reads, in
 a filter, a paint or a layout property, as \code{list("global-state", "<id>_<name>")} (MapLibre's global state), such

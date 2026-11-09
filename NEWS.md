@@ -1,3 +1,26 @@
+# ramb 2026.11.09.4
+
+A depth opens as fishycode's bathymetry map settled on (2026-11-09), at the maintainer's word: "the default ~6 colour
+scales we built today / yesterday as the default depth colour pics", "default other than the colour scale should also
+be what we already settled on", "only allow for ~6 defaults".
+
+- `rb_map_palettes()` has the bathymetry map's six looks for a depth, beside ramb's twelve: `quiet` (pale cyan-grey to
+  mid grey-blue, low in chroma, so the relief reads through it), `seabed`, `chart`, `grey`, `drained` and `haxby`. Each
+  palette is marked by `use`, `"grid"`, `"depth"` or both (`deep`). The grid offers the palettes for its use, as before.
+- A dem layer's colour offers its own list, `colour$palettes`: by default the seven looks (the six and `deep`), opening
+  on `quiet`; for an elevation every palette. Another is offered by naming it (`colour = list(palettes = c("quiet",
+  "magma"))`; a `palette` outside the list is put first in it), one of your own by adding it to the map's palettes
+  first. A palette given again under an id in `rb_map(palettes = )` replaces the earlier in its place. Before, the
+  colour offered every palette of the map and opened on the grid's.
+- Tiles from `rb_map_tiles_dem()` carry a view's `fit`, computed in DuckDB from the grid by the rules
+  `rb_map_bundle()` applies in the browser: the floor and the cap at the 2nd and 98th percentiles of the depths (or
+  elevations) in view, 25 quantiles between them, and the shading's intensity, 2 over the 90th percentile of the slope,
+  between 0.3 and 1. A dem or contour layer on them takes it when given no fit: the colours open in equal shares and
+  follow the view, the shading's intensity and the contours' levels follow it too, with no code.
+- The shading opens at an intensity of 0.6 with a dark blue-grey shadow, `"#1b2a3a"`, not MapLibre's 0.5 and black.
+- The floor and the cap are one slider of two handles, for the grid and for a depth: neither passes the other, the span
+  between them filled, their values under it. The page's engine is 7.
+
 # ramb 2026.11.09.3
 
 - `rb_map_tiles_dem()`: elevation tiles for a dem or contour layer made from a regular grid of elevations (a data

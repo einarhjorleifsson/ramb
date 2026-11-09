@@ -47,6 +47,22 @@
   .row label.auto { width: auto; margin-left: 10px; display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
   .years select { flex: 1; }
   .range .val { width: 54px; text-align: right; font-variant-numeric: tabular-nums; }
+  /* the floor and the cap: two handles on one track, the span between them filled */
+  .dual { position: relative; flex: 1; min-width: 0; height: 22px; }
+  .dual::before { content: ""; position: absolute; left: 7px; right: 7px; top: 9px; height: 4px; border-radius: 2px; background: #c8ccd0; }
+  .dual .span { position: absolute; top: 9px; height: 4px; border-radius: 2px; background: #5b7fa3; }
+  .dual input[type=range] { position: absolute; left: 0; top: 0; width: 100%; height: 22px; margin: 0; padding: 0;
+                            background: none; pointer-events: none; -webkit-appearance: none; appearance: none; }
+  .dual input[type=range]::-webkit-slider-runnable-track { height: 22px; background: none; }
+  .dual input[type=range]::-moz-range-track { background: none; }
+  .dual input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; pointer-events: auto; width: 14px;
+                                                  height: 14px; margin-top: 4px; border-radius: 50%; background: #fff;
+                                                  border: 2px solid #2c5d87; box-sizing: border-box; cursor: pointer; }
+  .dual input[type=range]::-moz-range-thumb { pointer-events: auto; width: 14px; height: 14px; border-radius: 50%;
+                                              background: #fff; border: 2px solid #2c5d87; box-sizing: border-box; cursor: pointer; }
+  .dual input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px rgba(44, 93, 135, .35); }
+  .dual input[type=range]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px rgba(44, 93, 135, .35); }
+  .dual-vals { display: flex; justify-content: space-between; margin: -4px 0 4px 80px; font-variant-numeric: tabular-nums; }
   button { font: inherit; padding: 2px 8px; }
   .legend { margin-top: 8px; }
   .bar { height: 10px; border-radius: 2px; }
@@ -190,8 +206,8 @@
       <option value="even" data-t="sEven"></option>
       <option value="equal" data-t="sEqual"></option>
     </select></div>
-  <div class="row range"><label for="lo" data-t="floor"></label><input id="lo" type="range" min="-4" max="5" step="any"><span class="val" id="loval"></span></div>
-  <div class="row range"><label for="hi" data-t="cap"></label><input id="hi" type="range" min="-4" max="5" step="any"><span class="val" id="hival"></span></div>
+  <div class="row range"><label for="lo"><span data-t="floor"></span> – <span data-t="cap"></span></label><div class="dual"><i class="span"></i><input id="lo" type="range" min="-4" max="5" step="any"><input id="hi" type="range" min="-4" max="5" step="any"></div></div>
+  <div class="dual-vals"><span id="loval"></span><span id="hival"></span></div>
   <div class="row range"><label for="opacity" data-t="opacity"></label><input id="opacity" type="range" min="0" max="100" step="1"><span class="val" id="opval"></span></div>
   <div class="row"><button id="fit" data-t="fit" data-tt="fitTip"></button></div>
   <div class="legend" data-tt="legendTip">
@@ -201,7 +217,7 @@
 <script id="bundle" type="application/json">__BUNDLE__</script>
 <script>
 // The engine's version: rb_map_serve() sends its own in /meta, and a server older than the page is named as such
-const ENGINE = 6;
+const ENGINE = 7;
 // The engine's texts, in English; a config adds languages and the texts of its layers ({1}, {2} filled in here)
 const ENGINE_TEXTS = {
   menu: "Layers and filters", close: "Close", copyLink: "Copy a link to this view", copied: "link copied",
@@ -245,6 +261,27 @@ catch (err) {
 }
 // the engine's texts, then the base maps' labels (key b_<id>), then the config's texts over both
 const PALETTES = CONFIG.palettes, BASEMAPS = CONFIG.basemaps;
+// the grid offers the palettes for its use (or with no use given); a dem layer's colour its own list (colour.palettes)
+const GRID_PALETTES = PALETTES.filter(p => !p.use || p.use.includes("grid")).length
+  ? PALETTES.filter(p => !p.use || p.use.includes("grid")) : PALETTES;
+const layerPalettes = l => (l.colour?.palettes ?? PALETTES.map(p => p.id)).map(id => PALETTES.find(p => p.id === id)).filter(Boolean);
+// Two range inputs on one track (.dual), the floor's and the cap's: neither handle passes the other, the span between
+// them is filled, and the floor's lies on top where both stand at the high end, so it can be drawn back. Returns the
+// drawing, for values set by code
+function dualTrack(lo, hi) {
+  const span = lo.parentElement.querySelector(".span");
+  const draw = () => {
+    const mn = +lo.min, mx = +lo.max, f = v => (Math.min(mx, Math.max(mn, v)) - mn) / (mx - mn || 1);
+    const a = f(+lo.value), b = f(+hi.value);
+    span.style.left = `calc(7px + (100% - 14px) * ${Math.min(a, b)})`;
+    span.style.width = `calc((100% - 14px) * ${Math.abs(b - a)})`;
+    lo.style.zIndex = a > 0.5 ? 2 : "";
+  };
+  lo.addEventListener("input", () => { if (+lo.value > +hi.value) lo.value = hi.value; draw(); });
+  hi.addEventListener("input", () => { if (+hi.value < +lo.value) hi.value = lo.value; draw(); });
+  return draw;
+}
+const duals = {};   // the drawing of each pair, by its floor's input id
 const T = {};
 const addText = (k, v) => { T[k] = { ...T[k], ...(typeof v === "string" ? { en: v } : v) }; };
 for (const [k, v] of Object.entries(ENGINE_TEXTS)) addText(k, v);
@@ -632,7 +669,7 @@ function readShade(l, q) {
 // MapLibre's colour relief interpolates between stops, so bands are pairs of stops a centimetre apart
 const CLEAR = "rgba(0,0,0,0)", GREY = "rgba(150,150,150,0.75)", EPS = 0.01;
 const COLOUR_KEYS = ["pal", "lo", "hi", "scale", "mode", "cut", "cutas", "op"];
-const colourDefaults = l => ({ pal: l.colour.palette ?? CONFIG.palette ?? PALETTES[0].id, lo: l.colour.floor,
+const colourDefaults = l => ({ pal: l.colour.palette ?? layerPalettes(l)[0]?.id ?? PALETTES[0].id, lo: l.colour.floor,
                                hi: l.colour.cap, scale: l.colour.scale, mode: l.colour.mode, cut: l.colour.cut,
                                cutas: l.colour.cut_as, op: l.colour.opacity });
 function colourHtml(l) {
@@ -642,8 +679,12 @@ function colourHtml(l) {
                                  `${raw ? esc(text) : ""}</option>`).join("") + "</select></div>";
   const slider = (k, t, lo, hi, step, v) => `<div class="row range"><label for="${id(k)}" data-t="${t}"></label><input id="${id(k)}" ` +
     `type="range" min="${lo}" max="${hi}" step="${step}" value="${v}"><span class="val" id="${id(k)}val"></span></div>`;
-  return `<div class="when-on">` + sel("pal", "colours", PALETTES.map(p => [p.id, p.label ?? p.id, true])) +
-    slider("lo", "floor", 0, 4, "any", Math.log10(d.lo)) + slider("hi", "cap", 0, 4, "any", Math.log10(d.hi)) +
+  // the floor and the cap on one track of two handles, their values under it
+  const dual = `<div class="row range"><label for="${id("lo")}"><span data-t="floor"></span> – <span data-t="cap"></span></label>` +
+    `<div class="dual"><i class="span"></i><input id="${id("lo")}" type="range" min="0" max="4" step="any" value="${Math.log10(d.lo)}">` +
+    `<input id="${id("hi")}" type="range" min="0" max="4" step="any" value="${Math.log10(d.hi)}"></div></div>` +
+    `<div class="dual-vals"><span id="${id("loval")}"></span><span id="${id("hival")}"></span></div>`;
+  return `<div class="when-on">` + sel("pal", "colours", layerPalettes(l).map(p => [p.id, p.label ?? p.id, true])) + dual +
     sel("scale", "cScale", [["log", "cLog"], ["linear", "cLinear"], ...(l.colour.fit ? [["equal", "cEqual"]] : [])]) +
     sel("mode", "cMode", [["ramp", "cRamp"], ["bands", "cBands"]]) +
     sel("cut", "cCut", l.colour.cuts.map(c => c > 0 ? [c, `${c} m`, true] : [c, "cNone"])) +
@@ -716,6 +757,7 @@ function applyColour(l) {
   const dm = x => { const r = +x.toPrecision(2); return r >= 10 ? Math.round(r).toLocaleString(loc()) : fmt(r); };
   const m = x => `${dm(x)} m`, id = k => `${l.id}-c${k}`;
   $(id("loval")).textContent = m(v.lo); $(id("hival")).textContent = m(v.hi); $(id("opval")).textContent = v.op + " %";
+  duals[id("lo")]?.();
   $(id("bar")).hidden = v.mode === "bands"; $(id("bands")).hidden = v.mode !== "bands";
   $(id("bar")).style.background = `linear-gradient(to right, ${cols.join(",")})`;
   $(id("lolab")).textContent = v.mode === "bands" ? "" : "≤ " + m(Math.min(v.lo, v.hi));
@@ -782,7 +824,7 @@ async function followContours(l) {
 }
 function readColour(l, q) {
   const k = x => `${l.id}_${x}`, set = (x, v) => { $(`${l.id}-c${x}`).value = v; };
-  if (PALETTES.some(p => p.id === q.get(k("pal")))) set("pal", q.get(k("pal")));
+  if (layerPalettes(l).some(p => p.id === q.get(k("pal")))) set("pal", q.get(k("pal")));
   for (const x of ["lo", "hi"]) { const v = +q.get(k(x)); if (q.get(k(x)) && v >= 1 && v <= 10000) set(x, Math.log10(v)); }
   for (const [x, ok] of [["scale", ["log", "linear", ...(l.colour.fit ? ["equal"] : [])]], ["mode", ["ramp", "bands"]], ["cutas", ["clear", "grey"]]])
     if (ok.includes(q.get(k(x)))) set(x, q.get(k(x)));
@@ -806,8 +848,12 @@ function layerRow(l) {
     box.innerHTML = (l.filters ?? []).map(filterRow).join("");
     box.append($("grid-colour").content.cloneNode(true));
     row.append(box);
+    duals.lo = dualTrack(box.querySelector("#lo"), box.querySelector("#hi"));
   }
-  if (l.colour) row.insertAdjacentHTML("beforeend", colourHtml(l));
+  if (l.colour) {
+    row.insertAdjacentHTML("beforeend", colourHtml(l));
+    duals[`${l.id}-clo`] = dualTrack(row.querySelector(`#${l.id}-clo`), row.querySelector(`#${l.id}-chi`));
+  }
   if (l.contours?.fit) row.insertAdjacentHTML("beforeend", `<div class="when-on"><div class="row"><label class="auto">` +
     `<input type="checkbox" id="${l.id}-kauto"${l.contours.auto === false ? "" : " checked"}><span data-t="kAuto" data-tt="kAutoTip"></span></label></div></div>`);
   if (l.shade) row.insertAdjacentHTML("beforeend", shadeHtml(l));
@@ -892,7 +938,7 @@ function tileUrl() {
   return GRID ? `bundle-grid://${G.id}/{z}/{x}/{y}?${q}` : `${location.origin}/tiles/${G.id}/{z}/{x}/{y}.pbf?${q}`;
 }
 
-const colors = () => (PALETTES.find(p => p.id === $("palette").value) ?? PALETTES[0]).colors;
+const colors = () => (PALETTES.find(p => p.id === $("palette").value) ?? GRID_PALETTES[0]).colors;
 
 // The colour stops, as [log10 value, colour]: evenly spaced between floor and cap, or at the quantiles of the cells in
 // view that lie between them, so that each colour covers an equal share of those cells
@@ -943,6 +989,7 @@ function colorExpr() {
 
 function paint() {
   if (!G) return;
+  duals.lo?.();
   $("loval").textContent = fmt(10 ** +$("lo").value);
   $("hival").textContent = fmt(10 ** +$("hi").value);
   $("lolab").textContent = "≤ " + fmt(10 ** +$("lo").value);
@@ -988,7 +1035,7 @@ map.addControl(new maplibregl.ScaleControl(), "bottom-right");
 // the style's load event, caught once: map.loaded() is false again while any tile loads, so it cannot tell
 const styleLoaded = new Promise(resolve => map.once("load", resolve));
 
-if (G) for (const p of PALETTES) $("palette").append(new Option(`${p.label}${p.source ? " · " + p.source : ""}`, p.id));
+if (G) for (const p of GRID_PALETTES) $("palette").append(new Option(`${p.label}${p.source ? " · " + p.source : ""}`, p.id));
 if (G && CONFIG.palette) $("palette").value = CONFIG.palette;
 for (const b of BASEMAPS)
   $("bases").insertAdjacentHTML("beforeend",
@@ -1132,7 +1179,7 @@ function addressNow() {
       } else if (f.type === "metric") put("metric", metric(), G.metrics[0].field);
       else put(f.id, $(f.id).value, f.default ?? f.options?.[0]?.value ?? "");
     }
-    put("palette", $("palette").value, CONFIG.palette ?? PALETTES[0].id);
+    put("palette", $("palette").value, CONFIG.palette ?? GRID_PALETTES[0].id);
     put("stretch", $("stretch").value, "even");
     if (userColour) { q.set("floor", +(10 ** +$("lo").value).toPrecision(3)); q.set("cap", +(10 ** +$("hi").value).toPrecision(3)); }
     put("opacity", $("opacity").value, String(G.opacity ?? 85));

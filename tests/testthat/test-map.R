@@ -196,7 +196,7 @@ test_that("the config keeps one-element arrays as arrays", {
   expect_match(j, '"about":["about1"]', fixed = TRUE)
   expect_match(j, '"text-field":["zoom"]', fixed = TRUE)
   expect_match(j, '"filter":["==",["get","k"],"v"]', fixed = TRUE)
-  expect_length(m$config$palettes, 12)
+  expect_length(m$config$palettes, 18) # twelve for the grid, seven looks for a depth, deep in both
   expect_equal(
     vapply(m$config$basemaps, `[[`, "", "id"),
     c("light", "voyager", "dark", "ocean", "satellite", "none")
@@ -998,16 +998,58 @@ test_that("elevation tiles from a grid: Terrarium images that decode to the grid
   expect_equal(ok$status, 200L)
   expect_identical(ok$body, tiles(z, tx, ty))
   expect_identical(get(app, sprintf("/tiles/relief/%d/0/0.png", z))$body, tiles(z, 0, 0))
+
+  # the tiles' fit: the view's floor and cap at its 2nd and 98th percentiles, 25 quantiles between, the shading's
+  # intensity from the slope; a depth's values (the sea), or an elevation's (the land), none where there are none
+  d <- expand.grid(lon = seq(10, 10.4, by = 0.01), lat = seq(56, 56.3, by = 0.01))
+  d$elevation <- -(1 + 100 * (d$lon - 10) / 0.4) # 1 to 101 m deep, west to east
+  dt <- rb_map_tiles_dem(d)
+  f <- attr(dt, "fit")(10, 56, 10.4, 56.3)
+  q <- unname(stats::quantile(-d$elevation, c(0.02, 0.98))) # DuckDB's quantile_cont is R's type 7
+  expect_equal(f$floor, max(1, signif(q[1], 2)))
+  expect_equal(f$cap, max(f$floor * 1.5, signif(q[2], 2)))
+  expect_length(f$quantiles, 25)
+  expect_false(is.unsorted(f$quantiles))
+  expect_true(f$exaggeration >= 0.3 && f$exaggeration <= 1)
+  expect_lt(attr(dt, "fit")(10, 56, 10.1, 56.3)$cap, 30) # the view's own: the shallow west only
+  expect_null(attr(dt, "fit")(10, 56, 10.4, 56.3, of = "elevation")) # no land
+  expect_null(attr(dt, "fit")(-30, 60, -20, 65)) # off the grid
+
+  # a layer on these tiles takes their fit where it is given none: colours in equal shares, the shading and the
+  # contours following the view; one given its own fit keeps it; tiles with no fit leave the scale on log
+  colour_style <- list(list(id = "depth-colour", type = "color-relief"))
+  dl <- rb_map_layer("depth", "dem", tiles = dt, style = colour_style, colour = TRUE)
+  expect_equal(dl$config$colour[c("scale", "fit")], list(scale = "equal", fit = TRUE))
+  expect_equal(dl$fit(10, 56, 10.4, 56.3), f)
+  expect_equal(rb_map_layer("depth", "dem", tiles = dt, style = colour_style,
+                            colour = list(scale = "log"))$config$colour$scale, "log")
+  own <- function(west, south, east, north) list(floor = 5, cap = 50)
+  expect_identical(rb_map_layer("depth", "dem", tiles = dt, style = colour_style, colour = list(fit = own))$fit, own)
+  rl <- rb_map_layer("relief", "dem", tiles = dt, style = list(list(id = "relief-shade", type = "hillshade")),
+                     shade = TRUE)
+  expect_true(rl$config$shade$fit)
+  cl <- rb_map_layer("contours", "contour", tiles = dt, contours = list(thresholds = list("5" = 10), multiplier = -1),
+                     style = list(list(id = "contours-line", type = "line", "source-layer" = "contours")))
+  expect_true(cl$config$contours$fit)
+  expect_equal(cl$fit(10, 56, 10.4, 56.3)$quantiles, f$quantiles)
+  expect_equal(
+    rb_map_layer("depth", "dem", tiles = function(z, x, y) NULL, style = colour_style, colour = TRUE)$config$colour$scale,
+    "log"
+  )
+  app <- .rb_map_app(rb_map(rb_map_group("g", "G", list(dl))))
+  fr <- get(app, "/fit/depth", "bbox=10,56,10.4,56.3")
+  expect_equal(fr$status, 200L)
+  expect_equal(jsonlite::fromJSON(fr$body)$cap, f$cap)
 })
 
 test_that("a dem layer's relief controls: MapLibre's defaults filled in, each value checked, its address names taken", {
   dem <- function(z, x, y) NULL
   shade_style <- list(list(id = "relief-shade", type = "hillshade"))
   l <- rb_map_layer("relief", "dem", tiles = dem, style = shade_style, shade = TRUE)
-  expect_equal(
+  expect_equal( # MapLibre's, but the intensity and the shadow fishycode's bathymetry map settled on
     l$config$shade,
-    list(method = "standard", direction = 335, altitude = 45, exaggeration = 0.5, opacity = 100,
-         shadow = "#000000", highlight = "#ffffff", auto = TRUE)
+    list(method = "standard", direction = 335, altitude = 45, exaggeration = 0.6, opacity = 100,
+         shadow = "#1b2a3a", highlight = "#ffffff", auto = TRUE)
   )
   given <- rb_map_layer("relief", "dem", tiles = dem, style = shade_style,
                         shade = list(method = "igor", direction = 315, highlight = "#FFF8E0"))$config$shade
@@ -1045,8 +1087,37 @@ test_that("a dem layer's colour controls: defaults filled in, each value checked
     l$config$colour[c("of", "floor", "cap", "scale", "mode", "cut", "cut_as", "opacity")],
     list(of = "depth", floor = 10, cap = 2000, scale = "log", mode = "ramp", cut = 0, cut_as = "clear", opacity = 100)
   )
-  expect_null(l$config$colour$palette) # the map's own
+  expect_null(l$config$colour[["palette"]]) # the map settles it
   expect_equal(l$config$colour$bands, list(10, 20, 50, 100, 200, 500, 1000, 2000)) # an array in the config's JSON
+
+  # the palettes it offers: for a depth the seven looks, quiet first; for an elevation every palette; a palette given
+  # outside the list put first in it; one the map lacks refused
+  offered <- function(colour, ...) {
+    m <- rb_map(rb_map_group("g", "G", list(rb_map_layer("depth", "dem", tiles = dem, style = colour_style,
+                                                         colour = colour))), ...)
+    co <- m$config$layers[[1]]$colour
+    list(palette = co[["palette"]], palettes = unlist(co$palettes))
+  }
+  looks <- c("quiet", "seabed", "deep", "chart", "grey", "drained", "haxby")
+  expect_equal(offered(TRUE), list(palette = "quiet", palettes = looks))
+  expect_equal(offered(list(palette = "chart")), list(palette = "chart", palettes = looks))
+  expect_equal(offered(list(palette = "magma")), list(palette = "magma", palettes = c("magma", looks)))
+  expect_equal(offered(list(palettes = c("haxby", "magma"))), list(palette = "haxby", palettes = c("haxby", "magma")))
+  expect_equal(offered(list(of = "elevation"))$palettes, vapply(rb_map_palettes(), `[[`, "", "id"))
+  expect_error(offered(list(palettes = c("quiet", "rainbow"))), "rainbow is not among the map's `palettes`")
+  expect_error(offered(list(palettes = c("quiet", "quiet"))), "each once")
+  # one of your own, added to the map's; a palette given again under an id replaces the earlier, in its place
+  mine <- list(list(id = "rainbow", label = "rainbow", colors = grDevices::rainbow(9)))
+  expect_equal(offered(list(palette = "rainbow"), palettes = c(rb_map_palettes(), mine))$palettes, c("rainbow", looks))
+  quiet2 <- list(list(id = "quiet", label = "quiet, mine", colors = c("#ffffff", "#000000")))
+  p <- rb_map(rb_map_group("g", "G", list(l)), palettes = c(rb_map_palettes(), quiet2))$config$palettes
+  expect_length(p, 18)
+  expect_equal(p[[13]]$label, "quiet, mine")
+  # the grid's palettes and a depth's, by `use`
+  use <- vapply(rb_map_palettes(), function(p) paste(p$use, collapse = "+"), "")
+  expect_equal(unname(use[vapply(rb_map_palettes(), `[[`, "", "id") %in% looks]),
+               c("grid+depth", rep("depth", 6)))
+  expect_equal(sum(grepl("grid", use)), 12)
   given <- rb_map_layer("depth", "dem", tiles = dem, style = colour_style,
                         colour = list(palette = "blues", cut = 20, cut_as = "grey", mode = "bands"))$config$colour
   expect_equal(given[c("palette", "cut", "cut_as", "mode")], list(palette = "blues", cut = 20, cut_as = "grey", mode = "bands"))

@@ -35,7 +35,12 @@ A function \verb{function(z, x, y)} (\code{y} from the north, as the page asks) 
 tile wholly outside the grid is level at \code{nodata}, for maplibre-contour draws no lines in a tile one of whose eight
 neighbours is missing. With the attributes \code{\link[=rb_map_layer]{rb_map_layer()}} takes for a dem or contour layer
 (\code{format}, \code{encoding}, \code{tile_size}, \code{bounds}, \code{minzoom} and \code{maxzoom}), \code{source}, by which \code{\link[=rb_map_bundle]{rb_map_bundle()}} writes
-the tiles of layers on one grid once, \code{table}, the temporary table's name, and \code{count}, the number of cells.
+the tiles of layers on one grid once, \code{table}, the temporary table's name, \code{count}, the number of cells, and
+\code{fit}, a function of a view's \code{west}, \code{south}, \code{east} and \code{north} (and \code{of}, \code{"depth"} or \code{"elevation"}), which a
+layer on these tiles takes when it is given no fit of its own: the floor and the cap at the 2nd and 98th
+percentiles of the values in view, 25 quantiles between them, and the shading's intensity, 2 over the 90th
+percentile of the slope in degrees, between 0.3 and 1 (the rules \code{\link[=rb_map_bundle]{rb_map_bundle()}} applies in the browser). So
+the colours, the contours and the shading follow the view with no more code.
 }
 \description{
 A tile function for a dem or contour \code{\link[=rb_map_layer]{rb_map_layer()}} made from a regular grid of elevations, such as a clip of

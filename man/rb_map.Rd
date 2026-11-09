@@ -51,7 +51,10 @@ commas, and nothing is fetched again.}
 
 \item{palette}{The grid's palette when the page opens: an \code{id} of \code{palettes}.}
 
-\item{palettes, basemaps}{The palettes and base maps to choose from: \code{\link[=rb_map_palettes]{rb_map_palettes()}}, \code{\link[=rb_map_basemaps]{rb_map_basemaps()}}.}
+\item{palettes, basemaps}{The palettes and base maps to choose from: \code{\link[=rb_map_palettes]{rb_map_palettes()}}, \code{\link[=rb_map_basemaps]{rb_map_basemaps()}}. The
+grid offers the palettes for its use (\code{use} holding \code{"grid"}, or no \code{use}); a dem layer's colour offers its own
+list (\code{colour$palettes} of \code{\link[=rb_map_layer]{rb_map_layer()}}), by default the seven looks for a depth. A palette given again under
+an id replaces the earlier in its place, so \code{c(rb_map_palettes(), mine)} may redefine one.}
 }
 \value{
 An \code{rb_map}: \code{config} (what the page is sent) and \code{layers}.
