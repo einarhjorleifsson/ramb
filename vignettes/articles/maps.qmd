@@ -16,17 +16,20 @@ then serves it from your R session, on your own computer only
 asks for vector tiles, and DuckDB cuts each one from the table, so a
 table of millions of rows draws as quickly as a small one. The page
 ([MapLibre GL JS](https://maplibre.org/)) does the colours, filters,
-legends and popups.
+legends and popups. [rb_map_bundle()](../reference/rb_map_bundle.html)
+writes the same map as a folder that opens from its `index.html`, with
+no R and no server, to send to someone.
 
 You need the httpuv and jsonlite packages
 (`install.packages(c("httpuv", "jsonlite"))`) and DuckDB's spatial
 extension, which ramb loads, and installs the first time, when it first
-cuts a tile.
+cuts a tile. The depth and relief need the png package too.
 
 The examples use data shipped with ramb, read with
 [rb_read_example()](../reference/rb_read_example.html): the Danish pings
-(`dansk`, from [WKSSFGEO](https://github.com/ices-eg/WKSSFGEO)) and the
-harbours they come and go from (`dansk_harbours`). Run the chunks in
+(`dansk`, from [WKSSFGEO](https://github.com/ices-eg/WKSSFGEO)), the
+harbours they come and go from (`dansk_harbours`) and the seabed under
+them (`dansk_relief`, NOAA's ETOPO 2022). Run the chunks in
 RStudio's console one by one. The chunks that build layers run as they
 are; the chunks that serve a map open it in the Viewer pane.
 
@@ -107,10 +110,11 @@ the track `max_gap_s = 3600` (in seconds); the panel takes the track's.
 
 Some things to know:
 
-- **Marks:** `marks =` names a column that marks pings, such as a flag:
-  a red tick along the chart's top and a red ring on the map at each
-  ping it marks (a logical column's `TRUE`s, any other's values that are
-  not missing).
+- **Marks:** `marks =` names columns that mark pings, such as flags:
+  each column a row of ticks along the chart's top and a ring on the map
+  at each ping it marks (a logical column's `TRUE`s, any other's values
+  that are not missing), in a colour of its own, named in the sidebar.
+  `marks = c(truth = "wrong", clean = "flag")` names them.
 
 - **The page holds one vessel at a time, its whole series by default:**
   raw pings need nothing more than a time and a position. To step through
@@ -190,7 +194,14 @@ What each part does:
   specifications](https://maplibre.org/maplibre-style-spec/layers/),
   written as R lists.
 - `popup` names the styles that answer a click (`click`) and the field
-  shown as the popup's title.
+  shown as the popup's title. Its `fields` add lines under the title; a
+  field's `values` turn a code into a text
+  (`values = list(F = "fishing")`), and its `template` writes the value
+  into a sentence (`template = "{SI_HARB} of 942"`).
+- **Small areas, zoomed out.** A harbour is a few pixels across at zoom
+  7. `rb_map_tiles_table(..., points = "points")` adds a second tile
+  layer, `"points"`, with a point on each feature, which a `circle`
+  style with a `maxzoom` draws where the areas are too small to see.
 
 A tile function can be called directly. That is a quick way to see that
 a layer has something to show before you serve it:
@@ -220,17 +231,23 @@ which has some consequences:
 
 ## Points coloured by a value
 
-The pings as points, coloured by the behaviour in the data. There are
-395,558 of them. Drawn at a zoomed-out view, nearly all would fall in a
-few tiles, each slow to cut and send. `minzoom = 10` keeps the points to
-zoom 10 and closer; the next section shows the pings as cells for the
-overview.
+The pings as points, coloured by the behaviour in the data or by their
+speed, as the reader chooses. There are 395,558 of them. Drawn at a
+zoomed-out view, nearly all would fall in a few tiles, each slow to cut
+and send. `minzoom = 10` keeps the points to zoom 10 and closer; the
+next section shows the pings as cells for the overview.
 
 ```{r}
+by_behaviour <- list("match", list("get", "behaviour"), "Fishing", "#c0392b", "#8a959e")
+by_speed <- list(
+  "interpolate", list("linear"), list("get", "speed"),
+  0, "#2166ac", 3, "#f4a582", 8, "#b2182b"
+)
+
 pings <- rb_map_layer(
   "pings", "vector",
   label = "Pings",
-  info = "Each ping, coloured by the behaviour in the data.",
+  info = "Each ping, coloured by the behaviour in the data or by its speed.",
   minzoom = 10,
   tiles = rb_map_tiles_table(
     rb_read_example("dansk"),
@@ -241,17 +258,31 @@ pings <- rb_map_layer(
   style = list(list(
     id = "pings-dot", type = "circle", "source-layer" = "features",
     paint = list(
-      "circle-color" = list(
-        "match", list("get", "behaviour"),
-        "Fishing", "#c0392b",
-        "#8a959e"
-      ),
+      "circle-color" = by_behaviour,
       "circle-radius" = list("interpolate", list("linear"), list("zoom"), 10, 2, 15, 5)
     )
   )),
   legend = list(
     list(swatch = list(dot = "#c0392b"), label = "fishing"),
     list(swatch = list(dot = "#8a959e"), label = "other")
+  ),
+  variants = list(
+    label = "Colour by",
+    options = list(
+      list(
+        value = "behaviour", label = "behaviour",
+        paint = list("pings-dot" = list("circle-color" = by_behaviour))
+      ),
+      list(
+        value = "speed", label = "speed",
+        paint = list("pings-dot" = list("circle-color" = by_speed)),
+        legend = list(
+          list(swatch = list(dot = "#2166ac"), label = "0 knots"),
+          list(swatch = list(dot = "#f4a582"), label = "3 knots"),
+          list(swatch = list(dot = "#b2182b"), label = "8 knots or more")
+        )
+      )
+    )
   ),
   popup = list(
     click = "pings-dot", title = "vessel_id",
@@ -273,6 +304,11 @@ Some things to note:
   `rb_map_tiles_table()` carries a date-time such as `time_stamp` as text,
   and a factor or a date too.
 - **`count` puts the number of features beside the layer's label.**
+- **`variants` are colourings to choose between**, under *Colour by*
+  when the layer is ticked. Each option sets paint properties of the
+  layer's styles, by style id, and may bring its own legend; the first
+  is shown when the page opens. A choice changes the paint only: no tile
+  is fetched again.
 
 ## Cells: a grid with filters
 
@@ -356,7 +392,8 @@ length(cell_tile(7, 68, 39, list(behaviour = "Fishing"))) # fishing only
 
 Any table of geometries becomes a vector layer. Here the lines are made
 in DuckDB, one per vessel and day, through the day's pings in time
-order:
+order. The layer has two controls of its own, a list that leaves out
+the days with few pings and a box for thicker lines:
 
 ```{r}
 tracks <- dplyr::tbl(con, dplyr::sql(sprintf(
@@ -373,8 +410,24 @@ days <- rb_map_layer(
   count = list(text = "{1} vessel days"),
   style = list(list(
     id = "days-line", type = "line", "source-layer" = "features",
-    paint = list("line-color" = "#2c5d87", "line-width" = 1.5, "line-opacity" = 0.7)
+    filter = list(">=", list("get", "pings"), list("global-state", "days_least")),
+    paint = list(
+      "line-color" = "#2c5d87",
+      "line-width" = list("case", list("global-state", "days_thick"), 3, 1.5),
+      "line-opacity" = 0.7
+    )
   )),
+  state = list(
+    list(
+      id = "least", label = "Days with at least", default = 0,
+      options = list(
+        list(value = 0, label = "one ping"),
+        list(value = 1000, label = "1,000 pings"),
+        list(value = 5000, label = "5,000 pings")
+      )
+    ),
+    list(id = "thick", label = "Thick lines", default = FALSE)
+  ),
   legend = list(list(swatch = list(fill = "#2c5d87"), label = "a vessel's day")),
   popup = list(
     click = "days-line", title = "vessel_id",
@@ -385,6 +438,15 @@ days <- rb_map_layer(
   )
 )
 ```
+
+`state` holds values in the reader's hands, which the layer's style
+reads as `list("global-state", "<layer>_<control>")`: here
+`days_least` in the line's filter and `days_thick` in its width. A
+control with `options` is a list to choose from; one with only a
+`default` of `TRUE` or `FALSE` is a box to tick. A change applies at
+once, with nothing fetched again, so a state can filter features,
+recolour them or move the zoom where a style starts. Every control must
+be read by a style, or the layer is refused.
 
 ## Features from R: a GeoJSON layer
 
@@ -421,6 +483,156 @@ it: `popup = list(click = "area-fill", hover = TRUE, title = "name")`
 `hover_fields = TRUE` for its `fields` too. Where features overlap, the
 topmost speaks, as for a click.
 
+## Depth, relief and contours from a grid
+
+A grid of elevations, such as a clip of GEBCO or of NOAA's ETOPO, gives
+three layers: the depth in colour, the relief shaded, and contour
+lines. [rb_map_tiles_dem()](../reference/rb_map_tiles_dem.html) makes
+their tiles from a table of `lon`, `lat` and `elevation` (negative below
+sea level): images of the elevations, from which the page draws all
+three. Here it is `dansk_relief`, the seabed and the land around the
+Danish pings at 30 arc-seconds (about 500 by 900 m):
+
+```{r}
+relief_tiles <- rb_map_tiles_dem(rb_read_example("dansk_relief"))
+attributes(relief_tiles)[c("bounds", "maxzoom", "count")]
+```
+
+The depth's colours can follow the view: as the map settles, the page
+asks a function of the view's box for the floor and the cap of the
+palette. Given the depths' quantiles in view too, it offers colours in
+equal shares, each colour as many cells as the next. This one reads the
+grid, held in R:
+
+```{r}
+grid <- dplyr::collect(rb_read_example("dansk_relief"))
+depth_in_view <- function(west, south, east, north) {
+  inside <- grid$lon >= west & grid$lon <= east & grid$lat >= south & grid$lat <= north
+  d <- -grid$elevation[inside & grid$elevation < 0]
+  if (length(d) < 25) {
+    return(NULL) # no sea in view
+  }
+  q <- unname(stats::quantile(d, seq(0.02, 0.98, length.out = 25)))
+  floor <- max(1, signif(q[1], 2))
+  list(floor = floor, cap = max(floor * 1.5, signif(q[25], 2)), quantiles = q)
+}
+depth_in_view(10.5, 56, 12.9, 57.8)[c("floor", "cap")] # the Kattegat
+```
+
+The three layers, all on the same tiles:
+
+```{r}
+depth <- rb_map_layer(
+  "depth", "dem",
+  label = "Depth",
+  tiles = relief_tiles,
+  style = list(list(id = "depth-colour", type = "color-relief")),
+  colour = list(palette = "deep", scale = "equal", fit = depth_in_view)
+)
+
+relief <- rb_map_layer(
+  "relief", "dem",
+  label = "Relief",
+  tiles = relief_tiles,
+  style = list(list(id = "relief-shade", type = "hillshade")),
+  shade = list(exaggeration = 0.6, shadow = "#1b2a3a")
+)
+
+major <- list("==", list("get", "level"), 1)
+at_sea <- list(">", list("get", "ele"), 0)
+contours <- rb_map_layer(
+  "contours", "contour",
+  label = "Depth contours",
+  tiles = relief_tiles,
+  contours = list(
+    multiplier = -1, # depths, not elevations
+    thresholds = list("5" = c(50, 100), "8" = c(10, 50), "10" = c(5, 25)),
+    fit = depth_in_view
+  ),
+  style = list(
+    list(
+      id = "contours-line", type = "line", "source-layer" = "contours",
+      filter = at_sea,
+      paint = list("line-color" = "#1b2a3a", "line-width" = list("case", major, 1.2, 0.5))
+    ),
+    list(
+      id = "contours-label", type = "symbol", "source-layer" = "contours",
+      filter = list("all", at_sea, major),
+      layout = list(
+        "symbol-placement" = "line", "text-size" = 13,
+        "text-field" = list("concat", list("to-string", list("get", "ele")), " m")
+      ),
+      paint = list("text-color" = "#1b2a3a")
+    )
+  ),
+  legend = list(
+    list(swatch = list(fill = "#1b2a3a"), label = "contour, labelled")
+  )
+)
+
+m_seabed <- rb_map(
+  rb_map_group("seabed", "Seabed", list(depth, relief, contours)),
+  rb_map_group("ref", "Reference", list(harbours), open = FALSE),
+  title = "The seabed around Denmark",
+  view = list(center = c(10.5, 56.8), zoom = 6)
+)
+```
+
+```{r}
+#| eval: false
+rb_map_serve(m_seabed)
+```
+
+Each layer's controls appear under it when it is ticked: the depth's
+palette, floor and cap, scale (log, linear or equal shares), ramp or
+bands, a cut of the shallow end and opacity, with *Fit to view*; the
+relief's light, its direction and height, intensity, opacity and
+colours; and whether the contours follow the view. Some things to
+know:
+
+- **One grid, three layers.** The relief, the colours and the contours
+  are drawn in the page from the same images, and a bundle writes them
+  once.
+- **The depth is the elevation's negative**, and what is 0 or less is
+  left clear, so the land shows the base map. Turn `colour$of` to
+  `"elevation"` for a map of the land. The relief is shaded on land and
+  sea alike.
+- **Equal shares part a plateau.** On a log scale a wide plateau at
+  40-75 m takes one or two of the palette's steps and reads as one tone;
+  in equal shares its channels and rim stand apart. `scale = "equal"`
+  needs a `fit` that gives the quantiles.
+- **The contours' `ele` is the depth** (`multiplier = -1`), and `level`
+  is 1 on the major lines. The `thresholds` are the minor and major
+  intervals from each zoom on; while the contours follow the view
+  (the `fit`), the page puts about a dozen levels at round depths near
+  the view's quantiles instead. The lines are made in the browser by
+  [maplibre-contour](https://github.com/onthegomap/maplibre-contour),
+  loaded only for a map that has a contour layer.
+- **The shading's intensity can follow the view too:**
+  `shade = list(fit = f)`, with `f` returning
+  `list(exaggeration = )`, from 0 to 1.
+- **Your own grid.** Any regular grid of longitude, latitude and
+  elevation will do, as a data frame or a lazy table. marmap reads
+  NOAA's:
+
+  ```{r}
+  #| eval: false
+  b <- marmap::getNOAA.bathy(lon1 = 8, lon2 = 13, lat1 = 54.5, lat2 = 58, resolution = 1)
+  own_tiles <- rb_map_tiles_dem(marmap::as.xyz(b), lon = "V1", lat = "V2", elevation = "V3")
+  ```
+
+  marmap labels the cells from the box's edge to its edge, up to half a
+  cell from their centres; `data-raw/dansk_relief.R` in ramb's
+  repository places them at their centres. A tile file you already have
+  (MBTiles) is read with
+  [rb_map_tiles_mbtiles()](../reference/rb_map_tiles_mbtiles.html).
+- **Tiles are made as the page asks**, in a tenth of a second or two.
+  Beyond `maxzoom` the map draws the deepest tiles enlarged.
+- **The grid's edge reads as a coast.** Beyond its edge the tiles hold
+  `nodata`, sea level by default, so where the grid ends in deep water
+  the contours crowd along the edge and the relief shades a step there.
+  Take a grid somewhat larger than the area you mean to show.
+
 ## All together, in two languages
 
 The layers go into groups, and the groups into the map. Within a group,
@@ -428,9 +640,39 @@ a later layer is drawn over an earlier one. A group can start folded
 (`open = FALSE`). Each text in the map (a title, label or info) is
 looked up in `texts`, so it can be given in several languages. The page
 then shows a language button for each, and its own texts stay English
-unless you give them under the same keys.
+unless you give them under the same keys. `locales` writes the numbers
+in each language's manner, and `about` names the texts of an *About*
+group.
+
+The map also offers one vessel at a time, over the layers that carry
+`vessel_id` (`choose`): a list above the groups, with buttons that step
+through it. A choice shows only that vessel's pings and days and fits
+the view to its `bbox`. The grid is summed by its tile function, so it
+stays whole: a choice meant to reach it is a filter of its own.
 
 ```{r}
+vessels <- rb_read_example("dansk") |>
+  dplyr::summarise(
+    n = dplyr::n(), lon0 = min(lon), lat0 = min(lat), lon1 = max(lon), lat1 = max(lat),
+    .by = vessel_id
+  ) |>
+  dplyr::arrange(vessel_id) |>
+  dplyr::collect()
+
+one_vessel <- list(fields = list(list(
+  field = "vessel_id",
+  label = "Vessel",
+  options = lapply(seq_len(nrow(vessels)), function(i) {
+    list(
+      value = vessels$vessel_id[i],
+      label = sprintf("%s (%s pings)", vessels$vessel_id[i], format(vessels$n[i], big.mark = ",")),
+      match = vessels$vessel_id[i],
+      bbox = c(vessels$lon0[i], vessels$lat0[i], vessels$lon1[i], vessels$lat1[i])
+    )
+  }),
+  layers = list("pings", "days")
+)))
+
 m <- rb_map(
   rb_map_group("data", "Data", list(cells, days, pings)),
   rb_map_group("ref", "Reference", list(harbours, area), open = FALSE),
@@ -444,9 +686,17 @@ m <- rb_map(
     "Pings" = list(en = "Pings", da = "Positioner"),
     "Behaviour" = list(en = "Behaviour", da = "Adfærd"),
     "Reference" = list(en = "Reference", da = "Reference"),
-    "Harbours" = list(en = "Harbours", da = "Havne")
+    "Harbours" = list(en = "Harbours", da = "Havne"),
+    "Vessel" = list(en = "Vessel", da = "Fartøj"),
+    about_data = list(
+      en = "AIS positions of 14 Danish fishing vessels, 2012-2020, from the ICES workshop WKSSFGEO.",
+      da = "AIS-positioner fra 14 danske fiskefartøjer, 2012-2020, fra ICES-workshoppen WKSSFGEO."
+    )
   ),
-  languages = c("en", "da")
+  languages = c("en", "da"),
+  locales = list(da = "da-DK"),
+  about = "about_data",
+  choose = one_vessel
 )
 ```
 
@@ -459,7 +709,8 @@ The pings lie in a few patches: off Gothenburg, north of Jutland, in
 the Øresund and south of Zealand. Zoom in on one past 10 and the points
 appear over the cells. Tick *Daily tracks*
 to see the vessels' days, and switch *Behaviour* to *Fishing* to see only
-the cells of fishing pings.
+the cells of fishing pings. Choose a vessel above the groups, and the
+pings and days are its own.
 
 ## The address is the view
 
@@ -471,13 +722,20 @@ view, so a view can be kept or sent to someone at the same computer.
 `query` sets the first view from R. Each layer is a key (`1` on, `0`
 off), as is each of the grid's filters, along with `metric`, `palette`,
 `stretch` (`"even"` or `"equal"`), `floor` and `cap`, `opacity`, `base`
-and `lang`:
+and `lang`. A layer's own controls are keys named after it: its colouring
+`<layer>_by` (`pings_by`), each of its `state` controls
+`<layer>_<control>` (`days_least`, `days_thick`), and a dem layer's
+colours and shading, such as `depth_pal`, `depth_lo` and `depth_hi`
+([rb_map_layer()](../reference/rb_map_layer.html) lists them). A
+`choose` field is a key by its own name, several values separated by
+commas:
 
 ```{r}
 #| eval: false
 rb_map_serve(m, query = list(
   lang = "da", behaviour = "Fishing", palette = "viridis",
-  base = "ocean", days = 1
+  base = "ocean", days = 1, days_least = 1000,
+  pings_by = "speed", vessel_id = "EX_1"
 ))
 ```
 
@@ -508,6 +766,138 @@ rb_map_notes_add("danish_notes.geojson", "That patch is a mussel ground.", reply
 The file is plain GeoJSON, a note a line, and opens in any GIS. A bundle
 (`rb_map_bundle()`) has no server, and no notes.
 
+## Verdicts: a question on each feature
+
+A review goes faster where the features are seen. A layer's popup can
+ask its reader questions about each feature, a button for each answer,
+and a map served with a file for verdicts keeps the answers. Here each
+harbour is asked whether it is one, and if it is, whether its outline
+is right:
+
+```{r}
+review <- rb_map_layer(
+  "harbours", "vector",
+  label = "Harbours to check",
+  tiles = harbour_tiles,
+  style = list(list(
+    id = "harbours-fill", type = "fill", "source-layer" = "features",
+    paint = list("fill-color" = "#d9822b", "fill-opacity" = 0.6)
+  )),
+  popup = list(
+    click = "harbours-fill",
+    title = "SI_HARB",
+    verdict = list(
+      field = "SI_HARB",
+      text = TRUE,
+      questions = list(
+        list(id = "harbour", label = "Is this a harbour?", options = list(
+          list(value = "yes", label = "yes"),
+          list(value = "no", label = "no")
+        )),
+        list(id = "outline", label = "Is its outline right?", skip = list(harbour = "no"), options = list(
+          list(value = "right", label = "right"),
+          list(value = "too_small", label = "too small"),
+          list(value = "too_big", label = "too big")
+        ))
+      )
+    )
+  )
+)
+
+m_review <- rb_map(
+  rb_map_group("review", "Review", list(review)),
+  title = "Danish harbours, checked",
+  view = list(center = c(10.5, 56), zoom = 7)
+)
+```
+
+```{r}
+#| eval: false
+rb_map_serve(m_review, verdicts = "harbour_verdicts.csv")
+# later, in this R session or another: each harbour's latest answer to each question
+rb_map_verdicts("harbour_verdicts.csv")
+```
+
+Some things to know:
+
+- **A verdict belongs to the feature's value of `field`**, here
+  `SI_HARB`, so it is found again whichever tile the feature is drawn
+  in. Each answer is written to the file with when, the place and the
+  zoom; a later answer replaces the earlier, and
+  `rb_map_verdicts(all = TRUE)` gives them all in the order given.
+- **A mark on each feature judged**: the first question's answer is its
+  fill, the second's its ring. The first option is green and the others
+  red unless an option gives its own `colour`.
+- **`skip`** leaves a question out after an earlier answer: here no
+  outline is asked of a harbour that is not one. **`text = TRUE`** adds a
+  note in the reader's own words.
+- **An answer can name another feature** (`other = TRUE` on an option):
+  a box for its name, the names in view offered.
+- **Two layers of one kind of feature share answers** with `store`, the
+  id of the layer that keeps them, so a feature's answer is the same
+  whichever layer it is clicked on.
+- As the notes, the verdicts are taken only from a page opened on this
+  computer, and a bundle has none.
+
+## A map in a folder
+
+[rb_map_bundle()](../reference/rb_map_bundle.html) writes a map as a
+folder whose `index.html` opens in a browser with a double click, on any
+system, with no R and no server; it needs the internet only for MapLibre
+and the base maps. The page, the layers' tiles and data are written
+beside it as script files. A grid's tiles are made by a tile function
+in R, so a bundle carries its rows instead, summed by cell at a few cell
+sizes (`levels`), and the page makes the tiles from them, its filters
+applied, as the server would. Here the cells and the seabed together:
+
+```{r}
+cell_rows <- rb_read_example("dansk") |>
+  dplyr::mutate(x = floor(lon * 100), y = floor(lat * 100)) |>
+  dplyr::count(x, y, behaviour)
+
+m_folder <- rb_map(
+  rb_map_group("data", "Data", list(cells)),
+  rb_map_group("seabed", "Seabed", list(depth, relief, contours)),
+  title = "Danish pings and the seabed",
+  view = list(center = c(10.5, 56.8), zoom = 6)
+)
+
+folder <- rb_map_bundle(
+  m_folder,
+  file.path(tempdir(), "danish_pings"),
+  maxzoom = 7,
+  grids = list(cells = list(
+    rows = cell_rows,
+    unit = 0.01, # x and y count cells of 0.01 degrees
+    levels = c(1, 2, 5, 10), # cells of 0.01, 0.02, 0.05 and 0.1 degrees
+    columns = c(behaviour = "behaviour"), # the filter and its column
+    sums = "n",
+    fields = list(n = "n")
+  )),
+  overwrite = TRUE
+)
+c(tiles = attr(folder, "tiles"), megabytes = round(attr(folder, "bytes") / 1e6, 1))
+```
+
+```{r}
+#| eval: false
+utils::browseURL(file.path(folder, "index.html"))
+```
+
+Some things to know:
+
+- **What it carries**: geojson layers' data; the tiles of dem and
+  contour layers to `maxzoom` inside their bounds; the tiles of
+  [rb_map_tiles_table()](../reference/rb_map_tiles_table.html) layers
+  that hold a feature; a time panel's
+  spans; and the grids named in `grids`. Another vector layer is left
+  out, with a message: its tiles are made by a server.
+- **Each layer's `fit` is made in the browser**, from the tiles in view,
+  by the rules in `rb_map_bundle(fit = )`, as no R is there to ask.
+- **The deeper the zooms, the bigger the folder.** Past `maxzoom` the
+  map draws the deepest tiles enlarged.
+- No notes and no verdicts: they need the server.
+
 ## When a layer stays empty
 
 - **Call its tile function** at a tile you know has data, as in the
@@ -518,6 +908,9 @@ The file is plain GeoJSON, a note a line, and opens in any GIS. A bundle
   not.
 - **A vector layer with `minzoom` draws nothing** until you zoom in that
   far.
+- **A dem layer's tile is an image.** `png::readPNG(relief_tiles(7, 67, 39))`
+  gives its pixels; the elevation is red × 256 + green + blue / 256 −
+  32768, each channel 0-255.
 
 ## More examples
 

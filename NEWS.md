@@ -14,6 +14,11 @@
 - `dansk_relief`, a new example dataset: the seabed and land around the Danish tracks, NOAA's ETOPO 2022 at 30
   arc-seconds (1,260 by 480 cells), read with marmap's `getNOAA.bathy()` (`data-raw/dansk_relief.R`). marmap labels
   the cells from the box's edge to its edge; they are placed here at their centres, half a cell in.
+- The maps article has sections on what the map viewer does since 2026.11.03: depth, relief and contours on
+  `dansk_relief`, a layer's own controls (`state`) and colourings (`variants`), a choice over several layers
+  (`choose`), popup fields' `values` and `template`, points for small areas, `about` and `locales`, verdicts, a map
+  written as a folder, and the address keys of each. The time panel's marks are described as they are drawn since
+  2026.11.05.4, each column in a colour of its own, where the article still said red.
 - The reference index lists `rb_map_bundle()`, `rb_map_tiles_mbtiles()`, `rb_map_time()` and `rb_map_verdicts()`,
   whose absence stopped `pkgdown::build_site()`.
 - `data-raw/data_dict.R` stamps only the tables named as its arguments, when any are.
