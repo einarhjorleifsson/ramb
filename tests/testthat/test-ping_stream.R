@@ -76,3 +76,50 @@ test_that("a lazy DuckDB table gives the same flags with stream =", {
 test_that("a stream column that is not there stops with a message", {
   expect_error(rb_flag_ping_impossible(two_clocks(), method = "clean", stream = channel), "channel")
 })
+
+test_that("one column as both feed and stream gives the flags of a copy of it, a column called `stream` or not", {
+  d <- as.data.frame(dplyr::collect(rb_read_example("dansk_planted")))
+  d <- d[d$vid %in% c("EX_1_60s", "EX_4_60s"), c("vid", "time", "lon", "lat", "speed", "feed")]
+  expect_setequal(unique(d$feed), c("a", "b"))
+  d$copy <- d$feed
+  ds <- d
+  ds$stream <- "x" # a column already called `stream`, not the one judged by
+  lim <- rb_create_ping_limits(d, speed = speed)
+  runs <- list(
+    clean = list(method = "clean"),
+    forward = list(method = "forward"),
+    local = list(method = "local", speed = quote(speed), limits = lim, anchor = "vote")
+  )
+  run <- function(x, args, stream) {
+    suppressWarnings(do.call(
+      rb_flag_ping_impossible,
+      c(list(x), args, list(feed = quote(feed), stream = stream, evidence = TRUE))
+    ))
+  }
+  for (m in names(runs)) {
+    a <- run(d, runs[[m]], quote(copy))
+    ev <- grep("^ping_flag", names(a), value = TRUE)
+    b <- run(d, runs[[m]], quote(feed))
+    expect_equal(b[ev], a[ev], ignore_attr = TRUE, info = m)
+    expect_identical(b$feed, d$feed)
+    expect_false("stream" %in% names(b))
+    s <- run(ds, runs[[m]], quote(feed))
+    expect_equal(s[ev], a[ev], ignore_attr = TRUE, info = m)
+    expect_identical(s$stream, ds$stream)
+  }
+})
+
+test_that("a lazy DuckDB table gives the same flags with one column as both feed and stream", {
+  skip_if_not_installed("duckdbfs")
+  d <- two_clocks()
+  d$key <- seq_len(nrow(d))
+  # no noise floor, so only judging the streams apart spares the legs between them (as without `feed` above)
+  a <- rb_flag_ping_impossible(d, method = "local", speed = speed, feed = stream, noise_nm = 0, stream = stream,
+                               evidence = TRUE)
+  expect_equal(sum(!is.na(a$ping_flag)), 0)
+  b <- dplyr::collect(rb_flag_ping_impossible(duckdbfs::as_dataset(d), method = "local", speed = speed,
+                                              feed = stream, noise_nm = 0, stream = stream, evidence = TRUE))
+  a <- as.data.frame(a[order(a$key), ])
+  b <- as.data.frame(b[order(b$key), names(a)])
+  expect_equal(b, a, ignore_attr = TRUE)
+})

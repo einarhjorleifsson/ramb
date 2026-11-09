@@ -689,7 +689,8 @@ rb_flag_ping_duplicate <- function(
 #'   vessel's streams are judged apart: no leg, scan, vote or piece of evidence joins two streams, so two clocks
 #'   that differ never read as distance, and the warning on unharmonised clocks is not given. `limits` may then be by
 #'   vessel, or by vessel and stream. Default `NULL`: a vessel's streams judged together, as before. For every method.
-#'   On `dansk_truth` (fishycode plan 068; `"local"` with the own limits, the recorded speed and the vote) it halves
+#'   It may name the same column as `feed` (`feed = feed, stream = feed`, each feed a stream of its own). On
+#'   `dansk_truth` (fishycode plan 068; `"local"` with the own limits, the recorded speed and the vote) it halves
 #'   the good pings flagged beside a fault (110 to 57 in 10,000 at 1 min, 508 to 270 at 6 min) for 6-7 points of the
 #'   wrong positions caught: the planted ties, two reports of one time in two streams, show only on legs between
 #'   them.
@@ -781,6 +782,10 @@ rb_flag_ping_impossible <- function(
   has_speed <- !rlang::quo_is_null(speed_quo)
   stream_quo <- rlang::enquo(stream)
   has_stream <- !rlang::quo_is_null(stream_quo)
+  # one column for both (each feed a stream of its own): the stream is read from the feed's column, under no second
+  # name, so neither renames the other away nor clashes with a column already called `stream`
+  stream_is_feed <- has_stream && has_feed && identical(rlang::as_name(stream_quo), rlang::as_name(feed_quo))
+  stream_col <- if (stream_is_feed) "feed" else "stream"
   .rb_check_input(
     x,
     "rb_flag_ping_impossible",
@@ -904,7 +909,7 @@ rb_flag_ping_impossible <- function(
   if (has_speed) {
     map <- c(map, speed = rlang::as_name(speed_quo))
   }
-  if (has_stream) {
+  if (has_stream && !stream_is_feed) {
     map <- c(map, stream = rlang::as_name(stream_quo))
   }
   lim <- if (!is.null(limits)) .rb_limits_in(limits, map, colnames(x))
@@ -950,7 +955,7 @@ rb_flag_ping_impossible <- function(
     # each stream judged apart: the engines take the vessel and the stream as their vessel (the limits above are the
     # ping's own, by its vessel, or vessel and stream)
     if (has_stream) {
-      s$vid <- .rb_vessel_stream(d$vid[i], d$stream[i])
+      s$vid <- .rb_vessel_stream(d$vid[i], d[[stream_col]][i])
     }
     basis <- NULL
     judged <- NULL
@@ -1075,7 +1080,7 @@ rb_flag_ping_impossible <- function(
         has_feed = has_feed,
         local = if (local) .rb_local_limits(dots),
         rows = pl,
-        by = if (has_stream) .rb_vessel_stream(d$vid, d$stream)
+        by = if (has_stream) .rb_vessel_stream(d$vid, d[[stream_col]])
       )
     }
     d
@@ -1090,7 +1095,7 @@ rb_flag_ping_impossible <- function(
         "lat",
         if (has_feed) "feed",
         if (has_speed) "speed",
-        if (has_stream) "stream",
+        if (has_stream) stream_col,
         setdiff(lim$keys, "vid")
       )),
       order_by = c("time", "lon", "lat", if (has_feed) "feed"),

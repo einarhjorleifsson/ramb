@@ -1,3 +1,13 @@
+# ramb 2026.11.07.2
+
+- `rb_flag_ping_impossible()` with one column as both `feed` and `stream` (each feed a stream of its own) judges each
+  stream apart. The two renames collided. With the column named other than `stream` (`feed = feed, stream = feed`),
+  every method stopped: the stream's rename took the feed's column away, or clashed with a column already called
+  `stream`. With the column named `stream` (`feed = stream, stream = stream`), the feed's rename took the stream's
+  column away, and the streams were judged together without a word. The stream is now read from the feed's column,
+  under no second name. Found by fishycode's appendix of step 0's scores (plan 061); tested against a copy of the
+  column for `"clean"`, `"forward"` and `"local"`, with a column called `stream` or not, and on a lazy table.
+
 # ramb 2026.11.07.1
 
 - Rows that share a time are ordered the same way on every run, so a rerun on the same input gives the same result

@@ -73,7 +73,8 @@ limit.}
 vessel's streams are judged apart: no leg, scan, vote or piece of evidence joins two streams, so two clocks
 that differ never read as distance, and the warning on unharmonised clocks is not given. \code{limits} may then be by
 vessel, or by vessel and stream. Default \code{NULL}: a vessel's streams judged together, as before. For every method.
-On \code{dansk_truth} (fishycode plan 068; \code{"local"} with the own limits, the recorded speed and the vote) it halves
+It may name the same column as \code{feed} (\verb{feed = feed, stream = feed}, each feed a stream of its own). On
+\code{dansk_truth} (fishycode plan 068; \code{"local"} with the own limits, the recorded speed and the vote) it halves
 the good pings flagged beside a fault (110 to 57 in 10,000 at 1 min, 508 to 270 at 6 min) for 6-7 points of the
 wrong positions caught: the planted ties, two reports of one time in two streams, show only on legs between
 them.}
