@@ -40,8 +40,8 @@ R/record.R (rb_link_record_sets())
   4.0, with this attribution.
 
 ramb also ships these third-party datasets in inst/extdata, as parquet, read
-with rb_read_example(); data-raw/labelled_tracks.R, data-raw/extdata.R and
-data-raw/planted_faults.R make them from the sources. Their full citations, as BibTeX, are in REFERENCES.bib;
+with rb_read_example(); data-raw/labelled_tracks.R, data-raw/extdata.R,
+data-raw/planted_faults.R and data-raw/dansk_relief.R make them from the sources. Their full citations, as BibTeX, are in REFERENCES.bib;
 each dataset's help page and data dictionary entry (inst/extdata/data-dict.yaml)
 name them:
 
@@ -52,6 +52,13 @@ inst/extdata/dansk_planted.parquet
   https://github.com/ices-eg/WKSSFGEO; dansk_planted is dansk with faults
   planted (data-raw/planted_faults.R).
   Copyright (c) 2021 ICES Expert Groups. License: MIT (text below).
+
+inst/extdata/dansk_relief.parquet
+  From ETOPO 2022 15 Arc-Second Global Relief Model (bed elevation), NOAA
+  National Centers for Environmental Information (2022),
+  https://doi.org/10.25921/fd45-gt74, read with the R package marmap at 30
+  arc-seconds over the Danish tracks' box. Public domain: a work of NOAA, an
+  agency of the United States government; NOAA NCEI asks that it be cited.
 
 inst/extdata/creel.parquet
   From Mendo T., Smout S., Photopoulou T., James M. (2019). Data from:

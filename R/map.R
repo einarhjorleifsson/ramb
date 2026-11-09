@@ -2546,6 +2546,308 @@ rb_map_tiles_mbtiles <- function(file) {
   )
 }
 
+#' Tiles of elevations from a grid
+#'
+#' A tile function for a dem or contour [rb_map_layer()] made from a regular grid of elevations, such as a clip of
+#' GEBCO or of NOAA's ETOPO (which `marmap::getNOAA.bathy()` reads), with no MBTiles file and no tool outside R. The
+#' grid is copied once into a temporary DuckDB table. Each tile the page asks for is made from the cells under it: their
+#' elevations interpolated (bilinear) at the tile's pixels and written as a PNG image in the Terrarium encoding, from
+#' which the page draws the relief, the colours and the contours. Where a pixel spans several cells (the map zoomed
+#' out), the cells are first averaged in square blocks, two, four, eight ... cells a side.
+#'
+#' @param x A data frame or lazy DuckDB table of a regular grid in longitude and latitude (WGS 84), a row per cell: its
+#'   centre and its elevation. A cell may be missing, a row may not repeat a cell.
+#' @param lon,lat,elevation Its columns: the centre's longitude and latitude, and the elevation in metres, negative below
+#'   sea level (a depth is the elevation's negative: make the column first).
+#' @param tile_size The tiles' side in pixels, 256 or 512.
+#' @param minzoom,maxzoom The zooms tiles are made for; the map draws deeper zooms from the deepest's tiles, enlarged. By
+#'   default from 0 to the first zoom at which a pixel is no wider than a cell.
+#' @param nodata The elevation written where the grid has none: beyond its edge, and where the cell nearest a pixel is
+#'   missing. By default 0, sea level, which the colours of a depth leave clear.
+#' @return A function `function(z, x, y)` (`y` from the north, as the page asks) returning a tile's bytes, a PNG; a
+#'   tile wholly outside the grid is level at `nodata`, for maplibre-contour draws no lines in a tile one of whose eight
+#'   neighbours is missing. With the attributes [rb_map_layer()] takes for a dem or contour layer
+#'   (`format`, `encoding`, `tile_size`, `bounds`, `minzoom` and `maxzoom`), `source`, by which [rb_map_bundle()] writes
+#'   the tiles of layers on one grid once, `table`, the temporary table's name, and `count`, the number of cells.
+#' @seealso [rb_map_tiles_mbtiles()], for tiles already made; [rb_map_layer()]
+#' @export
+#' @examples
+#' # a small hill, 21 by 21 cells of 0.01 degrees
+#' g <- expand.grid(lon = seq(10, 10.2, by = 0.01), lat = seq(56, 56.2, by = 0.01))
+#' g$elevation <- 100 - 5000 * ((g$lon - 10.1)^2 + (g$lat - 56.1)^2)
+#' if (requireNamespace("png", quietly = TRUE)) {
+#'   tiles <- rb_map_tiles_dem(g)
+#'   attributes(tiles)[c("bounds", "minzoom", "maxzoom", "count")]
+#'   png_bytes <- tiles(10, 540, 318) # the tile over the hill at zoom 10
+#'   rgb <- png::readPNG(png_bytes) * 255
+#'   # the Terrarium encoding: (red * 256 + green + blue / 256) - 32768
+#'   range(rgb[, , 1] * 256 + rgb[, , 2] + rgb[, , 3] / 256 - 32768)
+#' }
+rb_map_tiles_dem <- function(
+  x,
+  lon = "lon",
+  lat = "lat",
+  elevation = "elevation",
+  tile_size = 512L,
+  minzoom = 0L,
+  maxzoom = NULL,
+  nodata = 0
+) {
+  if (!requireNamespace("png", quietly = TRUE)) {
+    stop("rb_map_tiles_dem() needs the png package.", call. = FALSE)
+  }
+  if (!inherits(x, c("data.frame", "tbl_lazy"))) {
+    stop("`x` is a data frame or a lazy DuckDB table.", call. = FALSE)
+  }
+  is_name <- function(v) {
+    is.character(v) && length(v) == 1 && !is.na(v) && nzchar(v)
+  }
+  if (!is_name(lon) || !is_name(lat) || !is_name(elevation)) {
+    stop("`lon`, `lat` and `elevation` are column names.", call. = FALSE)
+  }
+  if (
+    !(is.numeric(tile_size) &&
+      length(tile_size) == 1 &&
+      tile_size %in% c(256, 512))
+  ) {
+    stop("`tile_size` is 256 or 512.", call. = FALSE)
+  }
+  zoom_ok <- function(v) {
+    is.numeric(v) &&
+      length(v) == 1 &&
+      !is.na(v) &&
+      v >= 0 &&
+      v <= 22 &&
+      v == round(v)
+  }
+  if (
+    !zoom_ok(minzoom) ||
+      (!is.null(maxzoom) && (!zoom_ok(maxzoom) || maxzoom < minzoom))
+  ) {
+    stop(
+      "`minzoom` and `maxzoom` are whole numbers from 0 to 22, `maxzoom` no less than `minzoom`.",
+      call. = FALSE
+    )
+  }
+  if (!(is.numeric(nodata) && length(nodata) == 1 && is.finite(nodata))) {
+    stop("`nodata` is a number.", call. = FALSE)
+  }
+  con <- .rb_con_for(x)
+  # a data frame registered here is the tile function's for the session (it remakes its table from it)
+  .rb_scope()
+  lz <- .rb_as_lazy(x, con)
+  gone <- setdiff(c(lon, lat, elevation), colnames(lz))
+  if (length(gone)) {
+    stop(
+      sprintf("`x` has no column %s.", paste0("`", gone, "`", collapse = ", ")),
+      call. = FALSE
+    )
+  }
+  src <- .rb_sql(lz)
+  q <- function(s) as.character(DBI::dbQuoteIdentifier(con, s))
+  where <- sprintf(
+    "%1$s IS NOT NULL AND %2$s IS NOT NULL AND %3$s IS NOT NULL AND isfinite(CAST(%3$s AS DOUBLE))",
+    q(lon),
+    q(lat),
+    q(elevation)
+  )
+  # the grid's step each way: the least gap between the distinct positions (a column or row of cells may be missing)
+  step <- function(v) {
+    DBI::dbGetQuery(
+      con,
+      sprintf(
+        "WITH d AS (SELECT DISTINCT round(%1$s, 7) AS v FROM (%2$s) WHERE %3$s)
+       SELECT min(v) AS v0, max(v) AS v1, count(*) AS n, min(g) AS step
+       FROM (SELECT v, v - lag(v) OVER (ORDER BY v) AS g FROM d)",
+        q(v),
+        src,
+        where
+      )
+    )
+  }
+  gx <- step(lon)
+  gy <- step(lat)
+  if (gx$n < 2 || gy$n < 2) {
+    stop(
+      "`x` is a grid of at least two cells each way, east-west and north-south.",
+      call. = FALSE
+    )
+  }
+  lon0 <- gx$v0
+  lat0 <- gy$v0
+  # the step from the whole span, so positions stored rounded do not drift off it across the grid
+  nx <- as.integer(round((gx$v1 - lon0) / gx$step)) + 1L
+  ny <- as.integer(round((gy$v1 - lat0) / gy$step)) + 1L
+  dx <- (gx$v1 - lon0) / (nx - 1L)
+  dy <- (gy$v1 - lat0) / (ny - 1L)
+  ix <- sprintf("(%s - %.17g) / %.17g", q(lon), lon0, dx)
+  iy <- sprintf("(%s - %.17g) / %.17g", q(lat), lat0, dy)
+  chk <- DBI::dbGetQuery(
+    con,
+    sprintf(
+      "SELECT max(abs(%1$s - round(%1$s))) AS off_x, max(abs(%2$s - round(%2$s))) AS off_y, count(*) AS n,
+            count(DISTINCT (CAST(round(%1$s) AS BIGINT), CAST(round(%2$s) AS BIGINT))) AS cells
+     FROM (%3$s) WHERE %4$s",
+      ix,
+      iy,
+      src,
+      where
+    )
+  )
+  if (chk$off_x > 0.01 || chk$off_y > 0.01) {
+    stop(
+      sprintf(
+        "`x` is a regular grid: its positions lie %.3g by %.3g degrees apart, and %s off that lattice.",
+        dx,
+        dy,
+        if (chk$off_x > 0.01) "a longitude lies" else "a latitude lies"
+      ),
+      call. = FALSE
+    )
+  }
+  if (chk$cells < chk$n) {
+    stop(
+      sprintf(
+        "`x` has one row per cell: %d rows repeat a cell.",
+        chk$n - chk$cells
+      ),
+      call. = FALSE
+    )
+  }
+  nm <- .rb_name(con, "rb_dem_")
+  create <- sprintf(
+    "CREATE TEMP TABLE %s AS
+     SELECT CAST(round(%s) AS INTEGER) AS ix, CAST(round(%s) AS INTEGER) AS iy, CAST(%s AS DOUBLE) AS e
+     FROM (%s) WHERE %s ORDER BY iy, ix",
+    nm,
+    ix,
+    iy,
+    q(elevation),
+    src,
+    where
+  )
+  make <- function() DBI::dbExecute(con, create)
+  make()
+  S <- as.integer(tile_size)
+  bounds <- c(
+    max(-180, lon0 - dx / 2),
+    max(-85.0511, lat0 - dy / 2),
+    min(180, lon0 + (nx - 0.5) * dx),
+    min(85.0511, lat0 + (ny - 0.5) * dy)
+  )
+  if (is.null(maxzoom)) {
+    maxzoom <- min(
+      22L,
+      max(as.integer(minzoom), as.integer(ceiling(log2(360 / (S * dx)))))
+    )
+  }
+  # elevations, a pixel each, as a Terrarium PNG: (red * 256 + green + blue / 256) - 32768
+  encode <- function(E) {
+    v <- pmin(pmax(E + 32768, 0), 65535.996)
+    red <- floor(v / 256)
+    green <- floor(v) %% 256
+    blue <- floor((v - floor(v)) * 256)
+    png::writePNG(array(c(red, green, blue) / 255, dim = c(S, S, 3)))
+  }
+  # beyond the grid a level tile, not none: maplibre-contour reads a contour tile's eight neighbours and makes no lines
+  # in it where one is refused, so a small grid's edge tiles, every tile zoomed out, had none
+  flat <- encode(rep(nodata, S * S))
+  tile <- function(z, x, y) {
+    n <- 2^z
+    lat_at <- function(t) atan(sinh(pi * (1 - 2 * t / n))) * 180 / pi
+    w <- x / n * 360 - 180
+    e <- (x + 1) / n * 360 - 180
+    north <- lat_at(y)
+    south <- lat_at(y + 1)
+    if (
+      e <= bounds[1] ||
+        w >= bounds[3] ||
+        north <= bounds[2] ||
+        south >= bounds[4]
+    ) {
+      return(flat)
+    }
+    p <- (seq_len(S) - 0.5) / S
+    fi <- ((x + p) / n * 360 - 180 - lon0) / dx # the pixels' columns, west to east, in cells
+    fj <- (lat_at(y + p) - lat0) / dy # the pixels' rows, north to south, in cells
+    # cells to a pixel: averaged in blocks of k by k, k a power of two, so the blocks of neighbouring tiles agree
+    per_px <- min((e - w) / S / dx, (north - south) / S / dy)
+    k <- if (per_px >= 2) as.integer(2^floor(log2(per_px))) else 1L
+    bi <- (fi - (k - 1) / 2) / k # in blocks: block b holds cells b k to b k + k - 1, its centre at b k + (k - 1) / 2
+    bj <- (fj - (k - 1) / 2) / k
+    last_i <- (nx - 1L) %/% k
+    last_j <- (ny - 1L) %/% k
+    i0 <- max(0, min(last_i, floor(min(bi))))
+    i1 <- max(0, min(last_i, floor(max(bi)) + 1))
+    j0 <- max(0, min(last_j, floor(min(bj))))
+    j1 <- max(0, min(last_j, floor(max(bj)) + 1))
+    sql <- sprintf(
+      "SELECT ix // %1$d AS bi, iy // %1$d AS bj, avg(e) AS e FROM %2$s
+       WHERE ix >= %3$.0f AND ix < %4$.0f AND iy >= %5$.0f AND iy < %6$.0f GROUP BY ALL",
+      k,
+      nm,
+      i0 * k,
+      (i1 + 1) * k,
+      j0 * k,
+      (j1 + 1) * k
+    )
+    # a table dropped since (its connection's temporary tables) is made again
+    r <- tryCatch(DBI::dbGetQuery(con, sql), error = function(err) {
+      if (DBI::dbExistsTable(con, nm)) {
+        stop(err)
+      }
+      make()
+      DBI::dbGetQuery(con, sql)
+    })
+    M <- matrix(NA_real_, i1 - i0 + 1, j1 - j0 + 1)
+    M[cbind(r$bi - i0 + 1, r$bj - j0 + 1)] <- r$e
+    # the pixels as a matrix, rows north to south and columns west to east; the edge's half cell takes the edge's value
+    U <- pmin(pmax(matrix(bi - i0, S, S, byrow = TRUE), 0), nrow(M) - 1)
+    V <- pmin(pmax(matrix(bj - j0, S, S), 0), ncol(M) - 1)
+    inside <- matrix(fi >= -0.5 & fi <= nx - 0.5, S, S, byrow = TRUE) &
+      matrix(fj >= -0.5 & fj <= ny - 0.5, S, S)
+    at <- function(a, b) M[cbind(as.vector(a) + 1, as.vector(b) + 1)]
+    u0 <- floor(U)
+    v0 <- floor(V)
+    fu <- as.vector(U - u0)
+    fv <- as.vector(V - v0)
+    u1 <- pmin(u0 + 1, nrow(M) - 1)
+    v1 <- pmin(v0 + 1, ncol(M) - 1)
+    num <- 0
+    den <- 0
+    for (cn in list(
+      list(u0, v0, (1 - fu) * (1 - fv)),
+      list(u1, v0, fu * (1 - fv)),
+      list(u0, v1, (1 - fu) * fv),
+      list(u1, v1, fu * fv)
+    )) {
+      ev <- at(cn[[1]], cn[[2]])
+      ok <- !is.na(ev)
+      num <- num + ifelse(ok, cn[[3]] * ev, 0)
+      den <- den + ifelse(ok, cn[[3]], 0)
+    }
+    E <- num / den
+    # where the cell nearest the pixel is missing, there is no value: a hole stays a hole
+    E[
+      is.na(at(round(U), round(V))) | !as.vector(inside) | !is.finite(E)
+    ] <- nodata
+    encode(E)
+  }
+  attr(tile, "format") <- "png"
+  attr(tile, "encoding") <- "terrarium"
+  attr(tile, "tile_size") <- S
+  attr(tile, "bounds") <- bounds
+  attr(tile, "minzoom") <- as.integer(minzoom)
+  attr(tile, "maxzoom") <- as.integer(maxzoom)
+  attr(tile, "source") <- paste0("dem:", nm)
+  attr(tile, "table") <- nm
+  attr(tile, "count") <- DBI::dbGetQuery(
+    con,
+    sprintf("SELECT count(*)::INTEGER AS n FROM %s", nm)
+  )$n
+  .rb_hold(tile)
+}
+
 # ST_AsMVT() takes VARCHAR, FLOAT, DOUBLE, INTEGER, BIGINT and BOOLEAN properties and refuses every other type: an R
 # factor reaches DuckDB as an ENUM, a date as a DATE
 .rb_mvt_cast <- function(expr, type) {

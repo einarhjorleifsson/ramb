@@ -880,6 +880,126 @@ test_that("a dem layer: elevation images from an MBTiles file, served as images 
   expect_true(nzchar(meta$layers$depth$v))
 })
 
+test_that("elevation tiles from a grid: Terrarium images that decode to the grid, interpolated, holes and edges kept", {
+  skip_if_not_installed("png")
+  decode <- function(b) {
+    a <- png::readPNG(b) * 255
+    a[,, 1] * 256 + a[,, 2] + a[,, 3] / 256 - 32768
+  }
+  # a tile's pixel centres: rows north to south, columns west to east
+  pixels <- function(z, x, y, S = 512) {
+    p <- (seq_len(S) - 0.5) / S
+    list(
+      lon = (x + p) / 2^z * 360 - 180,
+      lat = atan(sinh(pi * (1 - 2 * (y + p) / 2^z))) * 180 / pi
+    )
+  }
+  # a plane: bilinear interpolation gives it exactly, to the encoding's 1/256 m
+  g <- expand.grid(
+    lon = seq(10, 10.4, by = 0.02),
+    lat = seq(56, 56.3, by = 0.01)
+  )
+  plane <- function(lon, lat) -50 + 100 * (lon - 10) - 200 * (lat - 56)
+  g$elevation <- plane(g$lon, g$lat)
+  tiles <- rb_map_tiles_dem(g)
+  expect_equal(attr(tiles, "bounds"), c(9.99, 55.995, 10.41, 56.305))
+  expect_equal(attr(tiles, "count"), nrow(g))
+  expect_equal(attr(tiles, "format"), "png")
+  expect_equal(attr(tiles, "encoding"), "terrarium")
+  expect_equal(attr(tiles, "maxzoom"), 6L) # a pixel no wider than a cell of 0.02 degrees: 360 / (512 * 2^6)
+  t <- tile_of(10.2, 56.15, 9)
+  z <- t[["z"]]
+  tx <- t[["x"]]
+  ty <- t[["y"]]
+  E <- decode(tiles(z, tx, ty))
+  px <- pixels(z, tx, ty)
+  truth <- outer(px$lat, px$lon, function(la, lo) plane(lo, la))
+  inside <- outer(px$lat, px$lon, function(la, lo) {
+    lo >= 10 & lo <= 10.4 & la >= 56 & la <= 56.3
+  })
+  expect_lt(max(abs(E - truth)[inside]), 1 / 256)
+  beyond <- outer(px$lat, px$lon, function(la, lo) {
+    lo < 9.99 | lo > 10.41 | la < 55.995 | la > 56.305
+  })
+  expect_true(any(beyond))
+  expect_true(all(E[beyond] == 0)) # nodata: sea level
+  # wholly outside the grid a level tile, not none: maplibre-contour draws no lines in a tile whose neighbour is refused
+  expect_true(all(decode(tiles(z, 0, 0)) == 0))
+  expect_true(all(decode(rb_map_tiles_dem(g, nodata = -5)(z, 0, 0)) == -5))
+
+  # the same tile from a lazy table, and from the rows shuffled
+  con <- .rb_connection()
+  duckdb::duckdb_register(con, "rb_test_dem_grid", g)
+  on.exit(duckdb::duckdb_unregister(con, "rb_test_dem_grid"), add = TRUE)
+  expect_identical(
+    rb_map_tiles_dem(dplyr::tbl(con, "rb_test_dem_grid"))(z, tx, ty),
+    tiles(z, tx, ty)
+  )
+  shuffled <- g[withr::with_seed(1, sample(nrow(g))), ]
+  expect_identical(rb_map_tiles_dem(shuffled)(z, tx, ty), tiles(z, tx, ty))
+
+  # zoomed out, the cells averaged in blocks: a level grid stays level
+  flat <- transform(g, elevation = -20)
+  expect_true(all(decode(rb_map_tiles_dem(flat)(0, 0, 0)) %in% c(-20, 0)))
+
+  # a missing cell is a hole: the pixels nearest it carry nodata, which may be given
+  holed <- flat[!(abs(flat$lon - 10.2) < 1e-9 & abs(flat$lat - 56.15) < 1e-9), ]
+  Eh <- decode(rb_map_tiles_dem(holed, nodata = -1)(z, tx, ty))
+  near <- outer(px$lat, px$lon, function(la, lo) {
+    abs(lo - 10.2) < 0.009 & abs(la - 56.15) < 0.0045
+  })
+  expect_true(any(near))
+  expect_true(all(Eh[near] == -1))
+  expect_true(all(Eh[inside & !near] %in% c(-20, -1)))
+  expect_gt(mean(Eh[inside] == -20), 0.9)
+
+  # columns by other names; the checks
+  names(g) <- c("x", "y", "z")
+  expect_identical(
+    rb_map_tiles_dem(g, lon = "x", lat = "y", elevation = "z")(z, tx, ty),
+    tiles(z, tx, ty)
+  )
+  expect_error(rb_map_tiles_dem(g), "no column `lon`, `lat`, `elevation`")
+  names(g) <- c("lon", "lat", "elevation")
+  expect_error(rb_map_tiles_dem(rbind(g, g[1, ])), "1 rows repeat a cell")
+  off <- g
+  off$lon[5] <- off$lon[5] + 0.003 # half a cell would be a finer grid with holes
+  expect_error(rb_map_tiles_dem(off), "a longitude lies off that lattice")
+  expect_error(
+    rb_map_tiles_dem(g[g$lon == 10, ]),
+    "at least two cells each way"
+  )
+  expect_error(rb_map_tiles_dem(g, tile_size = 300), "256 or 512")
+  expect_error(
+    rb_map_tiles_dem(g, minzoom = 5, maxzoom = 2),
+    "no less than `minzoom`"
+  )
+
+  # a dem layer takes its attributes, and the server sends its tiles as images
+  skip_if_not_installed("jsonlite")
+  l <- rb_map_layer(
+    "relief",
+    "dem",
+    tiles = tiles,
+    style = list(list(id = "relief-shade", type = "hillshade"))
+  )
+  expect_equal(
+    l$config[c("encoding", "tile_size", "format", "minzoom", "maxzoom")],
+    list(
+      encoding = "terrarium",
+      tile_size = 512L,
+      format = "png",
+      minzoom = 0L,
+      maxzoom = 6L
+    )
+  )
+  app <- .rb_map_app(rb_map(rb_map_group("g", "G", list(l))))
+  ok <- get(app, sprintf("/tiles/relief/%d/%.0f/%.0f.png", z, tx, ty))
+  expect_equal(ok$status, 200L)
+  expect_identical(ok$body, tiles(z, tx, ty))
+  expect_identical(get(app, sprintf("/tiles/relief/%d/0/0.png", z))$body, tiles(z, 0, 0))
+})
+
 test_that("a dem layer's relief controls: MapLibre's defaults filled in, each value checked, its address names taken", {
   dem <- function(z, x, y) NULL
   shade_style <- list(list(id = "relief-shade", type = "hillshade"))

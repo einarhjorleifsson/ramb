@@ -13,12 +13,18 @@
 #
 # so a file copied out of the package still says what it is and whom to cite. rb_read_example() reads them back.
 # Run after data-raw/extdata.R and data-raw/labelled_tracks.R, from the package root; the rows are checked unchanged.
+# Tables named as arguments (`Rscript data-raw/data_dict.R dansk_relief`) are stamped alone, the others left as they are.
 
 library(DBI)
 options(useFancyQuotes = FALSE)
 
 # read_yaml() truncates the file outside a UTF-8 locale
 dd <- yaml::yaml.load(readLines("inst/extdata/data-dict.yaml", encoding = "UTF-8"))
+only <- commandArgs(trailingOnly = TRUE)
+if (length(only)) {
+  stopifnot(all(only %in% vapply(dd$tables, `[[`, "", "name")))
+  dd$tables <- Filter(function(t) t$name %in% only, dd$tables)
+}
 bib <- rbibutils::readBib("inst/REFERENCES.bib", direct = TRUE)
 for (i in seq_along(bib)) {
   if (!is.null(bib[[i]]$doi)) bib[[i]]$url <- NULL # the reader adds the DOI's URL, which would print it twice

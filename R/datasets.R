@@ -8,6 +8,9 @@ NULL
 #' @eval .rb_dataset_rd("dansk_harbours")
 NULL
 
+#' @eval .rb_dataset_rd("dansk_relief")
+NULL
+
 #' @eval .rb_dataset_rd("creel")
 NULL
 

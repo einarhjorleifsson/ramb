@@ -1,3 +1,23 @@
+# ramb 2026.11.09.3
+
+- `rb_map_tiles_dem()`: elevation tiles for a dem or contour layer made from a regular grid of elevations (a data
+  frame or a lazy DuckDB table of `lon`, `lat` and `elevation`), with no MBTiles file and no tool outside R. The grid is
+  copied once into a temporary DuckDB table; each tile is made as the page asks for it, the cells under it interpolated
+  (bilinear) at its pixels and written as a Terrarium PNG, the cells first averaged in blocks of two, four, eight ...
+  where a pixel spans several. Beyond the grid's edge and at a missing cell it writes `nodata`, 0 by default, and a
+  tile wholly outside the grid is level at `nodata`, not missing: maplibre-contour 0.1.1 fetches a contour tile's eight
+  neighbours with `Promise.all` and draws no lines in it when one is refused, so with no tile there a small grid had no
+  contours zoomed out (seen on `dansk_relief`: none at zoom 6). Its attributes give the layer its bounds and zooms, and
+  `rb_map_bundle()` writes its tiles once for the layers on one grid. Asked for by the maintainer for the maps article,
+  where a relief and depth map had needed an MBTiles file made outside R (fishycode's bathymetry map makes its own with
+  gdalwarp). Needs the png package (Suggests).
+- `dansk_relief`, a new example dataset: the seabed and land around the Danish tracks, NOAA's ETOPO 2022 at 30
+  arc-seconds (1,260 by 480 cells), read with marmap's `getNOAA.bathy()` (`data-raw/dansk_relief.R`). marmap labels
+  the cells from the box's edge to its edge; they are placed here at their centres, half a cell in.
+- The reference index lists `rb_map_bundle()`, `rb_map_tiles_mbtiles()`, `rb_map_time()` and `rb_map_verdicts()`,
+  whose absence stopped `pkgdown::build_site()`.
+- `data-raw/data_dict.R` stamps only the tables named as its arguments, when any are.
+
 # ramb 2026.11.09.2
 
 - A verdict may keep its answers under another layer's: `rb_map_layer(popup = list(verdict = list(..., store = "names")))`.

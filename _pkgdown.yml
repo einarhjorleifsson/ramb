@@ -118,8 +118,13 @@ reference:
   - rb_map_group
   - rb_map_layer
   - rb_map_tiles_table
+  - rb_map_tiles_dem
+  - rb_map_tiles_mbtiles
+  - rb_map_time
   - rb_map_serve
+  - rb_map_bundle
   - rb_map_notes
+  - rb_map_verdicts
   - rb_map_palettes
   - print.rb_map
 - title: "MFRI-only readers"

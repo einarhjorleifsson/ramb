@@ -101,6 +101,44 @@ tables:
       - name: geometry
         description: The harbour's polygon (POLYGON), DuckDB GEOMETRY, longitude and latitude on WGS 84.
 
+  - name: dansk_relief
+    label: Seabed and land elevation around the Danish tracks
+    description: >
+      Each row is a cell of a grid of elevations, 30 arc-seconds square, over the box of the Danish pings (2.5-13 E,
+      54.5-58.5 N): the depth of the North Sea, the Skagerrak, the Kattegat and the western Baltic, and the height of
+      the land around them; 1,260 by 480 cells.
+    details: |
+      **Cite:** [@etopo2022; @marmap]
+
+      **Licence:** Public domain: a work of NOAA, an agency of the United States government; NOAA NCEI asks that it be
+      cited.
+
+      **Changes:** ETOPO 2022's 15 arc-second bed elevation, read with marmap's `getNOAA.bathy()` at 30 arc-seconds
+      (each cell one of the model's, sampled by NOAA's image service, not their mean), with each cell placed at its
+      centre (marmap labels them from the box's edge to its edge) and the elevation stored as a 32-bit number
+      (`data-raw/dansk_relief.R`, 2026-11-09).
+    source:
+      parquet: dansk_relief.parquet
+    origin: https://github.com/einarhjorleifsson/ramb/blob/main/data-raw/dansk_relief.R
+    columns:
+      - name: lon
+        type: number(quantity)
+        units: degrees east
+        description: Longitude of the cell's centre.
+        range: [2.504167, 12.995833]
+      - name: lat
+        type: number(quantity)
+        units: degrees north
+        description: Latitude of the cell's centre.
+        range: [54.504167, 58.495833]
+      - name: elevation
+        type: number(quantity)
+        units: metres
+        description: >
+          Elevation of the seabed or the land, negative below sea level (ETOPO 2022's heights are to the EGM2008
+          geoid); 460,862 of the cells are below sea level.
+        range: [-699.76, 652.78]
+
   - name: creel
     label: Scottish creel vessel tracks
     description: >
